@@ -108,11 +108,32 @@ Map changed files to platforms:
 
 **Diff-review 的上下文规则**：允许 Read 未改动的文件作为理解上下文（如改动方法的调用方、被引用的常量类），但**发现项只针对改动文件报告**；唯一例外是「改动导致未改动文件被连带破坏」（如签名变更使调用方编译失败），此类连带问题必须报告并标注根因在哪个改动文件。
 
+## 已知问题台账（Known-Issues Ledger）
+
+**文件**：`docs/已知问题台账.md`
+
+项目里存在一类问题：字面量的值与某个既有常量完全相同，看似「该用常量的魔术字符串」，但语义属于**另一个取值域**（如 `data-value="normal"` 同时服务「成色」与「紧急度」两套词汇）。机械替换不报错、测试照过，却会埋下语义错配。
+
+这类判断每次审查都要重新推理一遍，因此固化到台账。**台账是本次审查的输入与输出**：
+
+| 时机 | 动作 |
+|---|---|
+| 审查开始 | 读台账，载入状态为 `OPEN` / `DEFERRED` / `WONTFIX` 的条目 |
+| 报告阶段 | 命中的项**不再作为新发现上报**，只在报告中一行带过「已登记 KI-xxx，本次不重复上报」 |
+| 审查结束 | 本次新发现且用户决策「暂不改」的 → 追加登记；决策「改」且已修复的 → 置为 `RESOLVED` |
+
+**匹配方式**：按「位置 + 现象」描述匹配，不按行号（行号会漂移）。台账不存在时跳过本机制，不报错。
+
 ## Review Workflow
 
 ### Standard Review (all dimensions)
 
 ```
+0. READ KNOWN-ISSUES LEDGER
+   → Read docs/已知问题台账.md (skip silently if absent)
+   → Load entries with status OPEN / DEFERRED / WONTFIX
+   → These must NOT surface as new findings in Step 5
+
 1. DETECT SCOPE
    → Parse user instruction or run git diff
    → Map files to platforms (C端/B端/后端)
@@ -145,8 +166,16 @@ Map changed files to platforms:
 
 5. UNIFIED REPORT
    → Consolidate findings from all dimensions
+   → Filter out anything matching an OPEN/DEFERRED/WONTFIX ledger entry (list them as
+     "已登记 KI-xxx" one-liners instead of findings — they must not re-enter the counts)
    → Rank by severity: 🔴 Critical → 🟠 High → 🟡 Medium → 🔵 Info → ⚪ Suggestion
-   → Cross-reference: if UI files changed, suggest prototype-alignment
+   → Cross-reference: if UI files changed, suggest a local render check
+
+5.5. WRITE BACK TO LEDGER (if docs/已知问题台账.md exists)
+   → NEW findings the user decided to leave alone → append as OPEN with next KI-xxx id
+   → NEW findings the user decided to fix and that are now fixed → add as RESOLVED
+   → Update the 变更记录 table with today's date and a one-line summary
+   → Skip silently if there were no new findings
 
 6. FEEDBACK PROCESSING (if applicable)
    → Skill("receiving-code-review")

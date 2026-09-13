@@ -18,18 +18,22 @@
 
 目录结构、页面/实体/接口清单等详见 [README.md](README.md)。
 
-## 2. 原型参照（UI 改动铁律）
+## 2. 设计参考（非强制）
 
-设计原型位于：`D:\notegenWordFile\prototype\社区互助闲置平台原型-C端B端`
+> **本项目已过原型阶段**（2026-09-13 起）。原型不再作为 UI 改动的强制参照，降级为历史设计资料。
+
+历史原型位于：`D:\notegenWordFile\prototype\社区互助闲置平台原型-C端B端`（仅供查阅）
 
 - `c-end/` → C端原型（HTML+CSS+JS），全局 token 在 `c-end/css/ios-ui.css`，带 `--ios-` 前缀
 - `b-end/` → B端原型（HTML+CSS+JS），全局 token 在 `b-end/css/b-end.css`，无前缀
 
-**任何 UI 改动前必须先查原型，不得自创设计。** 若原型没有对应设计且现有代码模式推导不出正确答案，必须询问用户，不许凭空发明（历史教训：曾未查原型自创 tabBar 第 4 项，导致返工）。
+**UI 现状基准是现有代码，不是原型。** 新页面、新交互的视觉与结构以**已确认的产品决策 + 设计规范（[code-standards](.claude/skills/code-standards/SKILL.md)）+ 现有页面组件/交互模式**为准，优先复用（如 chat 页输入区、unified-panel 布局），不凭空造新的视觉体系。
 
-**原型之外的全新功能（不依赖原型）**：AI 助手「小邻」等原型完全没有覆盖的新功能模块，不依赖原型参照——UI 遵循**已确认的产品决策 + 设计规范（code-standards）**，不复用原型 token 体系之外的新视觉。此类功能的 UI 形态、入口位置、交互方式必须在实现前与用户确认（记录进实现计划），并优先复用现有页面组件/交互模式（如 chat 页输入区、unified-panel 布局），不凭空造新的视觉体系。
+**UI 形态、入口位置、交互方式存在多义时，必须先与用户确认**（记录进实现计划），不许凭空发明——这条与原型无关，至今有效（历史教训：曾自创 tabBar 第 4 项导致返工）。
 
-Token 转换约定：C端实现时去掉 `--ios-` 前缀；B端直接使用无前缀名。
+**Token 转换约定（沿用，既有代码已按此实现）**：C端去掉 `--ios-` 前缀；B端直接使用无前缀名。
+
+**如需对照原型**（如复刻某个历史页面细节），可显式调用 `prototype-alignment` 子代理做像素级对齐——按需操作，不再是默认前置步骤。
 
 ## 3. Skill-Agent 架构
 
@@ -51,7 +55,7 @@ Token 转换约定：C端实现时去掉 `--ios-` 前缀；B端直接使用无�
 
 | 子代理 | 触发方式 | 触发关键词 / 条件 | 技能 | 职责 |
 |---|---|---|---|---|
-| `prototype-alignment` | 主动 | "对齐"、"align"、"按原型改" | pixel-perfect-replication | C端/B端页面与原型像素级对齐（Capture → Compare → Fix → Verify） |
+| `prototype-alignment` | **按需** | 需显式点名："对齐原型"、"pixel-perfect"、"按原型复刻"（已过原型阶段，不再是 UI 改动默认前置） | pixel-perfect-replication | C端/B端页面与原型像素级对齐（Capture → Compare → Fix → Verify） |
 | `quality-review` | 主动 | "审查"、"review"、"安全检查" | security-audit、annotation-guarantee、test-guarantee 等 | 三端五维审查（安全/质量/注释/测试），产出审查通行证 |
 | `database-operator` | **自动** | Entity 字段变更、schema.sql 修改，或 "对齐数据库" | database-schema-alignment | JPA Entity 与 PostgreSQL 实际 schema 对齐，生成幂等 DDL（psql 优先，SchemaMigration.java 备选） |
 | `git-save` | 被动 | "保存版本"、"提交"、"commit"、"打个点" | git-commit-standard | 审查门禁执行 + Conventional Commit + **文档同步（README/CLAUDE.md）+ 个人记忆同步** |
@@ -119,17 +123,18 @@ git-save 的三道门禁（详细流程见 [.claude/agents/git-save.md](.claude/
 
 **原因**：后端跑在本地局域网 IP（如 `192.168.31.64:8080`），不重启则小程序打到旧进程，改动等于没生效。前端（小程序/Vue）改动不涉及此流程。
 
-## 9. 记忆维护协议（三层事实来源）
+## 9. 记忆维护协议（四层事实来源）
 
 | 层 | 位置 | 承载内容 | 更新时机 |
 |---|---|---|---|
 | **README.md** | 仓库根 | 结构性事实：模块、页面、实体、接口、启动方式 | git-save 提交前随 diff 同步（Step 2.5） |
 | **CLAUDE.md** | 仓库根 | 项目约定与机制（本文件） | 约定/机制变更时随提交同步（Step 2.5） |
+| **已知问题台账** | `docs/已知问题台账.md` | 已发现但**未决策修改**的问题（尤其「同值不同域」等不可机械替换项） | quality-review 审查前后读写（Step 0 / Step 5.5） |
 | **用户主目录 memory** | `~/.claude/projects/<本项目>/memory/` | 仅个人偏好与对 Claude 的工作反馈 | git-save 提交成功后自省同步（Step 5.5） |
 
-**判定标准**：能从代码推导的（数量、清单、结构）→ README.md；不能从代码推导但属于项目的（约定、机制、决策原因）→ CLAUDE.md；只关于用户个人的（沟通语言、工作习惯、反馈）→ memory。
+**判定标准**：能从代码推导的（数量、清单、结构）→ README.md；不能从代码推导但属于项目的（约定、机制、决策原因）→ CLAUDE.md；**已知但未决**的问题（含「看着像问题、实际不能改」的误报）→ 台账；只关于用户个人的（沟通语言、工作习惯、反馈）→ memory。
 
-**执行者**：git-save 子代理在每次提交流程中负责前两层同步（结构变了改 README，约定变了改 CLAUDE.md，并随本次提交入库），提交后自省第三层。这保证文档不再与代码脱节。
+**执行者**：git-save 子代理在每次提交流程中负责前两层同步（结构变了改 README，约定变了改 CLAUDE.md，并随本次提交入库），提交后自省第四层；quality-review 子代理负责台账层——**审查前读**（已登记项不重复上报）、**审查后写**（新发现的未决项登记入账）。这保证文档与问题清单都不再与代码脱节。
 
 ## 10. 代码生成规范（2026-07-22 确立）
 

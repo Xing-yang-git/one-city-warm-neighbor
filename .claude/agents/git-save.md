@@ -318,7 +318,7 @@ rm .claude/review-reports/review-result.md
 
 | Condition | Reminder |
 |-----------|----------|
-| UI files changed (`miniprogram/pages/**` or `admin/src/views/**`) | 💡 建议运行 `prototype-alignment` 检查视觉回归 |
+| UI files changed (`miniprogram/pages/**` or `admin/src/views/**`) | 💡 建议本地跑一次小程序/管理端确认渲染无回归（已过原型阶段，不再以原型为基准） |
 | > 10 files in this commit | 💡 改动较大，下次提交前建议先运行 `quality-review` |
 | Multiple commits accumulated (> 3 since last push) | 💡 已积累 N 个未推送提交，考虑 `git push` |
 
