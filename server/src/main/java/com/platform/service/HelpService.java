@@ -1,9 +1,11 @@
 package com.platform.service;
 
 import com.platform.ai.moderation.ModerationService;
+import com.platform.common.AppTimeZone;
 import com.platform.common.BizException;
 import com.platform.common.BizStatus;
 import com.platform.common.ModerationStatus;
+import com.platform.common.NotificationType;
 import com.platform.common.UserFormatter;
 import com.platform.model.dto.ApproveRequest;
 import com.platform.model.dto.HelpRequestDTO;
@@ -99,7 +101,7 @@ public class HelpService {
         helpRequest.setStatus(BizStatus.PENDING_REVIEW);
         helpRequest.setModerationStatus(ModerationStatus.PENDING);
         helpRequest.setIsProxy(req.getIsProxy() != null && req.getIsProxy());
-        helpRequest.setCreatedAt(LocalDateTime.now());
+        helpRequest.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         helpRequest = helpRequestRepository.save(helpRequest);
 
         // 异步 AI 内容审核，不阻塞发布响应
@@ -191,7 +193,7 @@ public class HelpService {
             app.setStatus(BizStatus.REJECTED);
             helpApplicationRepository.save(app);
             // 通知申请人该求助已被发布者下架
-            createNotification(app.getHelperId(), "help_rejected",
+            createNotification(app.getHelperId(), NotificationType.HELP_REJECTED,
                     "帮助申请已失效",
                     "求助「" + helpRequest.getTitle() + "」已下架，您的帮助申请已自动失效",
                     app.getId());
@@ -239,21 +241,21 @@ public class HelpService {
         application.setHelperId(helperId);
         application.setNote(note);
         application.setStatus(BizStatus.PENDING);
-        application.setCreatedAt(LocalDateTime.now());
+        application.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         application = helpApplicationRepository.save(application);
 
         // 标记求助为"已被申请"，首页列表不再展示（与闲置物品 reserved 模式一致）
         helpRequest.setStatus(BizStatus.PENDING);
         helpRequestRepository.save(helpRequest);
 
-        createNotification(helpRequest.getUserId(), "help_application",
+        createNotification(helpRequest.getUserId(), NotificationType.HELP_APPLICATION,
                 "新的帮助申请", "有人想帮助您：" + helpRequest.getTitle(),
                 application.getId());
 
         // 通知帮助者：申请已提交（服务通知展示"待回应"）
         // 先清理该用户对同一求助的旧"帮助申请已提交"通知，避免上一轮申请的通知仍显示为待回应
-        notificationService.deleteByUserIdAndTypeAndRelatedId(helperId, "help_application_submitted", helpRequest.getId());
-        createNotification(helperId, "help_application_submitted",
+        notificationService.deleteByUserIdAndTypeAndRelatedId(helperId, NotificationType.HELP_APPLICATION_SUBMITTED, helpRequest.getId());
+        createNotification(helperId, NotificationType.HELP_APPLICATION_SUBMITTED,
                 "帮助申请已提交",
                 "你已成功申请帮助「" + helpRequest.getTitle() + "」，等待对方确认",
                 helpRequest.getId());
@@ -294,12 +296,12 @@ public class HelpService {
         }
 
         if (req.getApproved()) {
-            createNotification(application.getHelperId(), "help_approved",
+            createNotification(application.getHelperId(), NotificationType.HELP_APPROVED,
                     "帮助申请已通过",
                     "您对求助「" + helpRequest.getTitle() + "」的帮助申请已通过",
                     application.getId());
         } else {
-            createNotification(application.getHelperId(), "help_rejected",
+            createNotification(application.getHelperId(), NotificationType.HELP_REJECTED,
                     "帮助申请被拒绝",
                     "您对求助「" + helpRequest.getTitle() + "」的帮助申请被拒绝"
                             + (req.getReason() != null ? "，原因：" + req.getReason() : ""),
@@ -309,9 +311,6 @@ public class HelpService {
         return toDTO(helpRequest);
     }
 
-    /**
-     * 完成帮助申请 — 由求助方调用。
-     */
     /**
      * 确认结束互助 —— 求助方(helpReq) / 帮助方(helpPro) 任意一方均可发起。
      * 二者是同一条 HelpApplication 的两个视角，状态共享，
@@ -335,7 +334,7 @@ public class HelpService {
         }
 
         application.setStatus(BizStatus.COMPLETED);
-        application.setCompletedAt(LocalDateTime.now());
+        application.setCompletedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         helpApplicationRepository.save(application);
 
         helpRequest.setStatus(BizStatus.COMPLETED);
@@ -344,7 +343,7 @@ public class HelpService {
         // 通知对方（发起人是求助方则通知帮助方，反之亦然）
         Long peerId = isRequester ? application.getHelperId() : helpRequest.getUserId();
         if (peerId != null) {
-            createNotification(peerId, "help_result",
+            createNotification(peerId, NotificationType.HELP_RESULT,
                     "帮助已完成", "「" + helpRequest.getTitle() + "」的互助已确认完成，请及时评价此次互助",
                     application.getId());
         }
@@ -396,7 +395,7 @@ public class HelpService {
             helpRequest.setModerationStatus(ModerationStatus.PENDING);
             // 从 completed/offline 重新发布时刷新时间
             if (BizStatus.COMPLETED.equals(originalStatus) || BizStatus.OFFLINE.equals(originalStatus)) {
-                helpRequest.setCreatedAt(LocalDateTime.now());
+                helpRequest.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
             }
         }
 

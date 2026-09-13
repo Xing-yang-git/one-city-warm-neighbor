@@ -1,6 +1,6 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
-const { POST_TYPE } = require('../../utils/constants');
+const { ACTIVITY_ROLE, CONTENT_TYPE } = require('../../utils/constants');
 
 /**
  * 个人中心页 — 用户信息展示 + 功能入口。
@@ -10,6 +10,9 @@ const { POST_TYPE } = require('../../utils/constants');
  */
 Page({
   data: {
+    // 业务常量（供 WXML 模板引用）
+    CONTENT_TYPE: CONTENT_TYPE,
+
     statusBarHeight: 44,
     userId: '',
     userName: '',
@@ -19,7 +22,7 @@ Page({
     userTypeText: '业主',
     score: 0,
     ratingCount: 0,
-    recordTab: 'idle',
+    recordTab: CONTENT_TYPE.IDLE,
     idleRecords: [],
     helpRecords: [],
     // 来自后端的统计数据
@@ -60,11 +63,6 @@ Page({
     }
   },
 
-  /**
-   * 返回手势/返回键处理（Android 返回键 + iOS 侧滑返回）：
-   * 互助记录弹层打开时先关闭弹层并拦截路由回退——本页为 tabBar 根页面，
-   * 弹层开着时返回手势会被当成根页面返回直接退出小程序。
-   */
   // ================================================================
   // 个人资料数据 — 来自 /api/users/profile（真实数据库数据）
   // ================================================================
@@ -105,8 +103,8 @@ Page({
     // 互借记录: borrow + lend
     try {
       const [borrowList, lendList] = await Promise.all([
-        api.get('/api/users/completed', { role: 'borrow' }),
-        api.get('/api/users/completed', { role: 'lend' })
+        api.get('/api/users/completed', { role: ACTIVITY_ROLE.BORROW }),
+        api.get('/api/users/completed', { role: ACTIVITY_ROLE.LEND })
       ]);
       const allIdle = [
         ...(borrowList?.content || (Array.isArray(borrowList) ? borrowList : [])),
@@ -121,9 +119,9 @@ Page({
       const idleRecords = allIdle.map(item => ({
         id: item.id,
         title: item.title || '',
-        type: item.subType || POST_TYPE.LEND,
-        typeText: item.subType === 'borrow' ? '借入' : '借出',
-        roleText: item.subType === 'borrow' ? '借出者' : '借入者',
+        type: item.subType || ACTIVITY_ROLE.LEND,
+        typeText: item.subType === ACTIVITY_ROLE.BORROW ? '借入' : '借出',
+        roleText: item.subType === ACTIVITY_ROLE.BORROW ? '借出者' : '借入者',
         peerName: item.personName || '',
         dateText: this.formatDate(item.completedAt),
         remark: item.myFeedback || item.theirFeedback || '—',
@@ -138,8 +136,8 @@ Page({
     // 互助记录: helpReq + helpPro
     try {
       const [helpReqList, helpProList] = await Promise.all([
-        api.get('/api/users/completed', { role: 'helpReq' }),
-        api.get('/api/users/completed', { role: 'helpPro' })
+        api.get('/api/users/completed', { role: ACTIVITY_ROLE.HELP_REQ }),
+        api.get('/api/users/completed', { role: ACTIVITY_ROLE.HELP_PRO })
       ]);
       const allHelp = [
         ...(helpReqList?.content || (Array.isArray(helpReqList) ? helpReqList : [])),
@@ -154,9 +152,9 @@ Page({
       const helpRecords = allHelp.map(item => ({
         id: item.id,
         title: item.title || '',
-        type: item.subType || 'helpReq',
-        typeText: item.subType === 'helpReq' ? '求助' : '帮助',
-        roleText: item.subType === 'helpReq' ? '帮助者' : '求助者',
+        type: item.subType || ACTIVITY_ROLE.HELP_REQ,
+        typeText: item.subType === ACTIVITY_ROLE.HELP_REQ ? '求助' : '帮助',
+        roleText: item.subType === ACTIVITY_ROLE.HELP_REQ ? '帮助者' : '求助者',
         peerName: item.personName || '',
         dateText: this.formatDate(item.completedAt),
         remark: item.myFeedback || item.theirFeedback || '—',
@@ -184,9 +182,11 @@ Page({
     const record = e.currentTarget.dataset.record;
     const raw = record._raw;
     if (!raw) return;
-    const sheetType = record.type === 'borrow' || record.type === 'lend' ? 'idle' : 'help';
+    const sheetType = record.type === ACTIVITY_ROLE.BORROW || record.type === ACTIVITY_ROLE.LEND
+      ? CONTENT_TYPE.IDLE
+      : CONTENT_TYPE.HELP;
     const roomInfo = this.data.roomInfo || '';
-    const parties = sheetType === 'idle'
+    const parties = sheetType === CONTENT_TYPE.IDLE
       ? this._buildIdleParties(raw, roomInfo)
       : this._buildHelpParties(raw, roomInfo);
     this.setData({
@@ -221,7 +221,7 @@ Page({
 
   /** 互借记录：构建借出方/借入方双方数据 */
   _buildIdleParties(raw, myRoom) {
-    const isBorrow = raw.subType === 'borrow';
+    const isBorrow = raw.subType === ACTIVITY_ROLE.BORROW;
     const otherId = raw.personId || null;
     // 在 JS 中预格式化评分为字符串，避免 WXML 复杂表达式兼容问题
     const fmtRating = (v) => (v != null ? Number(v).toFixed(1) : null);
@@ -247,7 +247,7 @@ Page({
 
   /** 互助记录：构建帮助方/求助方双方数据 */
   _buildHelpParties(raw, myRoom) {
-    const isReq = raw.subType === 'helpReq';
+    const isReq = raw.subType === ACTIVITY_ROLE.HELP_REQ;
     const otherId = raw.personId || null;
     const fmtRating = (v) => (v != null ? Number(v).toFixed(1) : null);
     return {

@@ -1,5 +1,6 @@
 package com.platform.model.entity;
 
+import com.platform.common.AppTimeZone;
 import com.platform.common.MemorySegmentStatus;
 import com.platform.model.entity.column.AgentMemorySegmentsColumn;
 import jakarta.persistence.Column;
@@ -81,6 +82,6 @@ public class AgentMemorySegment {
     /** 插入前自动填充创建时间 */
     @PrePersist
     void onCreate() {
-        createdAt = LocalDateTime.now();
+        createdAt = LocalDateTime.now(AppTimeZone.APP_ZONE);
     }
 }

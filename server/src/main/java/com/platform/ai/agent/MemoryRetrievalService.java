@@ -1,5 +1,6 @@
 package com.platform.ai.agent;
 
+import com.platform.common.AppTimeZone;
 import com.platform.model.entity.AgentMemorySegment;
 import com.platform.repository.AgentMemorySegmentRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -233,7 +234,7 @@ public class MemoryRetrievalService {
             return "时间未知";
         }
         LocalDate createdDate = created.toLocalDate();
-        long days = ChronoUnit.DAYS.between(createdDate, LocalDate.now());
+        long days = ChronoUnit.DAYS.between(createdDate, LocalDate.now(AppTimeZone.APP_ZONE));
         if (days <= 0) {
             return "今天";
         }

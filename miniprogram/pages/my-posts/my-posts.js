@@ -1,6 +1,6 @@
 const api = require("../../utils/api");
 const auth = require("../../utils/auth");
-const { POST_STATUS, POST_TYPE, BORROW_STATUS, RETURN_STATUS, DAMAGE_TYPE } = require("../../utils/constants");
+const { POST_STATUS, POST_TYPE, BORROW_STATUS, RETURN_STATUS, DAMAGE_TYPE, RATING_TYPE, ACTIVITY_ROLE, CONTENT_TYPE, NOTIFICATION_TYPE, DURATION_UNIT, PICKUP_METHOD } = require("../../utils/constants");
 
 /**
  * 我的帖子页 — 我发布的 / 审批管理 / 进行中 / 已完成 四 Tab 视图。
@@ -28,21 +28,21 @@ Page({
     reviewPosts: [],
 
     // 「待审批」子 tab
-    approvalSubTab: "borrow",
+    approvalSubTab: ACTIVITY_ROLE.BORROW,
     borrowApprovals: [],
     lendApprovals: [],
     helpApprovals: [],
     approvalCount: 0, // 待审批总数（三个子列表之和），驱动审批 tab 角标
 
     // 「进行中」子 tab：borrow | lend | helpReq | helpPro
-    inProgressSubTab: "borrow",
+    inProgressSubTab: ACTIVITY_ROLE.BORROW,
     inProgressBorrows: [],
     inProgressLends: [],
     inProgressHelpReqs: [],
     inProgressHelpPros: [],
 
     // 「已完成」子 tab：borrow | lend | helpReq | helpPro
-    completedSubTab: "borrow",
+    completedSubTab: ACTIVITY_ROLE.BORROW,
     completedBorrows: [],
     completedLends: [],
     completedHelpReqs: [],
@@ -88,8 +88,11 @@ Page({
     // 下拉刷新状态（四个 tab 共用，同一时刻只显示一个列表）
     refreshing: false,
 
-    // 帖子状态常量（供 WXML 模板引用）
+    // 业务常量（供 WXML 模板引用）
     POST_STATUS: POST_STATUS,
+    POST_TYPE: POST_TYPE,
+    ACTIVITY_ROLE: ACTIVITY_ROLE,
+    CONTENT_TYPE: CONTENT_TYPE,
 
     // Confirmation Alerts
     showConfirmAlert: false,
@@ -112,7 +115,7 @@ Page({
     editCustomType: "",
     editPrice: "",
     editDesc: "",
-    editDurationUnit: "day",
+    editDurationUnit: DURATION_UNIT.DAY,
     editDurationOptions: [
       "1 天",
       "2 天",
@@ -123,7 +126,7 @@ Page({
       "7 天",
     ],
     editDurationIndex: 6,
-    editPickupMethod: "self_pickup",
+    editPickupMethod: PICKUP_METHOD.SELF_PICKUP,
     editCondition: "normal",
     editUrgency: "normal",
     // 时间段编辑（HELP 专用）
@@ -180,11 +183,6 @@ Page({
   },
 
   /**
-   * 返回手势/返回键处理（Android 返回键 + iOS 侧滑返回）：
-   * 任一底部弹层（编辑/审批/进行中/已完成）打开时先关闭对应弹层并拦截路由回退——
-   * 本页为 tabBar 根页面，弹层开着时返回手势会被当成根页面返回直接退出小程序。
-   */
-  /**
    * 处理来自服务通知「去评价」的跳转：切换到已完成 tab，定位到对应子选项并弹出详情弹框。
    * @returns {boolean} 是否消费了 pendingCompletedTarget
    */
@@ -199,15 +197,15 @@ Page({
     const { relatedId, type } = target;
     // return_confirm → 借入/借出；help_result → 求助/帮助
     const searchRoles =
-      type === "return_confirm" ? ["borrow", "lend"] : ["helpReq", "helpPro"];
+      type === NOTIFICATION_TYPE.RETURN_CONFIRM ? [ACTIVITY_ROLE.BORROW, ACTIVITY_ROLE.LEND] : [ACTIVITY_ROLE.HELP_REQ, ACTIVITY_ROLE.HELP_PRO];
 
     // 切换到已完成 tab 并加载四个角色数据
     this.setData({ mainTab: "completed", loading: true });
     Promise.all([
-      this.loadCompleted("borrow"),
-      this.loadCompleted("lend"),
-      this.loadCompleted("helpReq"),
-      this.loadCompleted("helpPro"),
+      this.loadCompleted(ACTIVITY_ROLE.BORROW),
+      this.loadCompleted(ACTIVITY_ROLE.LEND),
+      this.loadCompleted(ACTIVITY_ROLE.HELP_REQ),
+      this.loadCompleted(ACTIVITY_ROLE.HELP_PRO),
     ])
       .then(() => {
         this.setData({ loading: false });
@@ -256,17 +254,17 @@ Page({
     const { relatedId, type } = target;
     // help_application → 帮助审批；borrow_request → 借入/借出审批（需搜索两个子 tab）
     const searchTypes =
-      type === "help_application" ? ["help"] : ["borrow", "lend"];
+      type === NOTIFICATION_TYPE.HELP_APPLICATION ? [ACTIVITY_ROLE.HELP] : [ACTIVITY_ROLE.BORROW, ACTIVITY_ROLE.LEND];
 
     // 切换到审批 tab 并加载数据
     this.setData({ mainTab: "approval", loading: true });
     const loadTasks = searchTypes.map((t) => this.loadApprovals(t));
     // 同时加载所有类型以获取匹配项
-    if (type !== "help_application") {
-      loadTasks.push(this.loadApprovals("help")); // borrow_request 时也加载 help 审批
+    if (type !== NOTIFICATION_TYPE.HELP_APPLICATION) {
+      loadTasks.push(this.loadApprovals(ACTIVITY_ROLE.HELP)); // borrow_request 时也加载 help 审批
     } else {
-      loadTasks.push(this.loadApprovals("borrow"));
-      loadTasks.push(this.loadApprovals("lend"));
+      loadTasks.push(this.loadApprovals(ACTIVITY_ROLE.BORROW));
+      loadTasks.push(this.loadApprovals(ACTIVITY_ROLE.LEND));
     }
 
     Promise.all(loadTasks)
@@ -403,25 +401,25 @@ Page({
         break;
       case "approval":
         tasks = [
-          this.loadApprovals("borrow"),
-          this.loadApprovals("lend"),
-          this.loadApprovals("help"),
+          this.loadApprovals(ACTIVITY_ROLE.BORROW),
+          this.loadApprovals(ACTIVITY_ROLE.LEND),
+          this.loadApprovals(ACTIVITY_ROLE.HELP),
         ];
         break;
       case "inProgress":
         tasks = [
-          this.loadInProgress("borrow"),
-          this.loadInProgress("lend"),
-          this.loadInProgress("helpReq"),
-          this.loadInProgress("helpPro"),
+          this.loadInProgress(ACTIVITY_ROLE.BORROW),
+          this.loadInProgress(ACTIVITY_ROLE.LEND),
+          this.loadInProgress(ACTIVITY_ROLE.HELP_REQ),
+          this.loadInProgress(ACTIVITY_ROLE.HELP_PRO),
         ];
         break;
       case "completed":
         tasks = [
-          this.loadCompleted("borrow"),
-          this.loadCompleted("lend"),
-          this.loadCompleted("helpReq"),
-          this.loadCompleted("helpPro"),
+          this.loadCompleted(ACTIVITY_ROLE.BORROW),
+          this.loadCompleted(ACTIVITY_ROLE.LEND),
+          this.loadCompleted(ACTIVITY_ROLE.HELP_REQ),
+          this.loadCompleted(ACTIVITY_ROLE.HELP_PRO),
         ];
         break;
       default:
@@ -438,15 +436,15 @@ Page({
   /** 仅加载审批数据（用于更新角标，不影响当前 tab 展示） */
   async _loadApprovalBadge() {
     await Promise.all([
-      this.loadApprovals("borrow"),
-      this.loadApprovals("lend"),
-      this.loadApprovals("help"),
+      this.loadApprovals(ACTIVITY_ROLE.BORROW),
+      this.loadApprovals(ACTIVITY_ROLE.LEND),
+      this.loadApprovals(ACTIVITY_ROLE.HELP),
     ]);
   },
 
   /** 静默刷新已完成 tab 待评价黄点（仅更新 pendingRating/hasPendingRating，不替换列表数据） */
   async _refreshCompletedBadge() {
-    const roles = ["borrow", "lend", "helpReq", "helpPro"];
+    const roles = [ACTIVITY_ROLE.BORROW, ACTIVITY_ROLE.LEND, ACTIVITY_ROLE.HELP_REQ, ACTIVITY_ROLE.HELP_PRO];
     const results = await Promise.all(
       roles.map((role) =>
         api
@@ -490,10 +488,10 @@ Page({
   /** 加载审核中的帖子列表（AI 内容审核中） */
   async loadReviewPosts() {
     try {
-      const data = await api.get("/api/users/posts", { status: "pending_review" });
+      const data = await api.get("/api/users/posts", { status: POST_STATUS.PENDING_REVIEW });
       const items = (data?.content || (Array.isArray(data) ? data : [])).map((dto) => ({
         id: dto.id,
-        postType: dto.type === "idle" ? (dto.postType || POST_TYPE.LEND) : POST_TYPE.HELP,
+        postType: dto.type === CONTENT_TYPE.IDLE ? (dto.postType || POST_TYPE.LEND) : POST_TYPE.HELP,
         title: dto.title || "",
         statusText: "审核中",
       }));
@@ -511,11 +509,11 @@ Page({
 
 
   formatPostFromDTO(dto, status) {
-    const isIdle = dto.type === "idle";
+    const isIdle = dto.type === CONTENT_TYPE.IDLE;
     const durationNum = dto.maxDuration || 7;
-    const durationUnit = dto.durationUnit || "day";
+    const durationUnit = dto.durationUnit || DURATION_UNIT.DAY;
     const durationLabel =
-      "可借 ≤" + durationNum + (durationUnit === "hour" ? "小时" : "天");
+      "可借 ≤" + durationNum + (durationUnit === DURATION_UNIT.HOUR ? "小时" : "天");
     const timeOnly = dto.createdAt
       ? this.formatRelativeTime(new Date(dto.createdAt).getTime())
       : "";
@@ -571,7 +569,7 @@ Page({
         price: dto.price || "",
         maxDuration: durationNum,
         durationUnit: durationUnit,
-        pickupMethod: dto.pickupMethod || "self_pickup",
+        pickupMethod: dto.pickupMethod || PICKUP_METHOD.SELF_PICKUP,
         condition: dto.condition || "normal",
       };
     } else {
@@ -619,7 +617,7 @@ Page({
         status: dto.status || BORROW_STATUS.PENDING,
         note: dto.note || "",
         maxDuration: dto.maxDuration || 0,
-        durationUnit: dto.durationUnit || "day",
+        durationUnit: dto.durationUnit || DURATION_UNIT.DAY,
         timeStart: dto.timeStart || "",
         timeEnd: dto.timeEnd || "",
       }));
@@ -709,10 +707,10 @@ Page({
         helpPro: "求助住户",
       };
       const typeMap = {
-        borrow: "borrow",
-        lend: "lend",
-        helpReq: "helpReq",
-        helpPro: "helpPro",
+        borrow: ACTIVITY_ROLE.BORROW,
+        lend: ACTIVITY_ROLE.LEND,
+        helpReq: ACTIVITY_ROLE.HELP_REQ,
+        helpPro: ACTIVITY_ROLE.HELP_PRO,
       };
       const items = (data?.content || (Array.isArray(data) ? data : [])).map((dto) =>
         this.formatCompletedItem(
@@ -764,7 +762,7 @@ Page({
 
   // 已完成项通用格式化（列表 + 详情弹层）
   formatCompletedItem(item, opts) {
-    const isBorrow = opts.type === "borrow" || opts.type === "lend";
+    const isBorrow = opts.type === ACTIVITY_ROLE.BORROW || opts.type === ACTIVITY_ROLE.LEND;
     let borrowMeta;
     if (isBorrow && item.isOverdue) {
       // 小于1天显示小时，否则显示天数；都不足则只显示"超时归还"
@@ -952,9 +950,9 @@ Page({
     const source = e.currentTarget.dataset.source || POST_STATUS.ONLINE;
     if (!post) return;
 
-    const unit = post.durationUnit || "day";
+    const unit = post.durationUnit || DURATION_UNIT.DAY;
     let durationOptions, durationIndex;
-    if (unit === "hour") {
+    if (unit === DURATION_UNIT.HOUR) {
       durationOptions = Array.from({ length: 23 }, (_, i) => i + 1 + " 小时");
       durationIndex = Math.max(0, Math.min((post.maxDuration || 3) - 1, 22));
     } else {
@@ -963,7 +961,7 @@ Page({
     }
 
     const postType =
-      post.postType || (type === "help" ? POST_TYPE.HELP : POST_TYPE.LEND);
+      post.postType || (type === CONTENT_TYPE.HELP ? POST_TYPE.HELP : POST_TYPE.LEND);
 
     // 预定义类别列表（与 publish-idle 一致）
     const STANDARD_CATEGORIES = [
@@ -1061,7 +1059,7 @@ Page({
       description: post.description || "",
       durationUnit: unit,
       maxDuration: post.maxDuration || 7,
-      pickupMethod: post.pickupMethod || "self_pickup",
+      pickupMethod: post.pickupMethod || PICKUP_METHOD.SELF_PICKUP,
       condition: post.condition || "normal",
       urgency: post.urgency || "normal",
       postType: postType,
@@ -1088,7 +1086,7 @@ Page({
       editDurationUnit: unit,
       editDurationOptions: durationOptions,
       editDurationIndex: durationIndex,
-      editPickupMethod: post.pickupMethod || "self_pickup",
+      editPickupMethod: post.pickupMethod || PICKUP_METHOD.SELF_PICKUP,
       editCondition: post.condition || "normal",
       editUrgency: post.urgency || "normal",
       // HELP 时间段编辑值
@@ -1156,17 +1154,17 @@ Page({
 
   onEditUnitTap(e) {
     const unit = e.currentTarget.dataset.value;
-    if (unit === "hour") {
+    if (unit === DURATION_UNIT.HOUR) {
       const hours = Array.from({ length: 23 }, (_, i) => i + 1 + " 小时");
       this.setData({
-        editDurationUnit: "hour",
+        editDurationUnit: DURATION_UNIT.HOUR,
         editDurationOptions: hours,
         editDurationIndex: 2,
       });
     } else {
       const days = Array.from({ length: 7 }, (_, i) => i + 1 + " 天");
       this.setData({
-        editDurationUnit: "day",
+        editDurationUnit: DURATION_UNIT.DAY,
         editDurationOptions: days,
         editDurationIndex: 6,
       });
@@ -1390,11 +1388,11 @@ Page({
   // "同意"按钮 → 显示确认弹窗
   onConfirmApproval() {
     const item = this.data.approvalSheetItem;
-    const type = item ? item.approvalType : "borrow";
+    const type = item ? item.approvalType : ACTIVITY_ROLE.BORROW;
     let body;
-    if (type === "borrow") {
+    if (type === ACTIVITY_ROLE.BORROW) {
       body = "是否确认借入？"; // 借入：确认接受对方主动借给我的意向
-    } else if (type === "lend") {
+    } else if (type === ACTIVITY_ROLE.LEND) {
       body = "是否确认借出？"; // 借出：同意别人借走我发布的闲置
     } else {
       body = "是否确认接受帮助？";
@@ -1410,11 +1408,11 @@ Page({
   // "拒绝"按钮 → 显示确认弹窗
   onRejectClick() {
     const item = this.data.approvalSheetItem;
-    const type = item ? item.approvalType : "borrow";
+    const type = item ? item.approvalType : ACTIVITY_ROLE.BORROW;
     let body;
-    if (type === "borrow") {
+    if (type === ACTIVITY_ROLE.BORROW) {
       body = "是否确认拒绝借入？";
-    } else if (type === "lend") {
+    } else if (type === ACTIVITY_ROLE.LEND) {
       body = "是否确认拒绝借出？";
     } else {
       body = "是否确认拒绝接受帮助？";
@@ -1475,7 +1473,7 @@ Page({
     const type = item.approvalType; // 'borrow' | 'lend' | 'help'
     const id = item.id;
     const url =
-      type === "help"
+      type === ACTIVITY_ROLE.HELP
         ? "/api/help-requests/applications/" + id + "/approve"
         : "/api/borrow-requests/" + id + "/approve";
 
@@ -1503,9 +1501,9 @@ Page({
       // 从服务端重新拉取审批列表（当前 tab），确保列表反映真实状态
       // 审批通过后物品进入"进行中"——切换 tab 时会自动加载最新数据，无需在此预加载
       await Promise.all([
-        this.loadApprovals("borrow"),
-        this.loadApprovals("lend"),
-        this.loadApprovals("help"),
+        this.loadApprovals(ACTIVITY_ROLE.BORROW),
+        this.loadApprovals(ACTIVITY_ROLE.LEND),
+        this.loadApprovals(ACTIVITY_ROLE.HELP),
       ]);
     } catch (e) {
       wx.hideLoading();
@@ -1520,7 +1518,7 @@ Page({
   },
 
   doReject(type, id) {
-    const key = type === "borrow" ? "borrowApprovals" : "helpApprovals";
+    const key = type === ACTIVITY_ROLE.BORROW ? "borrowApprovals" : "helpApprovals";
     const list = this.data[key];
     const idx = list.findIndex((item) => item.id === id);
     if (idx >= 0) {
@@ -1553,7 +1551,7 @@ Page({
         progressSheetType: type,
         progressSheetRating: 0,
         progressSheetFeedback: "",
-        progressSheetCondition: "normal",
+        progressSheetCondition: DAMAGE_TYPE.NORMAL,
       });
     }
   },
@@ -1619,7 +1617,7 @@ Page({
       bgParts.push('按时归还');
     }
     // 物品状况（仅借出场景）
-    if (type === 'lend' && item.condition) {
+    if (type === ACTIVITY_ROLE.LEND && item.condition) {
       const condMap = {};
       condMap[DAMAGE_TYPE.NORMAL] = '物品正常损耗';
       condMap[DAMAGE_TYPE.ABNORMAL] = '物品有非正常损坏';
@@ -1676,7 +1674,7 @@ Page({
     }
     // 借出：使用后物品状况必填
     if (
-      this.data.progressSheetType === "lend" &&
+      this.data.progressSheetType === ACTIVITY_ROLE.LEND &&
       !this.data.progressSheetCondition
     ) {
       wx.showToast({ title: "请选择使用后物品状况", icon: "none" });
@@ -1700,7 +1698,7 @@ Page({
     const data = this.data.returnConfirmData;
     if (!data) return;
     const { item, type } = data;
-    const isHelp = type === "helpReq" || type === "helpPro";
+    const isHelp = type === ACTIVITY_ROLE.HELP_REQ || type === ACTIVITY_ROLE.HELP_PRO;
     const isOverdue = item.isOverdue;
     const rating = this.data.progressSheetRating;
     const feedback = this.data.progressSheetFeedback;
@@ -1718,7 +1716,7 @@ Page({
           returnStatus: RETURN_STATUS.ON_TIME,
           isOnTime: !isOverdue,
         };
-        if (type === "lend") {
+        if (type === ACTIVITY_ROLE.LEND) {
           returnBody.damageType = this.data.progressSheetCondition;
         }
         await api.put(
@@ -1732,7 +1730,7 @@ Page({
         try {
           const ratingBody = {
             targetId: item.id,
-            ratingType: isHelp ? "help" : "borrow",
+            ratingType: isHelp ? RATING_TYPE.HELP : RATING_TYPE.BORROW,
             overallScore: rating,
           };
           if (feedback) ratingBody.feedback = feedback;
@@ -1765,20 +1763,20 @@ Page({
 
       // 3. 刷新当前 tab（进行中）——归还后物品从进行中消失
       const reloads = isHelp
-        ? [this.loadInProgress("helpReq"), this.loadInProgress("helpPro")]
-        : [this.loadInProgress("borrow"), this.loadInProgress("lend")];
+        ? [this.loadInProgress(ACTIVITY_ROLE.HELP_REQ), this.loadInProgress(ACTIVITY_ROLE.HELP_PRO)]
+        : [this.loadInProgress(ACTIVITY_ROLE.BORROW), this.loadInProgress(ACTIVITY_ROLE.LEND)];
       await Promise.all(reloads);
 
       // 归还/结束后产生新的已完成记录，静默刷新待评价黄点
       this._refreshCompletedBadge();
 
-      if (isOverdue && !isHelp && type === "borrow") {
+      if (isOverdue && !isHelp && type === ACTIVITY_ROLE.BORROW) {
         this.setData({ showOverdueTipAlert: true });
       } else {
         wx.showToast({
           title: isHelp
             ? "已结束"
-            : type === "lend"
+            : type === ACTIVITY_ROLE.LEND
               ? "已确认对方归还"
               : "已归还",
           icon: "none",
@@ -1857,8 +1855,8 @@ Page({
       wx.showToast({ title: "请先评分", icon: "none" });
       return;
     }
-    const isHelp = item.type === "helpReq" || item.type === "helpPro";
-    const isLendMissingDamage = item.type === "lend" && !item.damageType;
+    const isHelp = item.type === ACTIVITY_ROLE.HELP_REQ || item.type === ACTIVITY_ROLE.HELP_PRO;
+    const isLendMissingDamage = item.type === ACTIVITY_ROLE.LEND && !item.damageType;
 
     wx.showLoading({ title: "提交中...", mask: true });
     try {
@@ -1870,7 +1868,7 @@ Page({
       }
       const ratingBody2 = {
         targetId: item.id,
-        ratingType: isHelp ? "help" : "borrow",
+        ratingType: isHelp ? RATING_TYPE.HELP : RATING_TYPE.BORROW,
         overallScore: this.data.completedRating,
       };
       if (this.data.completedFeedback)
@@ -1891,7 +1889,7 @@ Page({
       this.setData({
         completedSheetItem: fresh ? { ...fresh } : this.data.completedSheetItem,
         completedRating: 0,
-        completedDamageType: "normal",
+        completedDamageType: DAMAGE_TYPE.NORMAL,
         completedFeedback: "",
       });
       // 通知服务通知页：该 relatedId 已评价，卡片应改为「已评价」
@@ -1919,7 +1917,7 @@ Page({
   // 归还 — 借入
   onReturnBorrow(e) {
     const id = e.currentTarget.dataset.id;
-    const type = "borrow";
+    const type = ACTIVITY_ROLE.BORROW;
     const item = this.data.inProgressBorrows.find((i) => String(i.id) === String(id));
     if (item) {
       this.setData({
@@ -1936,7 +1934,7 @@ Page({
   // 归还 — 借出
   onReturnLend(e) {
     const id = e.currentTarget.dataset.id;
-    const type = "lend";
+    const type = ACTIVITY_ROLE.LEND;
     const item = this.data.inProgressLends.find((i) => String(i.id) === String(id));
     if (item) {
       this.setData({
@@ -1945,7 +1943,7 @@ Page({
         progressSheetType: type,
         progressSheetRating: 0,
         progressSheetFeedback: "",
-        progressSheetCondition: "normal",
+        progressSheetCondition: DAMAGE_TYPE.NORMAL,
       });
     }
   },
@@ -1953,7 +1951,7 @@ Page({
   // 结束 — 求助
   onEndHelpReq(e) {
     const id = e.currentTarget.dataset.id;
-    const type = "helpReq";
+    const type = ACTIVITY_ROLE.HELP_REQ;
     const item = this.data.inProgressHelpReqs.find((i) => String(i.id) === String(id));
     if (item) {
       this.setData({
@@ -1970,7 +1968,7 @@ Page({
   // 结束 — 帮助
   onEndHelpPro(e) {
     const id = e.currentTarget.dataset.id;
-    const type = "helpPro";
+    const type = ACTIVITY_ROLE.HELP_PRO;
     const item = this.data.inProgressHelpPros.find((i) => String(i.id) === String(id));
     if (item) {
       this.setData({

@@ -1,7 +1,10 @@
 package com.platform.service;
 
+import com.platform.common.ActivityRole;
+import com.platform.common.AppTimeZone;
 import com.platform.common.BizException;
 import com.platform.common.BizStatus;
+import com.platform.common.ContentType;
 import com.platform.common.PostType;
 import com.platform.common.UserFormatter;
 import com.platform.model.dto.ApprovalCountDTO;
@@ -34,7 +37,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
@@ -146,21 +148,20 @@ public class UserActivityService {
     // ============================================================
 
     /**
-     * 获取待审批事项（等待我作为物品发布者审批的申请）。
-     * @param type "borrow" | "lend" | "help"
-     *   - borrow: 别人申请借入我发布的 LEND 物品（我是出借方，审批是否借出）
-     *   - lend:   别人愿意借出给我发布的 WANTED 需求（我是借入方，确认是否借入）
-     *   - help:   别人申请帮助我发布的求助
-     */
-    /**
-     * 获取待审批列表。
-     * @param type "borrow"（确认借入）| "lend"（审批借出）| "help"（帮助申请）
+     * 获取待审批列表（等待我作为物品发布者/求助人审批的申请）。
+     *
+     * @param type 审批类别，取值见 {@link ActivityRole} 的 type 族：
+     *             {@code BORROW} — 别人申请借入我发布的 LEND 物品（我是出借方，审批是否借出）；
+     *             {@code LEND} — 别人愿意借出给我发布的 WANTED 需求（我是借入方，确认是否借入）；
+     *             {@code HELP} — 别人申请帮助我发布的求助
+     * @param userId 当前住户用户 ID
+     * @return 待审批事项列表，按创建时间倒序
      */
     public List<MyPostItemDTO> getApprovals(Long userId, String type) {
         List<MyPostItemDTO> result;
-        if ("borrow".equals(type) || "lend".equals(type)) {
+        if (ActivityRole.BORROW.equals(type) || ActivityRole.LEND.equals(type)) {
             result = collectBorrowLendApprovals(userId, type);
-        } else if ("help".equals(type)) {
+        } else if (ActivityRole.HELP.equals(type)) {
             result = collectHelpApprovals(userId);
         } else {
             result = new ArrayList<>();
@@ -176,7 +177,7 @@ public class UserActivityService {
      */
     private List<MyPostItemDTO> collectBorrowLendApprovals(Long userId, String type) {
         List<MyPostItemDTO> result = new ArrayList<>();
-        boolean wantWanted = "borrow".equals(type);
+        boolean wantWanted = ActivityRole.BORROW.equals(type);
         List<BorrowRequest> pendingBorrows = borrowRequestRepository
                 .findByOwnerIdAndStatus(userId, BizStatus.PENDING);
         for (BorrowRequest br : pendingBorrows) {
@@ -192,7 +193,7 @@ public class UserActivityService {
                 dto.setPersonType(UserFormatter.getUserTypeLabel(applicant.getUserType()));
             }
             enrichUserStats(dto, br.getBorrowerId());
-            dto.setType("idle");
+            dto.setType(ContentType.IDLE);
             dto.setSubType(type);
             result.add(dto);
         }
@@ -211,8 +212,8 @@ public class UserActivityService {
             for (HelpApplication app : pendingApps) {
                 MyPostItemDTO dto = helpRequestToDTO(hr);
                 dto.setId(app.getId());
-                dto.setType("help");
-                dto.setSubType("helpReq");
+                dto.setType(ContentType.HELP);
+                dto.setSubType(ActivityRole.HELP_REQ);
                 dto.setPostType(PostType.HELP);
                 dto.setNote(app.getNote());
                 dto.setPersonId(app.getHelperId());
@@ -265,18 +266,15 @@ public class UserActivityService {
     // ============================================================
 
     /**
-     * 获取进行中的交易。
-     * @param role "borrow" | "lend" | "helpReq" | "helpPro"
-     */
-    /**
      * 获取进行中的交易/互助。
-     * @param role "borrow" | "lend" | "helpReq" | "helpPro"
+     * @param role 角色视角，取值见 {@link ActivityRole} 的 role 族：
+     *             {@code BORROW}（借入方）/ {@code LEND}（借出方）/ {@code HELP_REQ}（求助方）/ {@code HELP_PRO}（帮忙方）
      */
     public List<MyPostItemDTO> getInProgress(Long userId, String role) {
         List<MyPostItemDTO> result = switch (role) {
-            case "borrow", "lend" -> collectBorrowInProgress(userId, role);
-            case "helpReq" -> collectHelpReqInProgress(userId);
-            case "helpPro" -> collectHelpProInProgress(userId);
+            case ActivityRole.BORROW, ActivityRole.LEND -> collectBorrowInProgress(userId, role);
+            case ActivityRole.HELP_REQ -> collectHelpReqInProgress(userId);
+            case ActivityRole.HELP_PRO -> collectHelpProInProgress(userId);
             default -> throw new BizException("无效的角色类型: " + role);
         };
 
@@ -298,9 +296,9 @@ public class UserActivityService {
             if (!seen.add(br.getId())) continue;
             if (!role.equals(resolveBorrowRole(br, userId))) continue;
             MyPostItemDTO dto = borrowRequestToDTO(br);
-            dto.setType("idle");
+            dto.setType(ContentType.IDLE);
             dto.setSubType(role);
-            dto.setRoleLabel(role.equals("borrow") ? "借出住户" : "借走住户");
+            dto.setRoleLabel(role.equals(ActivityRole.BORROW) ? "借出住户" : "借走住户");
             populateBorrowPeer(dto, br, userId);
             calculateRemaining(dto, br);
             result.add(dto);
@@ -320,8 +318,8 @@ public class UserActivityService {
             for (HelpApplication app : approvedApps) {
                 MyPostItemDTO dto = helpRequestToDTO(hr);
                 dto.setId(app.getId());
-                dto.setType("help");
-                dto.setSubType("helpReq");
+                dto.setType(ContentType.HELP);
+                dto.setSubType(ActivityRole.HELP_REQ);
                 dto.setPostType(PostType.HELP);
                 dto.setRoleLabel("帮助住户");
                 dto.setDisplayStatus("进行中");
@@ -357,8 +355,8 @@ public class UserActivityService {
             if (hr == null) continue;
             MyPostItemDTO dto = helpRequestToDTO(hr);
             dto.setId(app.getId());
-            dto.setType("help");
-            dto.setSubType("helpPro");
+            dto.setType(ContentType.HELP);
+            dto.setSubType(ActivityRole.HELP_PRO);
             dto.setPostType(PostType.HELP);
             dto.setRoleLabel("求助住户");
             dto.setDisplayStatus("进行中");
@@ -384,13 +382,14 @@ public class UserActivityService {
 
     /**
      * 获取已完成的交易。
-     * @param role "borrow" | "lend" | "helpReq" | "helpPro"
+     * @param role 角色视角，取值见 {@link ActivityRole} 的 role 族：
+     *             {@code BORROW}（借入方）/ {@code LEND}（借出方）/ {@code HELP_REQ}（求助方）/ {@code HELP_PRO}（帮忙方）
      */
     public List<MyPostItemDTO> getCompleted(Long userId, String role) {
         List<MyPostItemDTO> result = switch (role) {
-            case "borrow", "lend" -> collectBorrowCompleted(userId, role);
-            case "helpReq" -> collectHelpReqCompleted(userId);
-            case "helpPro" -> collectHelpProCompleted(userId);
+            case ActivityRole.BORROW, ActivityRole.LEND -> collectBorrowCompleted(userId, role);
+            case ActivityRole.HELP_REQ -> collectHelpReqCompleted(userId);
+            case ActivityRole.HELP_PRO -> collectHelpProCompleted(userId);
             default -> throw new BizException("无效的角色类型: " + role);
         };
 
@@ -415,9 +414,9 @@ public class UserActivityService {
             IdleItem idleItem = resolveIdleItem(br);
             if (idleItem != null && BizStatus.OFFLINE.equals(idleItem.getStatus())) continue;
             MyPostItemDTO dto = borrowRequestToDTO(br);
-            dto.setType("idle");
+            dto.setType(ContentType.IDLE);
             dto.setSubType(role);
-            dto.setRoleLabel(role.equals("borrow") ? "借出住户" : "借走住户");
+            dto.setRoleLabel(role.equals(ActivityRole.BORROW) ? "借出住户" : "借走住户");
             dto.setCompletedAt(br.getReturnedAt());
             populateBorrowPeer(dto, br, userId);
             loadBorrowRatings(dto, br, userId);
@@ -443,8 +442,8 @@ public class UserActivityService {
             for (HelpApplication app : completedApps) {
                 MyPostItemDTO dto = helpRequestToDTO(hr);
                 dto.setId(app.getId());
-                dto.setType("help");
-                dto.setSubType("helpReq");
+                dto.setType(ContentType.HELP);
+                dto.setSubType(ActivityRole.HELP_REQ);
                 dto.setPostType(PostType.HELP);
                 dto.setRoleLabel("帮助住户");
                 dto.setCompletedAt(app.getCompletedAt());
@@ -482,8 +481,8 @@ public class UserActivityService {
             if (BizStatus.OFFLINE.equals(hr.getStatus())) continue;
             MyPostItemDTO dto = helpRequestToDTO(hr);
             dto.setId(app.getId());
-            dto.setType("help");
-            dto.setSubType("helpPro");
+            dto.setType(ContentType.HELP);
+            dto.setSubType(ActivityRole.HELP_PRO);
             dto.setPostType(PostType.HELP);
             dto.setRoleLabel("求助住户");
             dto.setCompletedAt(app.getCompletedAt());
@@ -520,7 +519,7 @@ public class UserActivityService {
 
         return MyPostItemDTO.builder()
                 .id(item.getId())
-                .type("idle")
+                .type(ContentType.IDLE)
                 .postType(item.getPostType())
                 .title(item.getTitle())
                 .category(item.getCategory())
@@ -560,7 +559,7 @@ public class UserActivityService {
 
         return MyPostItemDTO.builder()
                 .id(hr.getId())
-                .type("help")
+                .type(ContentType.HELP)
                 .postType(PostType.HELP)
                 .title(hr.getTitle())
                 .category(hr.getCategory())
@@ -680,8 +679,8 @@ public class UserActivityService {
             LocalDate start = br.getStartDate() != null ? br.getStartDate() : br.getCreatedAt().toLocalDate();
             expectedReturn = start.plusDays(br.getDurationDays()).atStartOfDay();
         }
-        long remainingDays = ChronoUnit.DAYS.between(LocalDate.now(), expectedReturn.toLocalDate());
-        long remainingHours = ChronoUnit.HOURS.between(LocalDateTime.now(), expectedReturn);
+        long remainingDays = ChronoUnit.DAYS.between(LocalDate.now(AppTimeZone.APP_ZONE), expectedReturn.toLocalDate());
+        long remainingHours = ChronoUnit.HOURS.between(LocalDateTime.now(AppTimeZone.APP_ZONE), expectedReturn);
 
         dto.setExpectedReturnDays(br.getDurationDays());
         dto.setRemainingDays((int) remainingDays);
@@ -710,7 +709,7 @@ public class UserActivityService {
     private void calculateHelpRemaining(MyPostItemDTO dto, HelpRequest hr) {
         if (hr.getTimeEnd() == null) return;
 
-        long remaining = ChronoUnit.DAYS.between(LocalDate.now(), hr.getTimeEnd().toLocalDate());
+        long remaining = ChronoUnit.DAYS.between(LocalDate.now(AppTimeZone.APP_ZONE), hr.getTimeEnd().toLocalDate());
         dto.setRemainingDays((int) remaining);
         dto.setIsOverdue(remaining < 0);
 
@@ -725,31 +724,6 @@ public class UserActivityService {
             } else {
                 dto.setMetaText("已逾期");
             }
-        }
-    }
-
-    // ============================================================
-    // 对方信息填充
-    // ============================================================
-
-    /**
-     * 用借用申请对应闲置物品的发布者信息填充对方信息。
-     */
-    private void populatePeerFromIdleOwner(MyPostItemDTO dto, BorrowRequest br) {
-        IdleItem idleItem = br.getIdleItem();
-        if (idleItem == null) {
-            idleItem = idleItemRepository.findById(br.getIdleId()).orElse(null);
-        }
-        if (idleItem == null) return;
-
-        User owner = idleItem.getUser();
-        if (owner == null && idleItem.getUserId() != null) {
-            owner = userRepository.findById(idleItem.getUserId()).orElse(null);
-        }
-        if (owner != null) {
-            dto.setPersonName(UserFormatter.formatPersonName(owner));
-            dto.setPersonRoom(UserFormatter.formatRoomWithType(owner));
-            dto.setPersonType(UserFormatter.getUserTypeLabel(owner.getUserType()));
         }
     }
 
@@ -773,7 +747,7 @@ public class UserActivityService {
 
     /**
      * 计算当前用户在这笔 BorrowRequest 中的真实角色。
-     * @return "borrow"（我是借入方）或 "lend"（我是出借方）
+     * @return {@link ActivityRole#BORROW}（我是借入方）或 {@link ActivityRole#LEND}（我是出借方）
      */
     private String resolveBorrowRole(BorrowRequest br, Long me) {
         IdleItem item = resolveIdleItem(br);
@@ -781,9 +755,9 @@ public class UserActivityService {
         boolean iAmOwner = item != null && me.equals(item.getUserId());
         // LEND+owner→lend, LEND+borrower→borrow, WANTED+owner→borrow, WANTED+borrower→lend
         if (iAmOwner) {
-            return wanted ? "borrow" : "lend";
+            return wanted ? ActivityRole.BORROW : ActivityRole.LEND;
         }
-        return wanted ? "lend" : "borrow";
+        return wanted ? ActivityRole.LEND : ActivityRole.BORROW;
     }
 
     /**
@@ -817,10 +791,6 @@ public class UserActivityService {
      * <b>且已被对方评价</b>（ratings.to_user_id = 本人）才计入次数——发布、待审批、
      * 进行中的记录一律不计，防止"发布即涨数据"。
      * 按时归还率与借入/借出一致，仅统计已评价的归还记录。
-     */
-    /**
-     * 互助次数统计 — 全站统一口径。
-     * 计数门槛：交易终态（returned/completed）且已被对方评价。
      */
     public InteractionStats interactionStats(Long userId) {
         // 构建"已被对方评价"的交易 ID 集合
@@ -875,7 +845,7 @@ public class UserActivityService {
             if (!seen.add(br.getId())) continue;
             if (!BizStatus.RETURNED.equals(br.getStatus())) continue;
             if (!ratedBorrowIds.contains(br.getId())) continue;  // 仅统计已评价的记录，与借入/借出口径一致
-            boolean isBorrowRole = "borrow".equals(resolveBorrowRole(br, userId));
+            boolean isBorrowRole = ActivityRole.BORROW.equals(resolveBorrowRole(br, userId));
             if (isBorrowRole) {
                 returned++;
                 if (Boolean.TRUE.equals(br.getIsOnTime())) onTime++;

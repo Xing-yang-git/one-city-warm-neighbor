@@ -1,5 +1,6 @@
 package com.platform.config;
 
+import com.platform.common.AppTimeZone;
 import com.platform.common.DocumentStatus;
 import com.platform.model.entity.KnowledgeDocument;
 import com.platform.repository.KnowledgeDocumentRepository;
@@ -52,7 +53,7 @@ public class DocumentCleanupTask {
     @Scheduled(fixedDelay = 30 * 60 * 1000L)
     public void resetStaleParsing() {
         List<KnowledgeDocument> stale = documentRepository.findByStatusAndUpdatedAtBefore(
-                DocumentStatus.PARSING, LocalDateTime.now().minusHours(STALE_PARSING_HOURS));
+                DocumentStatus.PARSING, LocalDateTime.now(AppTimeZone.APP_ZONE).minusHours(STALE_PARSING_HOURS));
         for (KnowledgeDocument doc : stale) {
             doc.setStatus(DocumentStatus.FAILED);
             doc.setErrorMessage("解析中断，请重试");
@@ -70,7 +71,7 @@ public class DocumentCleanupTask {
     @Scheduled(cron = "0 30 3 * * ?")
     public void cleanupStaleFiles() {
         List<KnowledgeDocument> stale = documentRepository.findByStatusAndUpdatedAtBefore(
-                DocumentStatus.FAILED, LocalDateTime.now().minusHours(retentionHours));
+                DocumentStatus.FAILED, LocalDateTime.now(AppTimeZone.APP_ZONE).minusHours(retentionHours));
         for (KnowledgeDocument doc : stale) {
             try {
                 Files.deleteIfExists(Path.of(knowledgeDir, doc.getStoragePath()));

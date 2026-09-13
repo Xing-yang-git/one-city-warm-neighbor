@@ -1,5 +1,6 @@
 package com.platform.model.entity;
 
+import com.platform.common.AppTimeZone;
 import com.platform.model.entity.column.NotificationsColumn;
 import jakarta.persistence.*;
 import lombok.*;
@@ -61,6 +62,6 @@ public class Notification {
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
+        createdAt = LocalDateTime.now(AppTimeZone.APP_ZONE);
     }
 }

@@ -1,5 +1,7 @@
 package com.platform.service;
 
+import com.platform.common.AppTimeZone;
+import com.platform.common.UserType;
 import com.platform.model.dto.AuthResponseDTO;
 import com.platform.model.dto.AuthStatusDTO;
 import com.platform.model.dto.LoginRequest;
@@ -77,8 +79,8 @@ class AuthServiceTest {
                 .openid(openid)
                 .name("测试用户")
                 .userType("业主")
-                .authStatus("approved")
-                .createdAt(java.time.LocalDateTime.now())
+                .authStatus(BizStatus.APPROVED)
+                .createdAt(java.time.LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
     }
 
@@ -198,8 +200,8 @@ class AuthServiceTest {
                 .username("admin")
                 .passwordHash("hashed_password")
                 .name("管理员")
-                .userType("admin")
-                .authStatus("approved")
+                .userType(UserType.ADMIN)
+                .authStatus(BizStatus.APPROVED)
                 .build();
 
         when(userRepository.findByUsername("admin")).thenReturn(Optional.of(adminUser));
@@ -264,7 +266,7 @@ class AuthServiceTest {
                 .id(userId)
                 .username("admin")
                 .passwordHash("hashed_password")
-                .userType("admin")
+                .userType(UserType.ADMIN)
                 .build();
 
         when(userRepository.findByUsername("admin")).thenReturn(Optional.of(adminUser));
@@ -288,7 +290,7 @@ class AuthServiceTest {
                 .id(userId)
                 .username("superadmin")
                 .passwordHash("hash")
-                .userType("super_admin")
+                .userType(UserType.SUPER_ADMIN)
                 .name("超级管理员")
                 .build();
 
@@ -343,7 +345,7 @@ class AuthServiceTest {
         assertThat(result).isNotNull();
         assertThat(result.getToken()).isEqualTo("mock-token");
         assertThat(resultUser.getName()).isEqualTo("张三");
-        assertThat(user.getAuthStatus()).isEqualTo("pending");
+        assertThat(user.getAuthStatus()).isEqualTo(BizStatus.PENDING);
         assertThat(user.getRoomId()).isEqualTo(room.getId());
         // 注册保存 + issueUserToken 更新版本各一次
         verify(userRepository, atLeastOnce()).save(any(User.class));
@@ -361,7 +363,7 @@ class AuthServiceTest {
         req.setRoom("1502");
         req.setName("李四");
         req.setPhone("13900139000");
-        req.setUserType("tenant");
+        req.setUserType(UserType.TENANT);
 
         Building building = Building.builder().id(100L).tenantId(tenantId).buildingNo(3).build();
         Unit unit = Unit.builder().id(200L).buildingId(building.getId()).unitNo(2).build();
@@ -398,7 +400,7 @@ class AuthServiceTest {
         req.setUnitNo(2);
         req.setRoom("1502");
         req.setPhone("13800138000");
-        req.setUserType("owner");
+        req.setUserType(UserType.OWNER);
 
         Building building = Building.builder().id(100L).tenantId(tenantId).buildingNo(3).build();
         Unit unit = Unit.builder().id(200L).buildingId(building.getId()).unitNo(2).build();
@@ -428,7 +430,7 @@ class AuthServiceTest {
         req.setUnitNo(2);
         req.setRoom("1502");
         req.setPhone("13800138000");
-        req.setUserType("tenant");
+        req.setUserType(UserType.TENANT);
 
         Building building = Building.builder().id(100L).tenantId(tenantId).buildingNo(3).build();
         Unit unit = Unit.builder().id(200L).buildingId(building.getId()).unitNo(2).build();
@@ -459,7 +461,7 @@ class AuthServiceTest {
         req.setRoom("1502");
         req.setName("张三");
         req.setPhone("13800138000");
-        req.setUserType("owner");
+        req.setUserType(UserType.OWNER);
 
         Building building = Building.builder().id(100L).tenantId(tenantId).buildingNo(3).build();
         Unit unit = Unit.builder().id(200L).buildingId(building.getId()).unitNo(2).build();
@@ -604,7 +606,7 @@ class AuthServiceTest {
         AuthStatusDTO result = authService.getAuthStatus(userId);
 
         // 断言
-        assertThat(result.getAuthStatus()).isEqualTo("pending");
+        assertThat(result.getAuthStatus()).isEqualTo(BizStatus.PENDING);
         assertThat(result.getRejectReason()).isNull();
     }
 
@@ -635,7 +637,7 @@ class AuthServiceTest {
 
         // 断言
         assertThat(result.getSuccess()).isEqualTo(true);
-        assertThat(user.getAuthStatus()).isEqualTo("pending");
+        assertThat(user.getAuthStatus()).isEqualTo(BizStatus.PENDING);
         assertThat(user.getRejectReason()).isNull();
     }
 

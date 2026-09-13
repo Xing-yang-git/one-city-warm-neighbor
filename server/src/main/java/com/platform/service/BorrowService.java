@@ -1,7 +1,9 @@
 package com.platform.service;
 
+import com.platform.common.AppTimeZone;
 import com.platform.common.BizException;
 import com.platform.common.BizStatus;
+import com.platform.common.NotificationType;
 import com.platform.common.PostType;
 import com.platform.model.dto.ApproveRequest;
 import com.platform.model.dto.BorrowRequestDTO;
@@ -73,7 +75,7 @@ public class BorrowService {
         borrowRequest.setDurationDays(req.getDurationDays() != null ? req.getDurationDays() : 7);
         borrowRequest.setNote(req.getNote());
         borrowRequest.setStatus(BizStatus.PENDING);
-        borrowRequest.setCreatedAt(LocalDateTime.now());
+        borrowRequest.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         borrowRequest = borrowRequestRepository.save(borrowRequest);
 
         // 标记物品为"已被预定"，使详情页按钮显示"已申请"而非"我要借出"
@@ -81,7 +83,7 @@ public class BorrowService {
         idleItemRepository.save(idleItem);
 
         boolean wanted = PostType.WANTED.equals(idleItem.getPostType());
-        createNotification(idleItem.getUserId(), "borrow_request",
+        createNotification(idleItem.getUserId(), NotificationType.BORROW_REQUEST,
                 wanted ? "新的借出意向" : "新的借入申请",
                 wanted ? ("有人愿意借出给您：" + idleItem.getTitle())
                         : ("有人想借入您的物品：" + idleItem.getTitle()),
@@ -89,8 +91,8 @@ public class BorrowService {
 
         // 通知申请人：申请已提交（服务通知展示"待回应"）
         // 先清理该用户对同一物品的旧借入/借出申请通知，避免上一轮申请的通知仍显示为待回应
-        notificationService.deleteByUserIdAndTypeAndRelatedId(borrowerId, "borrow_application", idleItem.getId());
-        createNotification(borrowerId, "borrow_application",
+        notificationService.deleteByUserIdAndTypeAndRelatedId(borrowerId, NotificationType.BORROW_APPLICATION, idleItem.getId());
+        createNotification(borrowerId, NotificationType.BORROW_APPLICATION,
                 wanted ? "借出申请已提交" : "借入申请已提交",
                 wanted ? ("你已成功申请借出「" + idleItem.getTitle() + "」，等待对方确认")
                         : ("你已成功申请借入「" + idleItem.getTitle() + "」，等待对方确认"),
@@ -118,7 +120,7 @@ public class BorrowService {
         boolean approved = req.getApproved();
         borrowRequest.setStatus(approved ? BizStatus.APPROVED : BizStatus.REJECTED);
         if (approved) {
-            borrowRequest.setApprovedAt(LocalDateTime.now());
+            borrowRequest.setApprovedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         }
         borrowRequest = borrowRequestRepository.save(borrowRequest);
 
@@ -134,7 +136,7 @@ public class BorrowService {
     private void syncIdleItemAfterApproveReject(IdleItem idleItem, BorrowRequest borrowRequest, boolean approved) {
         if (approved) {
             idleItem.setStatus(BizStatus.ACTIVE);
-            borrowRequest.setStartDate(LocalDate.now());
+            borrowRequest.setStartDate(LocalDate.now(AppTimeZone.APP_ZONE));
             idleItemRepository.save(idleItem);
         } else {
             // 拒绝时：若该物品没有其他待审批的申请，恢复为 online
@@ -170,7 +172,7 @@ public class BorrowService {
                     : "您对物品「" + idleItem.getTitle() + "」的借入申请被拒绝") + reason;
         }
 
-        createNotification(borrowRequest.getBorrowerId(), "borrow_result", title, content, borrowRequest.getId());
+        createNotification(borrowRequest.getBorrowerId(), NotificationType.BORROW_RESULT, title, content, borrowRequest.getId());
     }
 
     public List<BorrowResponseDTO> getMyApplications(Long userId) {
@@ -221,7 +223,7 @@ public class BorrowService {
         borrowRequest.setIsOnTime(req.getIsOnTime());
         borrowRequest.setReturnPhotos(req.getReturnPhotos());
         borrowRequest.setStatus(BizStatus.RETURNED);
-        borrowRequest.setReturnedAt(LocalDateTime.now());
+        borrowRequest.setReturnedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         borrowRequest = borrowRequestRepository.save(borrowRequest);
 
         if (idleItem != null) {
@@ -233,7 +235,7 @@ public class BorrowService {
         Long peerId = isBorrower ? ownerId : borrowRequest.getBorrowerId();
         if (peerId != null) {
             String itemTitle = idleItem != null ? idleItem.getTitle() : "物品";
-            createNotification(peerId, "return_confirm",
+            createNotification(peerId, NotificationType.RETURN_CONFIRM,
                     "物品已归还", "「" + itemTitle + "」的借用已归还，交易完成，请及时评价此次互助",
                     borrowRequest.getId());
         }

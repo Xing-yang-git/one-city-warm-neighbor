@@ -4,6 +4,7 @@ import com.platform.ai.embedding.EmbeddingService;
 import com.platform.ai.matching.MatchingScheduler;
 import com.platform.ai.moderation.ModerationService;
 import com.platform.ai.search.SemanticSearchService;
+import com.platform.common.AppTimeZone;
 import com.platform.common.BizException;
 import com.platform.common.BizStatus;
 import com.platform.common.ModerationStatus;
@@ -93,7 +94,7 @@ public class IdleService {
         // 发布后先挂起，等待 AI 异步审核
         item.setStatus(BizStatus.PENDING_REVIEW);
         item.setModerationStatus(ModerationStatus.PENDING);
-        item.setCreatedAt(LocalDateTime.now());
+        item.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         item = idleItemRepository.save(item);
 
         // 异步生成语义向量 + AI 内容审核，不阻塞发布响应
@@ -306,7 +307,7 @@ public class IdleService {
             item.setModerationStatus(ModerationStatus.PENDING);
             // 从 completed/offline 重新发布时刷新时间
             if (BizStatus.COMPLETED.equals(originalStatus) || BizStatus.OFFLINE.equals(originalStatus)) {
-                item.setCreatedAt(LocalDateTime.now());
+                item.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
             }
         }
 

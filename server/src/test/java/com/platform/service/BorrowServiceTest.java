@@ -1,5 +1,8 @@
 package com.platform.service;
 
+import com.platform.common.AppTimeZone;
+import com.platform.common.BizStatus;
+import com.platform.common.DurationUnit;
 import com.platform.model.dto.ApproveRequest;
 import com.platform.model.dto.BorrowRequestDTO;
 import com.platform.model.dto.BorrowResponseDTO;
@@ -65,7 +68,7 @@ class BorrowServiceTest {
                 .id(idleId)
                 .userId(ownerId)
                 .title("测试物品")
-                .status("online")
+                .status(BizStatus.ONLINE)
                 .images("[\"http://img1.jpg\"]")
                 .build();
 
@@ -73,11 +76,11 @@ class BorrowServiceTest {
                 .id(borrowId)
                 .idleId(idleId)
                 .borrowerId(borrowerId)
-                .durationType("day")
+                .durationType(DurationUnit.DAY)
                 .durationDays(7)
-                .startDate(LocalDate.now())
-                .status("pending")
-                .createdAt(LocalDateTime.now())
+                .startDate(LocalDate.now(AppTimeZone.APP_ZONE))
+                .status(BizStatus.PENDING)
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
 
         owner = User.builder()
@@ -151,7 +154,7 @@ class BorrowServiceTest {
         // 断言
         assertThat(result).isNotNull();
         assertThat(result.getBorrowerId()).isEqualTo(borrowerId);
-        assertThat(result.getStatus()).isEqualTo("pending");
+        assertThat(result.getStatus()).isEqualTo(BizStatus.PENDING);
         verify(notificationService, times(2)).create(any(), any(), any(), any(), any());
         verify(borrowRequestRepository).save(any(BorrowRequest.class));
     }
@@ -244,7 +247,7 @@ class BorrowServiceTest {
         BorrowResponseDTO result = borrowService.approveReject(ownerId, borrowId, req);
 
         // 断言
-        assertThat(result.getStatus()).isEqualTo("approved");
+        assertThat(result.getStatus()).isEqualTo(BizStatus.APPROVED);
         assertThat(idleItem.getStatus()).isEqualTo("active");
         verify(notificationService, atLeastOnce()).create(any(), any(), any(), any(), any());
     }
@@ -293,7 +296,7 @@ class BorrowServiceTest {
     @DisplayName("审批 - 申请已被处理时抛出异常")
     void should_throwException_when_alreadyProcessed() {
         // 准备
-        borrowRequest.setStatus("approved");
+        borrowRequest.setStatus(BizStatus.APPROVED);
         ApproveRequest req = new ApproveRequest();
         req.setApproved(true);
 
@@ -381,7 +384,7 @@ class BorrowServiceTest {
                 .id(borrowId)
                 .idleId(idleId)
                 .borrowerId(borrowerId)
-                .status("approved")
+                .status(BizStatus.APPROVED)
                 .build();
 
         ReturnRequest req = new ReturnRequest();
@@ -403,7 +406,7 @@ class BorrowServiceTest {
         // 断言
         assertThat(result.getStatus()).isEqualTo("returned");
         assertThat(result.getReturnStatus()).isEqualTo("good");
-        assertThat(idleItem.getStatus()).isEqualTo("completed");
+        assertThat(idleItem.getStatus()).isEqualTo(BizStatus.COMPLETED);
     }
 
     @Test

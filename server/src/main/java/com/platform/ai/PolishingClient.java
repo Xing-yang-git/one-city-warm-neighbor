@@ -1,5 +1,6 @@
 package com.platform.ai;
 
+import com.platform.common.ActivityRole;
 import com.platform.common.AiGenerationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -31,29 +32,20 @@ public class PolishingClient {
         this.deepseekChatModel = deepseekChatModel;
     }
 
-    /** 角色常量：借入方 */
-    public static final String ROLE_BORROW = "borrow";
-    /** 角色常量：借出方 */
-    public static final String ROLE_LEND = "lend";
-    /** 角色常量：求助方 */
-    public static final String ROLE_HELP_REQ = "helpReq";
-    /** 角色常量：帮忙方 */
-    public static final String ROLE_HELP_PRO = "helpPro";
-
     /** 角色中文映射 — 用于 System Prompt 背景 */
     private static final Map<String, String> ROLE_DESC_MAP = Map.of(
-            ROLE_BORROW, "我是借入方，邻居把物品借给了我",
-            ROLE_LEND, "我是借出方，我把闲置物品借给了邻居",
-            ROLE_HELP_REQ, "我是求助方，邻居帮我解决了问题",
-            ROLE_HELP_PRO, "我是帮忙方，我帮邻居解决了问题"
+            ActivityRole.BORROW, "我是借入方，邻居把物品借给了我",
+            ActivityRole.LEND, "我是借出方，我把闲置物品借给了邻居",
+            ActivityRole.HELP_REQ, "我是求助方，邻居帮我解决了问题",
+            ActivityRole.HELP_PRO, "我是帮忙方，我帮邻居解决了问题"
     );
 
     /** 角色对应的 User Message — 强制 AI 理解借贷方向 */
     private static final Map<String, String> ROLE_USER_MSG = Map.of(
-            ROLE_BORROW, "我向邻居借了「%s」来用，现在写一段感想。注意：我是借东西进来的人，物品是邻居借给我的。",
-            ROLE_LEND, "我把「%s」借给了邻居，现在写一段感想。注意：我是借出东西的人，物品是我的。",
-            ROLE_HELP_REQ, "邻居帮我「%s」，现在写一段感想。注意：我是接受帮助的人。",
-            ROLE_HELP_PRO, "我帮邻居「%s」，现在写一段感想。注意：我是提供帮助的人。"
+            ActivityRole.BORROW, "我向邻居借了「%s」来用，现在写一段感想。注意：我是借东西进来的人，物品是邻居借给我的。",
+            ActivityRole.LEND, "我把「%s」借给了邻居，现在写一段感想。注意：我是借出东西的人，物品是我的。",
+            ActivityRole.HELP_REQ, "邻居帮我「%s」，现在写一段感想。注意：我是接受帮助的人。",
+            ActivityRole.HELP_PRO, "我帮邻居「%s」，现在写一段感想。注意：我是提供帮助的人。"
     );
 
     /** 互助感想生成的 System Prompt */

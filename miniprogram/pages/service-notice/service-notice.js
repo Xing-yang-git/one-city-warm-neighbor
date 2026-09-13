@@ -4,6 +4,7 @@
  */
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
+const { NOTIFICATION_TYPE } = require('../../utils/constants');
 
 Page({
   data: {
@@ -72,24 +73,24 @@ Page({
     // rateable 由后端根据实际状态（已完成 + 未评分）计算
     const backendRateable = n.rateable === true;
     // 审批类通知（对方视角）：需要我去审批
-    const isApprovalType = ['help_application', 'borrow_request'].includes(n.type);
+    const isApprovalType = [NOTIFICATION_TYPE.HELP_APPLICATION, NOTIFICATION_TYPE.BORROW_REQUEST].includes(n.type);
     const isApprovalActive = isApprovalType && n.actionable === true;
     // 我的申请类通知（申请人视角）：等待对方回应
-    const isPendingResponseType = ['borrow_application', 'help_application_submitted'].includes(n.type);
+    const isPendingResponseType = [NOTIFICATION_TYPE.BORROW_APPLICATION, NOTIFICATION_TYPE.HELP_APPLICATION_SUBMITTED].includes(n.type);
     const isPendingResponseActive = isPendingResponseType && n.actionable === true;
     // 已失效：审批类或待回应类中不再可操作的
     const isExpired = (isApprovalType || isPendingResponseType) && !n.actionable;
     // 供需匹配通知（始终可点击）
-    const isMatchDemand = n.type === 'match_demand';
+    const isMatchDemand = n.type === NOTIFICATION_TYPE.MATCH_DEMAND;
     // AI 内容审核通知：通过可点击跳转详情，驳回不可点击
-    const isContentApproved = n.type === 'content_approved';
-    const isContentRejected = n.type === 'content_rejected';
+    const isContentApproved = n.type === NOTIFICATION_TYPE.CONTENT_APPROVED;
+    const isContentRejected = n.type === NOTIFICATION_TYPE.CONTENT_REJECTED;
     return {
       ...n,
       title: cleanTitle,
       content: cleanContent,
       dateTimeText: this.formatDateTime(n.createdAt),
-      isTappable: isApprovalActive || isPendingResponseActive || isMatchDemand || isContentApproved || (!isApprovalType && !isPendingResponseType && ['help_approved'].includes(n.type)),
+      isTappable: isApprovalActive || isPendingResponseActive || isMatchDemand || isContentApproved || (!isApprovalType && !isPendingResponseType && [NOTIFICATION_TYPE.HELP_APPROVED].includes(n.type)),
       isApprovalType: isApprovalActive,
       isPendingResponseType: isPendingResponseActive,
       isExpired: isExpired,
@@ -106,14 +107,14 @@ Page({
     const ratedIds = getApp().globalData.ratedNotificationIds || [];
     if (ratedIds.length === 0) return;
     const notifications = this.data.notifications.map(n => {
-      const isApprovalType = ['help_application', 'borrow_request'].includes(n.type);
-      const isPendingResponseType = ['borrow_application', 'help_application_submitted'].includes(n.type);
+      const isApprovalType = [NOTIFICATION_TYPE.HELP_APPLICATION, NOTIFICATION_TYPE.BORROW_REQUEST].includes(n.type);
+      const isPendingResponseType = [NOTIFICATION_TYPE.BORROW_APPLICATION, NOTIFICATION_TYPE.HELP_APPLICATION_SUBMITTED].includes(n.type);
       const isApprovalActive = isApprovalType && n.actionable === true;
       const isPendingResponseActive = isPendingResponseType && n.actionable === true;
       const isExpired = (isApprovalType || isPendingResponseType) && !n.actionable;
       return {
         ...n,
-        isTappable: isApprovalActive || isPendingResponseActive || n.isMatchDemand || n.isContentApproved || (!isApprovalType && !isPendingResponseType && ['help_approved'].includes(n.type)),
+        isTappable: isApprovalActive || isPendingResponseActive || n.isMatchDemand || n.isContentApproved || (!isApprovalType && !isPendingResponseType && [NOTIFICATION_TYPE.HELP_APPROVED].includes(n.type)),
         isApprovalType: isApprovalActive,
         isPendingResponseType: isPendingResponseActive,
         isExpired: isExpired,
@@ -142,26 +143,26 @@ Page({
     }
     if (!item.isTappable) return;
     const app = getApp();
-    if (item.type === 'help_application' || item.type === 'borrow_request') {
+    if (item.type === NOTIFICATION_TYPE.HELP_APPLICATION || item.type === NOTIFICATION_TYPE.BORROW_REQUEST) {
       // 存入 globalData，由 my-posts 页 onShow 消费后自动跳转到审批 tab 并弹出审批弹框
       app.globalData.pendingApprovalTarget = {
         relatedId: item.relatedId,
         type: item.type
       };
       wx.switchTab({ url: '/pages/my-posts/my-posts' });
-    } else if (item.type === 'borrow_application') {
+    } else if (item.type === NOTIFICATION_TYPE.BORROW_APPLICATION) {
       // 我的借入/借出申请（待回应）→ 跳转到闲置详情页，传递标识以便禁用操作按钮
       wx.navigateTo({ url: '/pages/idle-detail/idle-detail?id=' + item.relatedId + '&fromNotice=pending' });
-    } else if (item.type === 'help_application_submitted') {
+    } else if (item.type === NOTIFICATION_TYPE.HELP_APPLICATION_SUBMITTED) {
       // 我的帮助申请（待回应）→ 跳转到求助详情页，传递标识以便禁用操作按钮
       wx.navigateTo({ url: '/pages/help-detail/help-detail?id=' + item.relatedId + '&fromNotice=pending' });
-    } else if (item.type === 'help_approved') {
+    } else if (item.type === NOTIFICATION_TYPE.HELP_APPROVED) {
       // 帮助申请已通过 → 跳转到管理页，用户在「进行中」tab 查看
       wx.switchTab({ url: '/pages/my-posts/my-posts' });
-    } else if (item.type === 'content_approved') {
+    } else if (item.type === NOTIFICATION_TYPE.CONTENT_APPROVED) {
       // AI 内容审核通过通知 → 跳转到闲置详情页
       wx.navigateTo({ url: '/pages/idle-detail/idle-detail?id=' + item.relatedId });
-    } else if (item.type === 'match_demand') {
+    } else if (item.type === NOTIFICATION_TYPE.MATCH_DEMAND) {
       // 供需匹配通知 → 跳转到需求方（WANTED）的详情页，让借出方查看并自行决定
       wx.navigateTo({ url: '/pages/idle-detail/idle-detail?id=' + item.relatedId });
     }

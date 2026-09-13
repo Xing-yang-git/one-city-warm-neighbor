@@ -1,5 +1,6 @@
 package com.platform.service;
 
+import com.platform.common.AppTimeZone;
 import com.platform.model.dto.WebSocketMessage;
 import com.platform.model.entity.Message;
 import com.platform.model.entity.User;
@@ -45,7 +46,7 @@ class ChatServiceTest {
         when(messageRepository.save(any(Message.class))).thenAnswer(inv -> {
             Message m = inv.getArgument(0);
             if (m.getCreatedAt() == null) {
-                m.setCreatedAt(java.time.LocalDateTime.now());
+                m.setCreatedAt(java.time.LocalDateTime.now(AppTimeZone.APP_ZONE));
             }
             return m;
         });

@@ -62,13 +62,13 @@
     <!-- 记录标签 -->
     <view class="record-header">
       <view class="segment">
-        <view class="segment-item {{recordTab === 'idle' ? 'active' : ''}}" bindtap="onRecordTabTap" data-tab="idle">互借记录</view>
-        <view class="segment-item {{recordTab === 'help' ? 'active' : ''}}" bindtap="onRecordTabTap" data-tab="help">互助记录</view>
+        <view class="segment-item {{recordTab === CONTENT_TYPE.IDLE ? 'active' : ''}}" bindtap="onRecordTabTap" data-tab="{{CONTENT_TYPE.IDLE}}">互借记录</view>
+        <view class="segment-item {{recordTab === CONTENT_TYPE.HELP ? 'active' : ''}}" bindtap="onRecordTabTap" data-tab="{{CONTENT_TYPE.HELP}}">互助记录</view>
       </view>
     </view>
 
     <!-- 互借记录 -->
-    <view class="record-list" wx:if="{{recordTab === 'idle'}}">
+    <view class="record-list" wx:if="{{recordTab === CONTENT_TYPE.IDLE}}">
       <block wx:for="{{idleRecords}}" wx:key="id">
         <view class="list-row" bindtap="onOpenRecord" data-record="{{item}}">
           <view class="list-bd">
@@ -87,7 +87,7 @@
     </view>
 
     <!-- 互助记录 -->
-    <view class="record-list" wx:if="{{recordTab === 'help'}}">
+    <view class="record-list" wx:if="{{recordTab === CONTENT_TYPE.HELP}}">
       <block wx:for="{{helpRecords}}" wx:key="id">
         <view class="list-row" bindtap="onOpenRecord" data-record="{{item}}">
           <view class="list-bd">
@@ -122,8 +122,8 @@
 </view>
 
 <!-- ===== 互借记录弹框（对齐管理页审批弹框样式） ===== -->
-<view class="record-sheet-overlay" wx:if="{{showRecordSheet && recordSheetType === 'idle'}}" catchtouchmove="preventTouchMove" bindtap="onCloseRecordSheet"></view>
-<view class="record-sheet" wx:if="{{showRecordSheet && recordSheetType === 'idle'}}">
+<view class="record-sheet-overlay" wx:if="{{showRecordSheet && recordSheetType === CONTENT_TYPE.IDLE}}" catchtouchmove="preventTouchMove" bindtap="onCloseRecordSheet"></view>
+<view class="record-sheet" wx:if="{{showRecordSheet && recordSheetType === CONTENT_TYPE.IDLE}}">
   <view class="record-sheet-header">
     <view class="record-sheet-handle"></view>
     <view class="record-sheet-title">互助记录详情</view>
@@ -201,8 +201,8 @@
 </view>
 
 <!-- ===== 互助记录弹框（对齐管理页审批弹框样式） ===== -->
-<view class="record-sheet-overlay" wx:if="{{showRecordSheet && recordSheetType === 'help'}}" catchtouchmove="preventTouchMove" bindtap="onCloseRecordSheet"></view>
-<view class="record-sheet" wx:if="{{showRecordSheet && recordSheetType === 'help'}}" style="height: 60vh;">
+<view class="record-sheet-overlay" wx:if="{{showRecordSheet && recordSheetType === CONTENT_TYPE.HELP}}" catchtouchmove="preventTouchMove" bindtap="onCloseRecordSheet"></view>
+<view class="record-sheet" wx:if="{{showRecordSheet && recordSheetType === CONTENT_TYPE.HELP}}" style="height: 60vh;">
   <view class="record-sheet-header">
     <view class="record-sheet-handle"></view>
     <view class="record-sheet-title">互助记录详情</view>

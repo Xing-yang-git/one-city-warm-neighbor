@@ -56,7 +56,7 @@ public class UserActivityController {
 
     /**
      * 待审批事项 — 审批 tab。
-     * @param type "borrow" | "lend" | "help"
+     * @param type 审批类别，取值见 {@link com.platform.common.ActivityRole} 的 type 族
      */
     @GetMapping("/approvals")
     public Result<ListDTO<MyPostItemDTO>> approvals(@RequestParam String type, Authentication auth) {
@@ -76,7 +76,7 @@ public class UserActivityController {
 
     /**
      * 进行中的交易 — 进行中 tab。
-     * @param role "borrow" | "lend" | "helpReq" | "helpPro"
+     * @param role 角色视角，取值见 {@link com.platform.common.ActivityRole} 的 role 族
      */
     @GetMapping("/in-progress")
     public Result<ListDTO<MyPostItemDTO>> inProgress(@RequestParam String role, Authentication auth) {
@@ -86,7 +86,7 @@ public class UserActivityController {
 
     /**
      * 已完成的交易 — 已完成 tab。
-     * @param role "borrow" | "lend" | "helpReq" | "helpPro"
+     * @param role 角色视角，取值见 {@link com.platform.common.ActivityRole} 的 role 族
      */
     @GetMapping("/completed")
     public Result<ListDTO<MyPostItemDTO>> completed(@RequestParam String role, Authentication auth) {

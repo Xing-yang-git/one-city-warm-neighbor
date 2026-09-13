@@ -2,6 +2,8 @@ package com.platform.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.platform.common.BizException;
+import com.platform.common.UpstreamServiceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -39,7 +41,8 @@ public class WeChatService {
      *
      * @param code 前端 wx.login() 返回的 code（5 分钟内有效，一次性）
      * @return openid（同一微信用户每次相同）
-     * @throws RuntimeException 当 code 无效或微信 API 报错时
+     * @throws BizException             微信明确拒绝（code 无效或已过期）→ 400
+     * @throws UpstreamServiceException 调用微信接口失败或响应异常（网络超时、缺少 openid）→ 502
      */
     public String code2Session(String code) {
         // 未配置 AppID 时回退到本地开发模式：code 即 openid
@@ -58,7 +61,7 @@ public class WeChatService {
                 int errcode = json.get("errcode").asInt();
                 String errmsg = json.has("errmsg") ? json.get("errmsg").asText() : "未知错误";
                 log.error("微信 code2Session 失败: errcode={}, errmsg={}", errcode, errmsg);
-                throw new RuntimeException("微信登录失败: " + errmsg + " (" + errcode + ")");
+                throw new BizException("微信登录失败: " + errmsg + " (" + errcode + ")");
             }
 
             // 微信偶发返回缺少 openid 的异常响应（如 {}）：直接 asText() 会 NPE，且 NPE 属 RuntimeException 会被原样透传
@@ -67,7 +70,7 @@ public class WeChatService {
             if (openid == null || openid.isEmpty()) {
                 // 不打印完整响应体：异常响应偶发携带 session_key 等敏感字段（可解密用户数据），只记录长度便于定位
                 log.error("微信 code2Session 响应缺少 openid, 响应长度: {}", response == null ? 0 : response.length());
-                throw new RuntimeException("微信登录服务暂不可用，请稍后重试");
+                throw new UpstreamServiceException("微信登录服务暂不可用，请稍后重试");
             }
             log.debug("微信 code2Session 成功: openid={}", openid);
             return openid;
@@ -75,7 +78,7 @@ public class WeChatService {
             throw e;
         } catch (Exception e) {
             log.error("调用微信 code2Session 异常: {}", e.getMessage(), e);
-            throw new RuntimeException("微信登录服务暂不可用，请稍后重试");
+            throw new UpstreamServiceException("微信登录服务暂不可用，请稍后重试", e);
         }
     }
 }

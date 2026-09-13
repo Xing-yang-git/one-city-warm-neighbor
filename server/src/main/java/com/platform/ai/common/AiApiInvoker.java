@@ -1,5 +1,6 @@
 package com.platform.ai.common;
 
+import com.platform.common.AiGenerationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -66,7 +67,7 @@ public class AiApiInvoker {
      * @param action     实际调用（抛出异常表示失败）
      * @param <T>        返回类型
      * @return 调用结果
-     * @throws RuntimeException 熔断打开或全部重试失败时抛出，由调用方决定降级策略
+     * @throws AiGenerationException 熔断打开或全部重试失败时抛出，由调用方决定降级策略
      */
     public <T> T invoke(String circuitKey, Supplier<T> action) {
         return invoke(circuitKey, DEFAULT_MAX_ATTEMPTS, action);
@@ -83,14 +84,14 @@ public class AiApiInvoker {
      * @param action      实际调用（抛出异常表示失败）
      * @param <T>         返回类型
      * @return 调用结果
-     * @throws RuntimeException 熔断打开或全部重试失败时抛出，由调用方决定降级策略
+     * @throws AiGenerationException 熔断打开或全部重试失败时抛出，由调用方决定降级策略
      */
     public <T> T invoke(String circuitKey, int maxAttempts, Supplier<T> action) {
         CircuitState state = circuits.computeIfAbsent(circuitKey, k -> new CircuitState());
         long now = System.currentTimeMillis();
         // 熔断打开：快速失败，不消耗 API
         if (state.openUntilEpochMs > now) {
-            throw new RuntimeException("AI 接口 [" + circuitKey + "] 熔断中，请稍后重试");
+            throw new AiGenerationException("AI 接口 [" + circuitKey + "] 熔断中，请稍后重试");
         }
         RuntimeException lastError = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {

@@ -31,8 +31,8 @@
   <!-- 筛选标签（搜索时显示） -->
   <view class="filter-tabs" wx:if="{{searching}}">
     <text class="filter-tab {{currentFilter === 'all' ? 'active' : ''}}" bindtap="onFilterChange" data-filter="all">全部</text>
-    <text class="filter-tab {{currentFilter === 'idle' ? 'active' : ''}}" bindtap="onFilterChange" data-filter="idle">物品</text>
-    <text class="filter-tab {{currentFilter === 'help' ? 'active' : ''}}" bindtap="onFilterChange" data-filter="help">求助</text>
+    <text class="filter-tab {{currentFilter === CONTENT_TYPE.IDLE ? 'active' : ''}}" bindtap="onFilterChange" data-filter="{{CONTENT_TYPE.IDLE}}">物品</text>
+    <text class="filter-tab {{currentFilter === CONTENT_TYPE.HELP ? 'active' : ''}}" bindtap="onFilterChange" data-filter="{{CONTENT_TYPE.HELP}}">求助</text>
   </view>
 
   <!-- 搜索结果 -->
@@ -42,7 +42,7 @@
     <view class="result-list" wx:if="{{filteredResults.length > 0}}">
       <view class="list-card list-divider" wx:for="{{filteredResults}}" wx:key="id" bindtap="onResultTap" data-item="{{item}}">
         <view class="thumb" style="background:{{item.bgColor || '#F2F2F7'}};">
-          <text>{{item.type === 'help' ? '🤝' : '📦'}}</text>
+          <text>{{item.type === CONTENT_TYPE.HELP ? '🤝' : '📦'}}</text>
         </view>
         <view class="info">
           <view class="card-title">

@@ -3,6 +3,7 @@ package com.platform.ai.document.ocr;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.platform.ai.common.AiApiInvoker;
+import com.platform.common.AiGenerationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -92,12 +93,12 @@ public class VisionOcrClient {
         try {
             root = objectMapper.readTree(response);
         } catch (Exception e) {
-            throw new RuntimeException("OCR 响应解析失败", e);
+            throw new AiGenerationException("OCR 响应解析失败", e);
         }
         JsonNode content = root.path("choices").path(0).path("message").path("content");
         String text = extractContentText(content);
         if (text.isEmpty()) {
-            throw new RuntimeException("OCR 响应未包含文字内容");
+            throw new AiGenerationException("OCR 响应未包含文字内容");
         }
         return text;
     }

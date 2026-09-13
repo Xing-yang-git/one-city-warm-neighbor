@@ -296,10 +296,10 @@
                 <span
                   :class="[
                     'tag',
-                    row.type === 'idle' ? 'tag-blue' : 'tag-orange',
+                    row.type === CONTENT_TYPE.IDLE ? 'tag-blue' : 'tag-orange',
                   ]"
                 >
-                  {{ row.type === "idle" ? "互借" : "互助" }}
+                  {{ row.type === CONTENT_TYPE.IDLE ? "互借" : "互助" }}
                 </span>
               </template>
             </el-table-column>
@@ -417,7 +417,7 @@
             <span class="dl">标题</span
             ><span class="dv">{{ detailItem.title }}</span>
           </div>
-          <template v-if="detailItem.type === 'idle'">
+          <template v-if="detailItem.type === CONTENT_TYPE.IDLE">
             <div class="detail-row">
               <span class="dl">借出时长</span
               ><span class="dv">{{
@@ -428,7 +428,7 @@
               }}</span>
             </div>
           </template>
-          <template v-if="detailItem.type === 'help'">
+          <template v-if="detailItem.type === CONTENT_TYPE.HELP">
             <div class="detail-row">
               <span class="dl">预计开始</span
               ><span class="dv">{{
@@ -478,10 +478,10 @@
               <span
                 :class="[
                   'tag',
-                  detailItem.type === 'idle' ? 'tag-blue' : 'tag-orange',
+                  detailItem.type === CONTENT_TYPE.IDLE ? 'tag-blue' : 'tag-orange',
                 ]"
               >
-                {{ detailItem.type === "idle" ? "互借" : "互助" }}
+                {{ detailItem.type === CONTENT_TYPE.IDLE ? "互借" : "互助" }}
               </span>
             </span>
           </div>
@@ -493,7 +493,7 @@
             }}</span>
           </div>
           <!-- 互助：预计开始/预计结束（来自发布时填写的值） -->
-          <template v-if="detailItem.type === 'help'">
+          <template v-if="detailItem.type === CONTENT_TYPE.HELP">
             <div class="detail-row">
               <span class="dl">预计开始</span
               ><span class="dv">{{
@@ -509,7 +509,7 @@
           </template>
           <!-- 互借：借用时长（来自发布时填写的最大借出/需要借入时长） -->
           <template
-            v-if="detailItem.type === 'idle' && detailItem.maxDuration != null"
+            v-if="detailItem.type === CONTENT_TYPE.IDLE && detailItem.maxDuration != null"
           >
             <div class="detail-row">
               <span class="dl">借用时长</span
@@ -1615,7 +1615,7 @@ import {
   type ModerationCounts,
 } from "@/api/admin";
 import { upload } from "@/utils/api";
-import { POST_TYPE } from "@/utils/constants";
+import { POST_TYPE, CONTENT_TYPE } from "@/utils/constants";
 import AppLayout from "@/layouts/AppLayout.vue";
 import { LIST_PAGE_MAIN_CLASS } from "@/layouts/main-classes";
 import type { AxiosResponse } from "axios";

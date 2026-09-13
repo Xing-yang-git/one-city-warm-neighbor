@@ -45,6 +45,18 @@ public class GlobalExceptionHandler {
                 .body(Result.error(502, "AI 服务暂时不可用，请稍后重试"));
     }
 
+    /**
+     * 外部第三方服务（非 AI）调用失败 → 502。
+     *
+     * <p>与 {@link #handleAiGeneration} 同为上游故障，分设处理器以便日志按依赖方定位故障源。</p>
+     */
+    @ExceptionHandler(UpstreamServiceException.class)
+    public ResponseEntity<Result<Void>> handleUpstreamService(UpstreamServiceException e) {
+        log.error("上游服务调用失败: {}", e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(Result.error(502, e.getMessage()));
+    }
+
     @ExceptionHandler(VersionConflictException.class)
     public ResponseEntity<Result<Void>> handleVersionConflict(VersionConflictException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Result.error(409, e.getMessage()));

@@ -2,8 +2,11 @@ package com.platform.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.platform.common.ActivityRole;
+import com.platform.common.AppTimeZone;
 import com.platform.common.BizException;
 import com.platform.common.BizStatus;
+import com.platform.common.ContentType;
 import com.platform.common.DamageType;
 import com.platform.common.ModerationStatus;
 import com.platform.common.NotificationType;
@@ -42,7 +45,6 @@ import com.platform.model.entity.ExportLog;
 import com.platform.model.entity.HelpApplication;
 import com.platform.model.entity.HelpRequest;
 import com.platform.model.entity.IdleItem;
-import com.platform.model.entity.Notification;
 import com.platform.model.entity.OperationLog;
 import com.platform.model.entity.Rating;
 import com.platform.model.entity.Room;
@@ -160,7 +162,7 @@ public class AdminService {
     public DashboardDTO getDashboard(Long adminId) {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(AppTimeZone.APP_ZONE);
         LocalDateTime monthStart = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
         LocalDateTime prevMonthStart = monthStart.minusMonths(1);
         LocalDateTime prevMonthEnd = monthStart.minusNanos(1);
@@ -211,6 +213,8 @@ public class AdminService {
         long prevMonthMau = countActiveUsers(userMap, idleItems, helpRequests, borrows, helpApps, ratings, prevMonthStart, prevMonthEnd);
 
         List<DashboardDTO.KpiStat> kpis = List.of(
+                // key 属 DashboardKpi.key 域（idle/help/pub/mau，见 B端 api/admin.ts），
+                // 与 ContentType 仅取值相交而非同域，勿改为常量引用
                 kpi("idle", onlineIdle, momChange(monthLendPublish, prevMonthLendPublish)),
                 kpi("help", onlineHelp, momChange(monthHelpPublish, prevMonthHelpPublish)),
                 kpi("pub", monthPublish, momChange(monthPublish, prevMonthPublish)),
@@ -631,7 +635,7 @@ public class AdminService {
                 ? "您的实名认证申请已通过审核"
                 : "您的实名认证申请被拒绝"
                         + (req.getReason() != null ? "，原因：" + req.getReason() : "");
-        createNotification(userId, "audit_result", title, content, null);
+        createNotification(userId, NotificationType.AUDIT_RESULT, title, content, null);
 
         OperationLog log = new OperationLog();
         log.setAdminId(adminId);
@@ -640,7 +644,7 @@ public class AdminService {
         log.setTargetType("user");
         log.setTargetId(userId);
         log.setDetail(req.getReason());
-        log.setCreatedAt(LocalDateTime.now());
+        log.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         operationLogRepository.save(log);
 
         Map<String, Object> result = new HashMap<>();
@@ -682,11 +686,11 @@ public class AdminService {
         // 发布审核 tab：按 moderation 字段筛选
         if ("moderation".equals(effectiveTab)) {
             List<ContentItemDTO> allItems = new ArrayList<>();
-            if (type == null || "idle".equals(type)) {
+            if (type == null || ContentType.IDLE.equals(type)) {
                 fetchModerationIdleItems(tenantId, buildingUserIds, search, moderationStatus, moderatedBy)
                         .forEach(item -> allItems.add(toContentItemDTO(item)));
             }
-            if (type == null || "help".equals(type)) {
+            if (type == null || ContentType.HELP.equals(type)) {
                 fetchModerationHelpItems(tenantId, buildingUserIds, search, moderationStatus, moderatedBy)
                         .forEach(item -> allItems.add(toContentItemDTO(item)));
             }
@@ -704,12 +708,14 @@ public class AdminService {
 
         // 待审批 tab 特殊处理：数据来源为 borrow_requests / help_applications（pending 状态），
         // 而非 idle_items / help_requests 表，与 C端「管理页→审批」数据源一致
+        // effectiveTab 是页面 statusTab 域（moderation/pending/showing/progressing/completed/violation/all），
+        // 与 BizStatus 不同域，勿改为常量引用（同段 "moderation" 亦为字面量）
         if ("pending".equals(effectiveTab)) {
             List<ContentItemDTO> allItems = new ArrayList<>();
-            if (type == null || "idle".equals(type)) {
+            if (type == null || ContentType.IDLE.equals(type)) {
                 allItems.addAll(fetchPendingBorrowItems(tenantId, buildingUserIds, search));
             }
-            if (type == null || "help".equals(type)) {
+            if (type == null || ContentType.HELP.equals(type)) {
                 allItems.addAll(fetchPendingHelpItems(tenantId, buildingUserIds, search));
             }
             sortContentByCreatedAtDesc(allItems);
@@ -721,11 +727,11 @@ public class AdminService {
 
         // 查询并转换为 DTO
         List<ContentItemDTO> allItems = new ArrayList<>();
-        if (type == null || "idle".equals(type)) {
+        if (type == null || ContentType.IDLE.equals(type)) {
             fetchIdleItems(idleStatuses, buildingUserIds, tenantId, search)
                     .forEach(item -> allItems.add(toContentItemDTO(item)));
         }
-        if (type == null || "help".equals(type)) {
+        if (type == null || ContentType.HELP.equals(type)) {
             fetchHelpItems(helpStatuses, buildingUserIds, tenantId, search)
                     .forEach(item -> allItems.add(toContentItemDTO(item)));
         }
@@ -780,14 +786,14 @@ public class AdminService {
     public ContentItemDTO getContentDetail(Long adminId, Long id, String type) {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
-        if ("idle".equals(type)) {
+        if (ContentType.IDLE.equals(type)) {
             IdleItem item = idleItemRepository.findById(id)
                     .orElseThrow(() -> new BizException("物品不存在"));
             if (!tenantMatches(tenantId, item.getTenantId())) {
                 throw new BizException("无权查看该物品");
             }
             return toContentItemDTO(item);
-        } else if ("help".equals(type)) {
+        } else if (ContentType.HELP.equals(type)) {
             HelpRequest item = helpRequestRepository.findById(id)
                     .orElseThrow(() -> new BizException("求助不存在"));
             if (!tenantMatches(tenantId, item.getTenantId())) {
@@ -864,16 +870,13 @@ public class AdminService {
      * @param req       下架请求，包含类型、原因列表和自定义原因
      * @return 结果 map
      */
-    /**
-     * 下架（删除）内容并记录违规信息。
-     */
     public OperationResultDTO removeContent(Long adminId, Long contentId, ContentOfflineRequest req) {
         requireNotSuperAdmin(findAdmin(adminId));
         String delistReason = buildDelistReason(req);
 
         switch (req.getTargetType()) {
-            case "idle" -> removeIdleContent(contentId, adminId, delistReason, req.isFromModeration(), req.getUpdatedAt());
-            case "help" -> removeHelpContent(contentId, adminId, delistReason, req.isFromModeration(), req.getUpdatedAt());
+            case ContentType.IDLE -> removeIdleContent(contentId, adminId, delistReason, req.isFromModeration(), req.getUpdatedAt());
+            case ContentType.HELP -> removeHelpContent(contentId, adminId, delistReason, req.isFromModeration(), req.getUpdatedAt());
             default -> throw new BizException("不支持的目标类型");
         }
 
@@ -890,7 +893,7 @@ public class AdminService {
     public void approveContent(Long adminId, Long contentId, String type, String updatedAt) {
         requireNotSuperAdmin(findAdmin(adminId));
         switch (type) {
-            case "idle" -> {
+            case ContentType.IDLE -> {
                 IdleItem item = idleItemRepository.findById(contentId)
                         .orElseThrow(() -> new BizException("物品不存在"));
                 checkVersionConflict(item.getUpdatedAt(), updatedAt);
@@ -908,7 +911,7 @@ public class AdminService {
                         "您发布的「" + item.getTitle() + "」经审核已通过，现已上线",
                         item.getId());
             }
-            case "help" -> {
+            case ContentType.HELP -> {
                 HelpRequest hr = helpRequestRepository.findById(contentId)
                         .orElseThrow(() -> new BizException("求助不存在"));
                 checkVersionConflict(hr.getUpdatedAt(), updatedAt);
@@ -984,7 +987,7 @@ public class AdminService {
         for (BorrowRequest br : pendingBorrows) {
             br.setStatus(BizStatus.REJECTED);
             borrowRequestRepository.save(br);
-            createNotification(br.getBorrowerId(), "audit_result",
+            createNotification(br.getBorrowerId(), NotificationType.AUDIT_RESULT,
                     "借入申请已拒绝",
                     "您的借入申请「" + item.getTitle() + "」因物品被下架而自动拒绝，原因：" + delistReason,
                     br.getId());
@@ -996,9 +999,9 @@ public class AdminService {
                 .collect(Collectors.toList());
         for (BorrowRequest br : activeBorrows) {
             br.setStatus(BizStatus.RETURNED);
-            br.setReturnedAt(LocalDateTime.now());
+            br.setReturnedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
             borrowRequestRepository.save(br);
-            createNotification(br.getBorrowerId(), "violation",
+            createNotification(br.getBorrowerId(), NotificationType.VIOLATION,
                     "物品已被下架",
                     "您借用的「" + item.getTitle() + "」已被管理员下架，借用已强制结束",
                     br.getId());
@@ -1008,7 +1011,7 @@ public class AdminService {
                 "发布内容未通过审核", "您发布的「" + item.getTitle() + "」因" + delistReason + "未通过审核",
                 item.getId());
 
-        saveOperationLog(adminId, item.getTenantId(), "remove_content", "idle", contentId, delistReason);
+        saveOperationLog(adminId, item.getTenantId(), "remove_content", ContentType.IDLE, contentId, delistReason);
     }
 
     /**
@@ -1031,7 +1034,7 @@ public class AdminService {
         for (HelpApplication app : pendingApps) {
             app.setStatus(BizStatus.REJECTED);
             helpApplicationRepository.save(app);
-            createNotification(app.getHelperId(), "audit_result",
+            createNotification(app.getHelperId(), NotificationType.AUDIT_RESULT,
                     "帮助申请已拒绝",
                     "您对「" + item.getTitle() + "」的帮助申请因求助被下架而自动拒绝，原因：" + delistReason,
                     app.getId());
@@ -1041,9 +1044,9 @@ public class AdminService {
         List<HelpApplication> activeApps = helpApplicationRepository.findByHelpIdAndStatus(contentId, BizStatus.APPROVED);
         for (HelpApplication app : activeApps) {
             app.setStatus(BizStatus.COMPLETED);
-            app.setCompletedAt(LocalDateTime.now());
+            app.setCompletedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
             helpApplicationRepository.save(app);
-            createNotification(app.getHelperId(), "violation",
+            createNotification(app.getHelperId(), NotificationType.VIOLATION,
                     "求助已被下架",
                     "您正在帮助的「" + item.getTitle() + "」已被管理员下架，帮助已强制结束",
                     app.getId());
@@ -1053,7 +1056,7 @@ public class AdminService {
                 "发布内容未通过审核", "您发布的「" + item.getTitle() + "」因" + delistReason + "未通过审核",
                 item.getId());
 
-        saveOperationLog(adminId, item.getTenantId(), "remove_content", "help", contentId, delistReason);
+        saveOperationLog(adminId, item.getTenantId(), "remove_content", ContentType.HELP, contentId, delistReason);
     }
 
     /**
@@ -1068,7 +1071,7 @@ public class AdminService {
         log.setTargetType(targetType);
         log.setTargetId(targetId);
         log.setDetail(detail);
-        log.setCreatedAt(LocalDateTime.now());
+        log.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         operationLogRepository.save(log);
     }
 
@@ -1089,17 +1092,17 @@ public class AdminService {
         item.setPrice(req.getPrice());
         item.setStatus(BizStatus.ONLINE);
         item.setIsProxy(true);
-        item.setCreatedAt(LocalDateTime.now());
+        item.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         item = idleItemRepository.save(item);
 
         OperationLog log = new OperationLog();
         log.setAdminId(adminId);
         log.setTenantId(tenantId);
         log.setAction("proxy_publish_idle");
-        log.setTargetType("idle");
+        log.setTargetType(ContentType.IDLE);
         log.setTargetId(item.getId());
         log.setDetail("管理员代发闲置物品");
-        log.setCreatedAt(LocalDateTime.now());
+        log.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         operationLogRepository.save(log);
 
         return IdleItemDTO.builder()
@@ -1135,10 +1138,10 @@ public class AdminService {
 
         helpRequest.setStatus(BizStatus.ONLINE);
         helpRequest.setIsProxy(true);
-        helpRequest.setCreatedAt(LocalDateTime.now());
+        helpRequest.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         helpRequest = helpRequestRepository.save(helpRequest);
 
-        saveOperationLog(adminId, tenantId, "proxy_publish_help", "help",
+        saveOperationLog(adminId, tenantId, "proxy_publish_help", ContentType.HELP,
                 helpRequest.getId(), "管理员代发求助");
 
         return HelpResponseDTO.builder()
@@ -1183,8 +1186,8 @@ public class AdminService {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
         List<RecordItemDTO> allRecords = switch (type) {
-            case "borrow" -> loadBorrowRecords(tenantId);
-            case "help" -> loadHelpRecords(tenantId);
+            case ActivityRole.BORROW -> loadBorrowRecords(tenantId);
+            case ActivityRole.HELP -> loadHelpRecords(tenantId);
             case "all" -> {
                 List<RecordItemDTO> merged = new ArrayList<>();
                 merged.addAll(loadBorrowRecords(tenantId));
@@ -1234,7 +1237,7 @@ public class AdminService {
 
             RecordItemDTO.RecordItemDTOBuilder b = RecordItemDTO.builder()
                     .id(br.getId())
-                    .type("borrow")
+                    .type(ActivityRole.BORROW)
                     .title(idleItem != null ? idleItem.getTitle() : "未知物品")
                     .publisher(UserFormatter.formatPersonName(owner))
                     .peer(UserFormatter.formatPersonName(borrower))
@@ -1404,7 +1407,7 @@ public class AdminService {
 
             RecordItemDTO.RecordItemDTOBuilder b = RecordItemDTO.builder()
                     .id(app.getId())
-                    .type("help")
+                    .type(ActivityRole.HELP)
                     .title(helpRequest != null ? helpRequest.getTitle() : "未知求助")
                     .publisher(UserFormatter.formatPersonName(requester))
                     .peer(UserFormatter.formatPersonName(helper))
@@ -1671,7 +1674,7 @@ public class AdminService {
         // super_admin 的 tenantId 为 null，文件名为 "community_日期时间.xlsx"
         Tenant tenant = tenantId != null ? tenantRepository.findById(tenantId).orElse(null) : null;
         String tenantName = tenant != null ? tenant.getName() : "community";
-        String exportDate = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmm"));
+        String exportDate = LocalDateTime.now(AppTimeZone.APP_ZONE).format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmm"));
         String fileName = tenantName + "_" + exportDate + ".xlsx";
         saveExportLog(adminId, tenantId, req, counts, fileName);
 
@@ -2108,7 +2111,9 @@ public class AdminService {
             for (OperationLog log : group) {
                 if (last == null) {
                     last = log;
-                } else if (java.time.Duration.between(last.getCreatedAt(), log.getCreatedAt()).getSeconds() <= DEDUP_WINDOW_SECONDS) {
+                } else if (java.time.Duration.between(
+                        last.getCreatedAt().atZone(AppTimeZone.APP_ZONE),
+                        log.getCreatedAt().atZone(AppTimeZone.APP_ZONE)).getSeconds() <= DEDUP_WINDOW_SECONDS) {
                     // 时间窗口内重复：用当前（更新）的替换上一个
                     last = log;
                 } else {
@@ -2174,10 +2179,10 @@ public class AdminService {
         if (targetId == null) return null;
         try {
             Long publisherId = null;
-            if ("idle".equals(targetType)) {
+            if (ContentType.IDLE.equals(targetType)) {
                 IdleItem item = idleItemRepository.findById(targetId).orElse(null);
                 if (item != null) publisherId = item.getUserId();
-            } else if ("help".equals(targetType)) {
+            } else if (ContentType.HELP.equals(targetType)) {
                 HelpRequest hr = helpRequestRepository.findById(targetId).orElse(null);
                 if (hr != null) publisherId = hr.getUserId();
             }
@@ -2200,10 +2205,10 @@ public class AdminService {
     private String findRemovedContentTitle(String targetType, Long targetId) {
         if (targetId == null) return "";
         try {
-            if ("idle".equals(targetType)) {
+            if (ContentType.IDLE.equals(targetType)) {
                 IdleItem item = idleItemRepository.findById(targetId).orElse(null);
                 if (item != null && item.getTitle() != null) return item.getTitle();
-            } else if ("help".equals(targetType)) {
+            } else if (ContentType.HELP.equals(targetType)) {
                 HelpRequest hr = helpRequestRepository.findById(targetId).orElse(null);
                 if (hr != null && hr.getTitle() != null) return hr.getTitle();
             }
@@ -2223,10 +2228,10 @@ public class AdminService {
     private String findRemovedContentDescription(String targetType, Long targetId) {
         if (targetId == null) return "";
         try {
-            if ("idle".equals(targetType)) {
+            if (ContentType.IDLE.equals(targetType)) {
                 IdleItem item = idleItemRepository.findById(targetId).orElse(null);
                 if (item != null && item.getDescription() != null) return item.getDescription();
-            } else if ("help".equals(targetType)) {
+            } else if (ContentType.HELP.equals(targetType)) {
                 HelpRequest hr = helpRequestRepository.findById(targetId).orElse(null);
                 if (hr != null && hr.getDescription() != null) return hr.getDescription();
             }
@@ -2427,7 +2432,6 @@ public class AdminService {
     }
 
 
-    /** 闲置物品状态的中文映射 */
     /** 闲置物品状态的中文映射（统一五类：在线中/待审批/进行中/已完成/已下架） */
     private String mapIdleStatus(String status) {
         if (status == null) return "";
@@ -2438,7 +2442,7 @@ public class AdminService {
             case BizStatus.COMPLETED           -> "已完成";
             case BizStatus.OFFLINE -> "已下架";
             // 兼容存量数据中的旧值（迁移后不再出现，兜底）
-            case "reserved", "borrowing"       -> "进行中";
+            case BizStatus.RESERVED, "borrowing" -> "进行中";
             default                            -> "";
         };
     }
@@ -2453,7 +2457,7 @@ public class AdminService {
             case BizStatus.COMPLETED           -> "已完成";
             case BizStatus.OFFLINE -> "已下架";
             // 兼容存量数据中的旧值（迁移后不再出现，兜底）
-            case "reserved", "helping"         -> "进行中";
+            case BizStatus.RESERVED, "helping" -> "进行中";
             default                            -> "";
         };
     }
@@ -2519,8 +2523,8 @@ public class AdminService {
     private String mapTargetType(String targetType) {
         if (targetType == null) return "";
         return switch (targetType) {
-            case "idle" -> "闲置物品";
-            case "help" -> "技能求助";
+            case ContentType.IDLE -> "闲置物品";
+            case ContentType.HELP -> "技能求助";
             case "user" -> "住户";
             default -> "";
         };
@@ -2541,10 +2545,6 @@ public class AdminService {
 
     // ==================== 小区数据 ====================
 
-    /**
-     * 获取管理员所属小区的嵌套小区数据（小区 + 楼栋 + 单元）。
-     * 供前端在登录后缓存使用。
-     */
     /**
      * 获取所有小区列表，供 super_admin 创建管理员时选择目标小区。
      */
@@ -2702,7 +2702,7 @@ public class AdminService {
         log.setTargetType("user");
         log.setTargetId(newAdmin.getId());
         log.setDetail("创建子账号：" + name);
-        log.setCreatedAt(LocalDateTime.now());
+        log.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         operationLogRepository.save(log);
 
         return AdminDTO.builder()
@@ -2745,7 +2745,7 @@ public class AdminService {
         log.setTargetType("user");
         log.setTargetId(targetId);
         log.setDetail("删除子账号：" + target.getName());
-        log.setCreatedAt(LocalDateTime.now());
+        log.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         operationLogRepository.save(log);
     }
 
@@ -2855,8 +2855,8 @@ public class AdminService {
         Long tenantId = getAdminTenantId(adminId);
         // 将前端英文编码转换为数据库中的中文值
         String dbUserType = switch (userType != null ? userType : "") {
-            case "owner"  -> "业主";
-            case "tenant" -> "租客";
+            case UserType.OWNER  -> "业主";
+            case UserType.TENANT -> "租客";
             default       -> userType;
         };
         List<User> users = userRepository.findResidentsAll(tenantId, buildingNo, unitNo, room, dbUserType, keyword);
@@ -2939,15 +2939,12 @@ public class AdminService {
     /**
      * 将 IdleItem 实体转换为包含完整对方/评价/违规信息的 ContentItemDTO。
      */
-    /**
-     * 将 IdleItem 实体转换为包含完整对方/评价/违规信息的 ContentItemDTO。
-     */
     private ContentItemDTO toContentItemDTO(IdleItem item) {
         User user = userRepository.findById(item.getUserId()).orElse(null);
 
         ContentItemDTO.ContentItemDTOBuilder builder = ContentItemDTO.builder()
                 .id(item.getId())
-                .type("idle")
+                .type(ContentType.IDLE)
                 .postType(item.getPostType())
                 .title(item.getTitle())
                 .description(item.getDescription())
@@ -3060,8 +3057,8 @@ public class AdminService {
 
         ContentItemDTO.ContentItemDTOBuilder builder = ContentItemDTO.builder()
                 .id(item.getId())
-                .type("help")
-                .postType("HELP")
+                .type(ContentType.HELP)
+                .postType(PostType.HELP)
                 .title(item.getTitle())
                 .description(item.getDescription())
                 .images(parseImages(item.getImages()))
@@ -3262,7 +3259,7 @@ public class AdminService {
             User borrower = userRepository.findById(br.getBorrowerId()).orElse(null);
             result.add(ContentItemDTO.builder()
                     .id(idleItem.getId())
-                    .type("idle")
+                    .type(ContentType.IDLE)
                     .title(idleItem.getTitle())
                     .description(idleItem.getDescription())
                     .images(parseImages(idleItem.getImages()))
@@ -3310,7 +3307,7 @@ public class AdminService {
             User helper = userRepository.findById(app.getHelperId()).orElse(null);
             result.add(ContentItemDTO.builder()
                     .id(helpRequest.getId())
-                    .type("help")
+                    .type(ContentType.HELP)
                     .title(helpRequest.getTitle())
                     .description(helpRequest.getDescription())
                     .images(parseImages(helpRequest.getImages()))

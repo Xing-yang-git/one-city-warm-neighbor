@@ -91,7 +91,7 @@ public class CommonService {
 
             return "/uploads/" + filename;
         } catch (IOException e) {
-            throw new RuntimeException("文件上传失败: " + e.getMessage());
+            throw new BizException("文件上传失败: " + e.getMessage());
         }
     }
 
@@ -105,7 +105,7 @@ public class CommonService {
         try (InputStream in = file.getInputStream()) {
             n = in.readNBytes(h, 0, h.length);
         } catch (IOException e) {
-            throw new RuntimeException("文件读取失败");
+            throw new BizException("文件读取失败");
         }
         if (n >= 3 && (h[0] & 0xFF) == 0xFF && (h[1] & 0xFF) == 0xD8 && (h[2] & 0xFF) == 0xFF) {
             return ".jpg";
@@ -140,7 +140,7 @@ public class CommonService {
             file.transferTo(targetPath.toFile());
             return "/uploads/" + filename;
         } catch (IOException e) {
-            throw new RuntimeException("文件上传失败: " + e.getMessage());
+            throw new BizException("文件上传失败: " + e.getMessage());
         }
     }
 
@@ -157,7 +157,7 @@ public class CommonService {
         try (InputStream in = file.getInputStream()) {
             n = in.readNBytes(h, 0, h.length);
         } catch (IOException e) {
-            throw new RuntimeException("文件读取失败");
+            throw new BizException("文件读取失败");
         }
         // MP3: ID3v2 tag header
         if (n >= 3 && h[0] == 'I' && h[1] == 'D' && h[2] == '3') {

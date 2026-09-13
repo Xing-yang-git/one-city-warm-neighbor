@@ -1,5 +1,7 @@
 package com.platform.service;
 
+import com.platform.common.AppTimeZone;
+import com.platform.common.PostType;
 import com.platform.model.dto.IdleItemDTO;
 import com.platform.model.dto.IdleItemRequest;
 import com.platform.model.dto.PageDTO;
@@ -85,7 +87,7 @@ class IdleServiceTest {
                 .userId(userId)
                 .title("测试物品")
                 .description("物品描述")
-                .postType("LEND")
+                .postType(PostType.LEND)
                 .category("数码")
                 .condition("good")
                 .price(BigDecimal.ZERO)
@@ -93,8 +95,8 @@ class IdleServiceTest {
                 .maxDuration(7)
                 .durationUnit("day")
                 .pickupMethod("self_pickup")
-                .status("online")
-                .createdAt(LocalDateTime.now())
+                .status(BizStatus.ONLINE)
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
     }
 
@@ -107,7 +109,7 @@ class IdleServiceTest {
         IdleItemRequest req = new IdleItemRequest();
         req.setTitle("闲置手机");
         req.setDescription("9成新");
-        req.setPostType("LEND");
+        req.setPostType(PostType.LEND);
         req.setCategory("数码");
         req.setCondition("good");
         req.setPrice(new BigDecimal("50"));
@@ -142,7 +144,7 @@ class IdleServiceTest {
         IdleItemRequest req = new IdleItemRequest();
         req.setTitle("最小值物品");
         req.setDescription("desc");
-        req.setPostType("LEND");
+        req.setPostType(PostType.LEND);
         req.setCategory("其他");
 
         when(idleItemRepository.save(any(IdleItem.class))).thenAnswer(inv -> {

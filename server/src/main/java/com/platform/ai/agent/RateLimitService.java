@@ -1,5 +1,6 @@
 package com.platform.ai.agent;
 
+import com.platform.common.AppTimeZone;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -70,7 +71,7 @@ public class RateLimitService {
      */
     private boolean redisTryAcquire(String userId) {
         // 分钟维度
-        String minuteKey = "agent:rl:" + userId + ":m:" + LocalDateTime.now().format(MINUTE_FMT);
+        String minuteKey = "agent:rl:" + userId + ":m:" + LocalDateTime.now(AppTimeZone.APP_ZONE).format(MINUTE_FMT);
         Long minuteCount = redisTemplate.opsForValue().increment(minuteKey);
         redisTemplate.expire(minuteKey, Duration.ofSeconds(65));
         if (minuteCount != null && minuteCount > perMinute) {
@@ -79,7 +80,7 @@ public class RateLimitService {
         }
 
         // 天维度
-        String dayKey = "agent:rl:" + userId + ":d:" + LocalDateTime.now().format(DAY_FMT);
+        String dayKey = "agent:rl:" + userId + ":d:" + LocalDateTime.now(AppTimeZone.APP_ZONE).format(DAY_FMT);
         Long dayCount = redisTemplate.opsForValue().increment(dayKey);
         redisTemplate.expire(dayKey, Duration.ofDays(1));
         if (dayCount != null && dayCount > perDay) {
@@ -110,7 +111,7 @@ public class RateLimitService {
             window.addLast(now);
         }
         // 每日配额（跨日重置）
-        String today = LocalDateTime.now().format(DAY_FMT);
+        String today = LocalDateTime.now(AppTimeZone.APP_ZONE).format(DAY_FMT);
         Map<String, Integer> perUserDay = dayCounts.computeIfAbsent(userId, k -> new ConcurrentHashMap<>());
         synchronized (perUserDay) {
             Integer count = perUserDay.get(today);

@@ -1,5 +1,6 @@
 package com.platform.ai.agent;
 
+import com.platform.common.AppTimeZone;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -85,7 +86,7 @@ public class ArchiveScheduler {
             }
             AgentSession session = objectMapper.readValue(json, AgentSession.class);
             return session.getLastActive() != null
-                    && session.getLastActive().isBefore(LocalDateTime.now().minusMinutes(idleMinutes));
+                    && session.getLastActive().isBefore(LocalDateTime.now(AppTimeZone.APP_ZONE).minusMinutes(idleMinutes));
         } catch (Exception e) {
             log.warn("读取热会话失败: userId={}, {}", userId, e.getMessage());
             return false;

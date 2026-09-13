@@ -5,6 +5,8 @@ import com.platform.ai.PolishingClient;
 import com.platform.ai.common.PromptRepository;
 import com.platform.ai.search.KnowledgeHit;
 import com.platform.ai.search.KnowledgeRetrievalService;
+import com.platform.common.ActivityRole;
+import com.platform.common.AppTimeZone;
 import com.platform.common.BizStatus;
 import com.platform.common.PostType;
 import com.platform.model.dto.ApprovalCountDTO;
@@ -360,10 +362,10 @@ public class AgentToolDispatcher {
             int help = counts.getHelp();
             int totalApproval = counts.getTotal();
 
-            List<MyPostItemDTO> inProgressBorrow = userActivityService.getInProgress(userId, "borrow");
-            List<MyPostItemDTO> inProgressLend = userActivityService.getInProgress(userId, "lend");
-            List<MyPostItemDTO> inProgressHelpReq = userActivityService.getInProgress(userId, "helpReq");
-            List<MyPostItemDTO> inProgressHelpPro = userActivityService.getInProgress(userId, "helpPro");
+            List<MyPostItemDTO> inProgressBorrow = userActivityService.getInProgress(userId, ActivityRole.BORROW);
+            List<MyPostItemDTO> inProgressLend = userActivityService.getInProgress(userId, ActivityRole.LEND);
+            List<MyPostItemDTO> inProgressHelpReq = userActivityService.getInProgress(userId, ActivityRole.HELP_REQ);
+            List<MyPostItemDTO> inProgressHelpPro = userActivityService.getInProgress(userId, ActivityRole.HELP_PRO);
             int totalInProgress = inProgressBorrow.size() + inProgressLend.size()
                     + inProgressHelpReq.size() + inProgressHelpPro.size();
 
@@ -507,7 +509,7 @@ public class AgentToolDispatcher {
             return limit;
         }
         try {
-            String role = (p.role() == null || p.role().isBlank()) ? PolishingClient.ROLE_LEND : p.role();
+            String role = (p.role() == null || p.role().isBlank()) ? ActivityRole.LEND : p.role();
             String feedback = polishingClient.generateFeedback(role, p.itemTitle(), p.description());
             logToolCall(userId, "generate_feedback", p.itemTitle(), 1);
             return writeJson(Map.of("feedback", feedback));
@@ -646,7 +648,7 @@ public class AgentToolDispatcher {
         if (expr.isEmpty()) {
             return null;
         }
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(AppTimeZone.APP_ZONE);
         LocalDate date = switch (expr) {
             case "今天" -> today;
             case "明天" -> today.plusDays(1);

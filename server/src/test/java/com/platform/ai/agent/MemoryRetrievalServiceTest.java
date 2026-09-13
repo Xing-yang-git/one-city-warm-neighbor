@@ -1,5 +1,6 @@
 package com.platform.ai.agent;
 
+import com.platform.common.AppTimeZone;
 import com.platform.model.entity.AgentMemorySegment;
 import com.platform.repository.AgentMemorySegmentRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -161,9 +162,9 @@ class MemoryRetrievalServiceTest {
                 .thenReturn(List.<Object[]>of(new Object[]{1L, 0.2}, new Object[]{2L, 0.3}));
         when(memorySegmentRepository.findAllById(List.of(1L, 2L))).thenReturn(List.of(
                 AgentMemorySegment.builder().id(1L).summary("新记忆").title("周末手工")
-                        .createdAt(LocalDateTime.now()).build(),
+                        .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build(),
                 AgentMemorySegment.builder().id(2L).summary("旧记忆").title("旧物处理")
-                        .createdAt(LocalDateTime.now().minusDays(3)).build()));
+                        .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE).minusDays(3)).build()));
 
         String result = service.retrieveMemory(1L, "你好");
 

@@ -2,6 +2,7 @@ package com.platform.ai.agent;
 
 import com.platform.common.AgentConversationStatus;
 import com.platform.common.AgentMessageRole;
+import com.platform.common.AppTimeZone;
 import com.platform.common.BizException;
 import com.platform.model.entity.AgentConversation;
 import com.platform.model.entity.AgentMessage;
@@ -209,7 +210,7 @@ public class ArchiveService {
                 .title(initialTitle)
                 .messageCount(toArchive.size())
                 .status(AgentConversationStatus.ARCHIVED)
-                .lastMessageAt(LocalDateTime.now())
+                .lastMessageAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
         conversation = conversationRepository.save(conversation);
 
@@ -237,7 +238,7 @@ public class ArchiveService {
 
         // 归档后移走已归档消息，保留剩余
         session.setMessages(keep);
-        session.setLastActive(LocalDateTime.now());
+        session.setLastActive(LocalDateTime.now(AppTimeZone.APP_ZONE));
         sessionService.saveSession(userId, session);
 
         // 异步触发压缩（不等待、不阻塞；失败在压缩服务内降级，绝不影响归档主链路）
@@ -401,7 +402,7 @@ public class ArchiveService {
         session.setMessages(recent);
         // 回填消息全部来自归档表（已在 PG），标记为已归档回填前缀——后续归档只存新增部分，避免重复落库
         session.setArchivedPrefixCount(recent.size());
-        session.setLastActive(LocalDateTime.now());
+        session.setLastActive(LocalDateTime.now(AppTimeZone.APP_ZONE));
         sessionService.saveSession(userId, session);
         log.info("Agent 会话恢复: userId={}, conversationId={}, 回填 {} 条", userId, sessionId, recent.size());
         // 返回该会话全部归档消息供前端完整展示对话内容（热会话/LLM 上下文仍只保留最近 recent 轮）

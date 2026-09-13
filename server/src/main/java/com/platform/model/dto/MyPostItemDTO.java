@@ -26,7 +26,7 @@ public class MyPostItemDTO {
     /** 内容大类，有效值："idle"（闲置）/ "help"（求助） */
     private String type;
 
-    /** 子类型，用于进行中/已完成场景区分角色，有效值："borrow"（借入）/ "lend"（借出）/ "helpReq"（求助）/ "helpPro"（帮忙） */
+    /** 子类型，用于进行中/已完成场景区分角色，取值见 {@link com.platform.common.ActivityRole} 的 role 族 */
     private String subType;
 
     /** 发布类型，有效值："LEND"（借出）/ "HELP"（求助） */

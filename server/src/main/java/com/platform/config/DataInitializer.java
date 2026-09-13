@@ -2,6 +2,7 @@ package com.platform.config;
 
 import com.platform.common.BizStatus;
 import com.platform.common.KnowledgeCategory;
+import com.platform.common.UserType;
 import com.platform.model.entity.Building;
 import com.platform.model.entity.KnowledgeItem;
 import com.platform.model.entity.Room;
@@ -128,7 +129,7 @@ public class DataInitializer implements CommandLineRunner {
                 .username("admin")
                 .passwordHash(passwordEncoder.encode("admin123"))
                 .name("系统管理员")
-                .userType("super_admin")
+                .userType(UserType.SUPER_ADMIN)
                 .tenantId(null)  // super_admin 为平台级，不绑定具体小区
                 .authStatus(BizStatus.APPROVED)
                 .build();

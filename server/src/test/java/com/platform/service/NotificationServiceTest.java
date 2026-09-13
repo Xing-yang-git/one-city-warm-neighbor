@@ -1,5 +1,6 @@
 package com.platform.service;
 
+import com.platform.common.AppTimeZone;
 import com.platform.model.dto.NotificationDTO;
 import com.platform.model.entity.BorrowRequest;
 import com.platform.model.entity.HelpApplication;
@@ -60,7 +61,7 @@ class NotificationServiceTest {
                 .content("这是一条测试通知")
                 .relatedId(relatedId)
                 .isRead(false)
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
     }
 

@@ -92,7 +92,7 @@
             <el-table-column type="selection" width="50" />
             <el-table-column label="类型" align="center" width="100">
               <template #default="{ row }">
-                <el-tag>{{ row.type === "borrow" ? "互借" : "互助" }}</el-tag>
+                <el-tag>{{ row.type === ACTIVITY_ROLE.BORROW ? "互借" : "互助" }}</el-tag>
               </template>
             </el-table-column>
             <el-table-column prop="publisher" label="发布者" />
@@ -131,7 +131,7 @@
           <span class="dl">类型</span
           ><span class="dv">
             <el-tag>{{
-              detailItem.type === "borrow" ? "互借" : "互助"
+              detailItem.type === ACTIVITY_ROLE.BORROW ? "互借" : "互助"
             }}</el-tag>
           </span>
         </div>
@@ -139,7 +139,7 @@
           <span class="dl">小区</span><span class="dv">翠湖花园</span>
         </div>
         <!-- 互助：预计开始 / 预计结束（发布时选填，未填显示 --） -->
-        <template v-if="detailItem.type === 'help'">
+        <template v-if="detailItem.type === ACTIVITY_ROLE.HELP">
           <div class="detail-row">
             <span class="dl">预计开始</span
             ><span class="dv">{{ detailItem.timeStart || "--" }}</span>
@@ -150,7 +150,7 @@
           </div>
         </template>
         <!-- 互借：借出时长 -->
-        <template v-if="detailItem.type === 'borrow'">
+        <template v-if="detailItem.type === ACTIVITY_ROLE.BORROW">
           <div class="detail-row">
             <span class="dl">借出时长</span
             ><span class="dv">{{ detailItem.lendDuration || "--" }}</span>
@@ -166,7 +166,7 @@
             <p class="text-sm text-secondary" style="margin-bottom: 8px">
               互助双方
             </p>
-            <template v-if="detailItem.type === 'borrow'">
+            <template v-if="detailItem.type === ACTIVITY_ROLE.BORROW">
               <div class="detail-row">
                 <span class="dl">借出方</span>
                 <span class="dv"
@@ -277,7 +277,7 @@
         </div>
 
         <!-- 互借：物品状况记录 -->
-        <template v-if="detailItem.type === 'borrow' && detailItem.condBefore">
+        <template v-if="detailItem.type === ACTIVITY_ROLE.BORROW && detailItem.condBefore">
           <div class="dv-divider"></div>
           <p class="text-sm text-secondary" style="margin-bottom: 8px">
             物品状况记录
@@ -344,6 +344,7 @@ import { useCommunityStore } from "@/stores/community";
 import AppLayout from "@/layouts/AppLayout.vue";
 import { LIST_PAGE_MAIN_CLASS } from "@/layouts/main-classes";
 import { getRecords, type RecordItemDTO, type UnitData } from "../api/admin";
+import { ACTIVITY_ROLE } from "@/utils/constants";
 
 const communityStore = useCommunityStore();
 
@@ -481,7 +482,7 @@ function detailGo(delta: number): void {
 const recordTimelineNodes = computed(() => {
   const it = detailItem.value;
   if (!it) return [];
-  const isBorrow = it.type === "borrow";
+  const isBorrow = it.type === ACTIVITY_ROLE.BORROW;
   const nodes: { label: string; time: string; color: string }[] = [
     { label: "发布时间", time: it.publishedAt || "—", color: "#909399" },
     {

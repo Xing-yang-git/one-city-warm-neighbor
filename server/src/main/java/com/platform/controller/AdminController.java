@@ -1,6 +1,8 @@
 package com.platform.controller;
 
+import com.platform.common.ActivityRole;
 import com.platform.common.Result;
+import com.platform.common.UserType;
 import com.platform.model.dto.*;
 import com.platform.security.LoginUser;
 import com.platform.service.AdminService;
@@ -16,7 +18,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
 import java.util.Map;
 
 
@@ -195,7 +196,7 @@ public class AdminController {
                                         Authentication auth) {
         Long adminId = ((LoginUser) auth.getPrincipal()).getUserId();
         Long tenantId = body.get("tenantId") != null ? Long.valueOf(body.get("tenantId")) : null;
-        String userType = body.getOrDefault("userType", "admin");
+        String userType = body.getOrDefault("userType", UserType.ADMIN);
         return Result.ok(adminService.createAdmin(adminId,
                 body.get("name"), body.get("phone"), body.get("password"), tenantId, userType));
     }
@@ -239,7 +240,7 @@ public class AdminController {
     // ===== 互助记录 =====
     /** 互助记录列表（借入归还 + 求助完成），一次性返回全部 */
     @GetMapping("/records")
-    public Result<ListDTO<RecordItemDTO>> records(@RequestParam(defaultValue = "borrow") String type,
+    public Result<ListDTO<RecordItemDTO>> records(@RequestParam(defaultValue = ActivityRole.BORROW) String type,
                                                   Authentication auth) {
         Long adminId = ((LoginUser) auth.getPrincipal()).getUserId();
         return Result.ok(new ListDTO<>(adminService.getRecords(adminId, type)));

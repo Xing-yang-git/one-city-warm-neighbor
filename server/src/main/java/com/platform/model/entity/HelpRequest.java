@@ -1,5 +1,6 @@
 package com.platform.model.entity;
 
+import com.platform.common.AppTimeZone;
 import com.platform.common.BizStatus;
 import com.platform.model.entity.column.HelpRequestsColumn;
 import jakarta.persistence.*;
@@ -110,12 +111,12 @@ public class HelpRequest {
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
+        createdAt = LocalDateTime.now(AppTimeZone.APP_ZONE);
+        updatedAt = LocalDateTime.now(AppTimeZone.APP_ZONE);
     }
 
     @PreUpdate
     protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now(AppTimeZone.APP_ZONE);
     }
 }

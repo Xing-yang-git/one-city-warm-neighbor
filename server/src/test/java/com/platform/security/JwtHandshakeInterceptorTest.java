@@ -1,5 +1,6 @@
 package com.platform.security;
 
+import com.platform.common.UserType;
 import com.platform.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -55,7 +56,7 @@ class JwtHandshakeInterceptorTest {
         givenQueryWithToken(VALID_TOKEN);
         when(jwtProvider.validate(VALID_TOKEN)).thenReturn(true);
         when(jwtProvider.getUserId(VALID_TOKEN)).thenReturn("1");
-        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn("owner");
+        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn(UserType.OWNER);
         // C端用户需要 tokenVersion 与探针校验通过
         when(jwtProvider.getTokenVersion(VALID_TOKEN)).thenReturn(1);
         UserRepository.AuthProbe probe = mockProbe(1, "approved");
@@ -76,7 +77,7 @@ class JwtHandshakeInterceptorTest {
         givenQueryWithToken(VALID_TOKEN);
         when(jwtProvider.validate(VALID_TOKEN)).thenReturn(true);
         when(jwtProvider.getUserId(VALID_TOKEN)).thenReturn("1");
-        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn("admin");
+        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn(UserType.ADMIN);
 
         // 执行
         boolean result = interceptor.beforeHandshake(request, response, wsHandler, attributes);
@@ -94,7 +95,7 @@ class JwtHandshakeInterceptorTest {
         givenQueryWithToken(VALID_TOKEN);
         when(jwtProvider.validate(VALID_TOKEN)).thenReturn(true);
         when(jwtProvider.getUserId(VALID_TOKEN)).thenReturn("1");
-        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn("super_admin");
+        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn(UserType.SUPER_ADMIN);
 
         // 执行
         boolean result = interceptor.beforeHandshake(request, response, wsHandler, attributes);
@@ -157,7 +158,7 @@ class JwtHandshakeInterceptorTest {
         givenQueryWithToken(VALID_TOKEN);
         when(jwtProvider.validate(VALID_TOKEN)).thenReturn(true);
         when(jwtProvider.getUserId(VALID_TOKEN)).thenReturn("1");
-        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn("owner");
+        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn(UserType.OWNER);
         when(jwtProvider.getTokenVersion(VALID_TOKEN)).thenReturn(1);
 
         UserRepository.AuthProbe probe = mockProbe(2, "approved");
@@ -177,7 +178,7 @@ class JwtHandshakeInterceptorTest {
         givenQueryWithToken(VALID_TOKEN);
         when(jwtProvider.validate(VALID_TOKEN)).thenReturn(true);
         when(jwtProvider.getUserId(VALID_TOKEN)).thenReturn("1");
-        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn("tenant");
+        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn(UserType.TENANT);
         when(jwtProvider.getTokenVersion(VALID_TOKEN)).thenReturn(null); // 无 ver claim
 
         UserRepository.AuthProbe probe = mockProbe(1, "approved");
@@ -197,7 +198,7 @@ class JwtHandshakeInterceptorTest {
         givenQueryWithToken(VALID_TOKEN);
         when(jwtProvider.validate(VALID_TOKEN)).thenReturn(true);
         when(jwtProvider.getUserId(VALID_TOKEN)).thenReturn("1");
-        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn("owner");
+        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn(UserType.OWNER);
         when(jwtProvider.getTokenVersion(VALID_TOKEN)).thenReturn(1);
         when(userRepository.findAuthProbeById(1L)).thenReturn(null);
 
@@ -217,7 +218,7 @@ class JwtHandshakeInterceptorTest {
         givenQueryWithToken(VALID_TOKEN);
         when(jwtProvider.validate(VALID_TOKEN)).thenReturn(true);
         when(jwtProvider.getUserId(VALID_TOKEN)).thenReturn("1");
-        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn("owner");
+        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn(UserType.OWNER);
         when(jwtProvider.getTokenVersion(VALID_TOKEN)).thenReturn(1);
 
         UserRepository.AuthProbe probe = mockProbe(1, "pending");
@@ -237,7 +238,7 @@ class JwtHandshakeInterceptorTest {
         givenQueryWithToken(VALID_TOKEN);
         when(jwtProvider.validate(VALID_TOKEN)).thenReturn(true);
         when(jwtProvider.getUserId(VALID_TOKEN)).thenReturn("1");
-        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn("owner");
+        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn(UserType.OWNER);
         when(jwtProvider.getTokenVersion(VALID_TOKEN)).thenReturn(1);
 
         UserRepository.AuthProbe probe = mockProbe(1, "banned");

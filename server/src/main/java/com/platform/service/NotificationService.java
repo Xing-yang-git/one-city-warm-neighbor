@@ -1,7 +1,9 @@
 package com.platform.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.platform.common.AppTimeZone;
 import com.platform.common.BizStatus;
+import com.platform.common.NotificationType;
 import com.platform.model.dto.NotificationDTO;
 import com.platform.model.dto.WebSocketMessage;
 import com.platform.model.entity.BorrowRequest;
@@ -82,7 +84,7 @@ public class NotificationService {
         notification.setContent(content);
         notification.setRelatedId(relatedId);
         notification.setIsRead(false);
-        notification.setCreatedAt(LocalDateTime.now());
+        notification.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         notification = notificationRepository.save(notification);
 
         NotificationDTO dto = toDTO(notification, userId);
@@ -90,6 +92,8 @@ public class NotificationService {
         // 通过 WebSocket 实时推送给目标用户
         try {
             WebSocketMessage msg = new WebSocketMessage();
+            // 此处是 WebSocket 信封类型域（与 ChatService 的 "chat_message"/"chat_recall" 同域），
+            // 不是 NotificationType（通知自身类型）——两者仅取值恰好相同，勿改为常量引用
             msg.setType("notification");
             msg.setContent(objectMapper.writeValueAsString(dto));
             chatWebSocketHandler.sendToUser(String.valueOf(userId), msg);
@@ -125,14 +129,14 @@ public class NotificationService {
     private boolean computeRateable(String type, Long relatedId, Long userId) {
         if (relatedId == null) return false;
 
-        if ("return_confirm".equals(type)) {
+        if (NotificationType.RETURN_CONFIRM.equals(type)) {
             Optional<BorrowRequest> brOpt = borrowRequestRepository.findById(relatedId);
             if (brOpt.isEmpty()) return false;
             if (!BizStatus.RETURNED.equals(brOpt.get().getStatus())) return false;
             return ratingRepository.findFirstByBorrowIdAndFromUserId(relatedId, userId).isEmpty();
         }
 
-        if ("help_result".equals(type)) {
+        if (NotificationType.HELP_RESULT.equals(type)) {
             Optional<HelpApplication> appOpt = helpApplicationRepository.findById(relatedId);
             if (appOpt.isEmpty()) return false;
             if (!BizStatus.COMPLETED.equals(appOpt.get().getStatus())) return false;
@@ -151,46 +155,46 @@ public class NotificationService {
         if (relatedId == null) return false;
 
         // 审批类：借入申请 / 借出意向是否仍处于待审批
-        if ("borrow_request".equals(type)) {
+        if (NotificationType.BORROW_REQUEST.equals(type)) {
             Optional<BorrowRequest> brOpt = borrowRequestRepository.findById(relatedId);
             return brOpt.isPresent() && BizStatus.PENDING.equals(brOpt.get().getStatus());
         }
 
         // 审批类：帮助申请是否仍处于待审批
-        if ("help_application".equals(type)) {
+        if (NotificationType.HELP_APPLICATION.equals(type)) {
             Optional<HelpApplication> appOpt = helpApplicationRepository.findById(relatedId);
             return appOpt.isPresent() && BizStatus.PENDING.equals(appOpt.get().getStatus());
         }
 
         // 借入/借出申请（申请人视角，relatedId 为闲置物品 ID）：检查是否有待审批的申请
-        if ("borrow_application".equals(type)) {
+        if (NotificationType.BORROW_APPLICATION.equals(type)) {
             return borrowRequestRepository
                     .existsByBorrowerIdAndIdleIdAndStatus(userId, relatedId, BizStatus.PENDING);
         }
 
         // 帮助申请（帮助者视角，relatedId 为求助 ID）：检查是否有待审批的申请
-        if ("help_application_submitted".equals(type)) {
+        if (NotificationType.HELP_APPLICATION_SUBMITTED.equals(type)) {
             return helpApplicationRepository
                     .existsByHelperIdAndHelpIdAndStatus(userId, relatedId, BizStatus.PENDING);
         }
 
         // 供需匹配通知：始终可操作（点击即跳转需求详情页，无需状态校验）
-        if ("match_demand".equals(type)) {
+        if (NotificationType.MATCH_DEMAND.equals(type)) {
             return true;
         }
 
         // 内容审核通过通知：可操作（跳转详情页）
-        if ("content_approved".equals(type)) {
+        if (NotificationType.CONTENT_APPROVED.equals(type)) {
             return true;
         }
 
         // 内容审核驳回通知：不可操作（不跳转，仅告知）
-        if ("content_rejected".equals(type)) {
+        if (NotificationType.CONTENT_REJECTED.equals(type)) {
             return false;
         }
 
         // 评价类：同 rateable
-        if ("return_confirm".equals(type) || "help_result".equals(type)) {
+        if (NotificationType.RETURN_CONFIRM.equals(type) || NotificationType.HELP_RESULT.equals(type)) {
             return computeRateable(type, relatedId, userId);
         }
 

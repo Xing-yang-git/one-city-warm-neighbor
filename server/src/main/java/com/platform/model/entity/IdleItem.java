@@ -1,5 +1,6 @@
 package com.platform.model.entity;
 
+import com.platform.common.AppTimeZone;
 import com.platform.common.BizStatus;
 import com.platform.common.DurationUnit;
 import com.platform.common.PickupMethod;
@@ -131,12 +132,12 @@ public class IdleItem {
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
+        createdAt = LocalDateTime.now(AppTimeZone.APP_ZONE);
+        updatedAt = LocalDateTime.now(AppTimeZone.APP_ZONE);
     }
 
     @PreUpdate
     protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now(AppTimeZone.APP_ZONE);
     }
 }

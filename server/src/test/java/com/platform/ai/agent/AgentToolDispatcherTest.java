@@ -5,6 +5,8 @@ import com.platform.ai.PolishingClient;
 import com.platform.ai.common.PromptRepository;
 import com.platform.ai.search.KnowledgeHit;
 import com.platform.ai.search.KnowledgeRetrievalService;
+import com.platform.common.ActivityRole;
+import com.platform.common.AppTimeZone;
 import com.platform.common.BizStatus;
 import com.platform.common.PostType;
 import com.platform.model.dto.ApprovalCountDTO;
@@ -242,7 +244,7 @@ class AgentToolDispatcherTest {
     @Test
     @DisplayName("query_date - 今天/明天/昨天/前天/后天/大后天/N天前/N天后 解析")
     void should_resolveDate_when_relativeExpressions() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(AppTimeZone.APP_ZONE);
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy年M月d日");
         List<String> weekdays = List.of("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日");
 
@@ -259,7 +261,7 @@ class AgentToolDispatcherTest {
     @Test
     @DisplayName("query_date - 下周X/周X/星期X 解析")
     void should_resolveWeekday_when_weekdayExpressions() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(AppTimeZone.APP_ZONE);
         int current = today.getDayOfWeek().getValue();   // 1=周一 … 7=周日
         LocalDate thisWed = today.plusDays((3 - current + 7) % 7);
         LocalDate nextWed = thisWed.plusDays(7);
@@ -390,10 +392,10 @@ class AgentToolDispatcherTest {
     void should_myTodos_returnSummary() {
         when(userActivityService.getApprovalCounts(USER_ID)).thenReturn(
                 ApprovalCountDTO.builder().borrow(1).lend(1).help(1).total(3).build());
-        when(userActivityService.getInProgress(USER_ID, "borrow")).thenReturn(List.of(MyPostItemDTO.builder().title("电钻").build()));
-        when(userActivityService.getInProgress(USER_ID, "lend")).thenReturn(List.of());
-        when(userActivityService.getInProgress(USER_ID, "helpReq")).thenReturn(List.of(MyPostItemDTO.builder().title("搬家").build()));
-        when(userActivityService.getInProgress(USER_ID, "helpPro")).thenReturn(List.of());
+        when(userActivityService.getInProgress(USER_ID, ActivityRole.BORROW)).thenReturn(List.of(MyPostItemDTO.builder().title("电钻").build()));
+        when(userActivityService.getInProgress(USER_ID, ActivityRole.LEND)).thenReturn(List.of());
+        when(userActivityService.getInProgress(USER_ID, ActivityRole.HELP_REQ)).thenReturn(List.of(MyPostItemDTO.builder().title("搬家").build()));
+        when(userActivityService.getInProgress(USER_ID, ActivityRole.HELP_PRO)).thenReturn(List.of());
 
         String result = dispatcher.myTodos(USER_ID, REQ_1, new VoidParams());
 
@@ -408,10 +410,10 @@ class AgentToolDispatcherTest {
     void should_myTodos_returnEmptyReply() {
         when(userActivityService.getApprovalCounts(USER_ID)).thenReturn(
                 ApprovalCountDTO.builder().borrow(0).lend(0).help(0).total(0).build());
-        when(userActivityService.getInProgress(USER_ID, "borrow")).thenReturn(List.of());
-        when(userActivityService.getInProgress(USER_ID, "lend")).thenReturn(List.of());
-        when(userActivityService.getInProgress(USER_ID, "helpReq")).thenReturn(List.of());
-        when(userActivityService.getInProgress(USER_ID, "helpPro")).thenReturn(List.of());
+        when(userActivityService.getInProgress(USER_ID, ActivityRole.BORROW)).thenReturn(List.of());
+        when(userActivityService.getInProgress(USER_ID, ActivityRole.LEND)).thenReturn(List.of());
+        when(userActivityService.getInProgress(USER_ID, ActivityRole.HELP_REQ)).thenReturn(List.of());
+        when(userActivityService.getInProgress(USER_ID, ActivityRole.HELP_PRO)).thenReturn(List.of());
 
         assertThat(dispatcher.myTodos(USER_ID, REQ_1, new VoidParams()))
                 .isEqualTo("目前没有待处理的事项");
@@ -503,7 +505,7 @@ class AgentToolDispatcherTest {
     @Test
     @DisplayName("generate_feedback - 角色为空时默认借出方，JSON 包裹返回")
     void should_generateFeedback_defaultRoleLend() throws Exception {
-        when(polishingClient.generateFeedback(PolishingClient.ROLE_LEND, "电钻", "借用顺利"))
+        when(polishingClient.generateFeedback(ActivityRole.LEND, "电钻", "借用顺利"))
                 .thenReturn("邻居把电钻借给我用，用起来很顺手，归还也顺利，感谢！");
 
         String result = dispatcher.generateFeedback(USER_ID, REQ_1, new FeedbackParams(null, "电钻", "借用顺利"));

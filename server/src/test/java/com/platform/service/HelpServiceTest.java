@@ -1,6 +1,7 @@
 package com.platform.service;
 
 import com.platform.ai.moderation.ModerationService;
+import com.platform.common.AppTimeZone;
 import com.platform.common.BizStatus;
 import com.platform.model.dto.ApproveRequest;
 import com.platform.model.dto.HelpRequestDTO;
@@ -94,8 +95,8 @@ class HelpServiceTest {
                 .description("搬一个沙发")
                 .category("搬家")
                 .isUrgent(false)
-                .status("online")
-                .createdAt(LocalDateTime.now())
+                .status(BizStatus.ONLINE)
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
 
         application = HelpApplication.builder()
@@ -103,8 +104,8 @@ class HelpServiceTest {
                 .helpId(helpId)
                 .helperId(helperId)
                 .note("我可以帮忙")
-                .status("pending")
-                .createdAt(LocalDateTime.now())
+                .status(BizStatus.PENDING)
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
     }
 
@@ -371,7 +372,7 @@ class HelpServiceTest {
         HelpResponseDTO result = helpService.approveReject(userId, appId, req);
 
         // 断言
-        assertThat(application.getStatus()).isEqualTo("approved");
+        assertThat(application.getStatus()).isEqualTo(BizStatus.APPROVED);
         assertThat(helpRequest.getStatus()).isEqualTo("active");
     }
 
@@ -396,7 +397,7 @@ class HelpServiceTest {
     @DisplayName("审批帮助 - 申请已被处理时抛出异常")
     void should_throwException_when_applicationAlreadyProcessed() {
         // 准备
-        application.setStatus("approved");
+        application.setStatus(BizStatus.APPROVED);
         ApproveRequest req = new ApproveRequest();
         req.setApproved(true);
 
@@ -415,7 +416,7 @@ class HelpServiceTest {
     @DisplayName("完成帮助 - 正常完成帮助")
     void should_completeHelp_when_validCompletion() {
         // 准备
-        application.setStatus("approved");
+        application.setStatus(BizStatus.APPROVED);
 
         when(helpApplicationRepository.findById(appId)).thenReturn(Optional.of(application));
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
@@ -428,8 +429,8 @@ class HelpServiceTest {
         HelpResponseDTO result = helpService.completeHelp(userId, appId);
 
         // 断言
-        assertThat(application.getStatus()).isEqualTo("completed");
-        assertThat(helpRequest.getStatus()).isEqualTo("completed");
+        assertThat(application.getStatus()).isEqualTo(BizStatus.COMPLETED);
+        assertThat(helpRequest.getStatus()).isEqualTo(BizStatus.COMPLETED);
         verify(notificationService, atLeastOnce()).create(anyLong(), anyString(), anyString(), anyString(), anyLong());
     }
 
@@ -503,7 +504,7 @@ class HelpServiceTest {
 
         // 断言
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getApplicationStatus()).isEqualTo("pending");
+        assertThat(result.get(0).getApplicationStatus()).isEqualTo(BizStatus.PENDING);
         assertThat(result.get(0).getApplicationId()).isEqualTo(appId);
     }
 

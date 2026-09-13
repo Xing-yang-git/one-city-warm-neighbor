@@ -23,6 +23,31 @@ const POST_TYPE = {
   HELP: 'HELP'        // 技能求助
 };
 
+/**
+ * 内容大类 — 区分闲置与互助两大业务域，用于内容列表与「我的发布」筛选。
+ * 与后端 com.platform.common.ContentType 保持一致。
+ * 注意与 ACTIVITY_ROLE 区分：后者描述「当前用户在记录中的角色视角」，取值集合不同。
+ */
+const CONTENT_TYPE = {
+  IDLE: 'idle',  // 闲置（物品域）
+  HELP: 'help'   // 互助（求助域）
+};
+
+/**
+ * 用户活动角色 — 借用/互助中的身份视角，用于审批/进行中/已完成子 Tab 与记录类型。
+ * 与后端 com.platform.common.ActivityRole 保持一致。
+ * 取值分两族，勿混用：
+ *   - type 族（审批子 Tab / 记录类型）：BORROW | LEND | HELP
+ *   - role 族（进行中 / 已完成子 Tab）：BORROW | LEND | HELP_REQ | HELP_PRO
+ */
+const ACTIVITY_ROLE = {
+  BORROW: 'borrow',    // 借入方视角（我向邻居借）
+  LEND: 'lend',        // 借出方视角（我把闲置借出）
+  HELP: 'help',        // 互助事项整体（仅 type 族用）
+  HELP_REQ: 'helpReq', // 求助方视角（我发起求助）
+  HELP_PRO: 'helpPro'  // 帮忙方视角（我承接帮助）
+};
+
 // ========== 账户审核状态（与后端 BizStatus 对齐）==========
 const AUTH_STATUS = {
   PENDING: 'pending',           // 待审核
@@ -71,12 +96,35 @@ const RETURN_STATUS = {
 };
 
 /**
- * 通知类型 — 与后端 Notification.type 字段一致
+ * 通知类型 — notifications.type 字段的唯一合法取值。
+ * 与后端 com.platform.common.NotificationType 保持一致。
  */
 const NOTIFICATION_TYPE = {
-  MATCH_DEMAND: 'match_demand',          // 供需匹配：有人需要你出借过的物品
-  CONTENT_REJECTED: 'content_rejected',  // AI 内容审核驳回
-  CONTENT_APPROVED: 'content_approved'   // AI 内容审核通过
+  BORROW_REQUEST: 'borrow_request',                           // 有人申请借用我的物品
+  BORROW_APPLICATION: 'borrow_application',                   // 我的借用申请待对方回应
+  BORROW_RESULT: 'borrow_result',                             // 借用申请已同意/拒绝
+  HELP_APPLICATION: 'help_application',                       // 有人愿意帮我的求助
+  HELP_APPLICATION_SUBMITTED: 'help_application_submitted',   // 我的帮助申请待对方回应
+  HELP_RESULT: 'help_result',                                 // 帮助流程结果
+  HELP_APPROVED: 'help_approved',                             // 我的帮助申请已被接受
+  HELP_REJECTED: 'help_rejected',                             // 我的帮助申请已被谢绝
+  AUDIT_RESULT: 'audit_result',                               // 用户审核结果
+  VIOLATION: 'violation',                                     // 违规处理
+  RETURN_CONFIRM: 'return_confirm',                           // 归还确认
+  NOTIFICATION: 'notification',                               // 通用通知
+  MATCH_DEMAND: 'match_demand',                               // 供需匹配：有人需要你出借过的物品
+  CONTENT_REJECTED: 'content_rejected',                       // AI 内容审核驳回
+  CONTENT_APPROVED: 'content_approved'                        // AI 内容审核通过
+};
+
+/**
+ * 评价类型 — rating 页与「我的发布」提交评价时区分评价针对的行为。
+ * 与后端 com.platform.common.RatingType 保持一致。
+ * 注意：取值与 ACTIVITY_ROLE 有交集但语义不同，不可互相引用。
+ */
+const RATING_TYPE = {
+  BORROW: 'borrow',  // 借用评价（针对闲置借用行为）
+  HELP: 'help'       // 互助评价（针对技能求助行为）
 };
 
 /**
@@ -105,12 +153,15 @@ const STORAGE_KEY = {
 module.exports = {
   POST_STATUS,
   POST_TYPE,
+  CONTENT_TYPE,
+  ACTIVITY_ROLE,
   AUTH_STATUS,
   BORROW_STATUS,
   HELP_APPLICATION_STATUS,
   DAMAGE_TYPE,
   RETURN_STATUS,
   NOTIFICATION_TYPE,
+  RATING_TYPE,
   DURATION_UNIT,
   PICKUP_METHOD,
   STORAGE_KEY

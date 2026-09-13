@@ -1,6 +1,7 @@
 package com.platform.security;
 
 import com.platform.common.BizStatus;
+import com.platform.common.UserType;
 import com.platform.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,7 +46,7 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
         String userType = jwtProvider.getUserType(token);
 
         // C端用户校验 token_version（单会话登录）；B端管理员 token 不带 ver，跳过
-        if (!"admin".equals(userType) && !"super_admin".equals(userType)) {
+        if (!UserType.ADMIN.equals(userType) && !UserType.SUPER_ADMIN.equals(userType)) {
             Integer ver = jwtProvider.getTokenVersion(token);
             UserRepository.AuthProbe probe = null;
             try { probe = userRepository.findAuthProbeById(Long.valueOf(userId)); }

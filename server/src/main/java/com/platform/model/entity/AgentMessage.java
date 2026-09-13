@@ -1,5 +1,7 @@
 package com.platform.model.entity;
 
+import com.platform.common.AppTimeZone;
+import com.platform.common.ModerationStatus;
 import com.platform.model.entity.column.AgentMessagesColumn;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -57,7 +59,7 @@ public class AgentMessage {
     /** 文本审核结果：pending(待审核)/pass(通过)/fail(违规标记)，默认 pending */
     @Column(name = AgentMessagesColumn.COL_MODERATION_STATUS, nullable = false, length = 10)
     @Builder.Default
-    private String moderationStatus = "pending";
+    private String moderationStatus = ModerationStatus.PENDING;
 
     /** 违规原因（fail 时填充） */
     @Column(name = AgentMessagesColumn.COL_MODERATION_REASON)
@@ -70,6 +72,6 @@ public class AgentMessage {
     /** 插入前自动填充创建时间 */
     @PrePersist
     void onCreate() {
-        createdAt = LocalDateTime.now();
+        createdAt = LocalDateTime.now(AppTimeZone.APP_ZONE);
     }
 }

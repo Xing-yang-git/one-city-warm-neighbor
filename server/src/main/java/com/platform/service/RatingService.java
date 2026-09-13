@@ -1,7 +1,9 @@
 package com.platform.service;
 
+import com.platform.common.AppTimeZone;
 import com.platform.common.BizException;
 import com.platform.common.BizStatus;
+import com.platform.common.RatingType;
 import com.platform.model.dto.RatingDTO;
 import com.platform.model.dto.RatingRequest;
 import com.platform.model.dto.UserRatingsDTO;
@@ -71,7 +73,7 @@ public class RatingService {
      */
     private void normalizeRatingRequest(RatingRequest req) {
         if (req.getBorrowId() == null && req.getHelpApplicationId() == null && req.getTargetId() != null) {
-            if ("help".equals(req.getRatingType())) {
+            if (RatingType.HELP.equals(req.getRatingType())) {
                 req.setHelpApplicationId(req.getTargetId());
             } else {
                 req.setBorrowId(req.getTargetId());
@@ -118,7 +120,7 @@ public class RatingService {
         rating.setBorrowId(req.getBorrowId());
         rating.setScore(req.getScore());
         rating.setFeedback(req.getFeedback());
-        rating.setCreatedAt(LocalDateTime.now());
+        rating.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         ratingRepository.save(rating);
 
         return ratingSuccessResult();
@@ -160,7 +162,7 @@ public class RatingService {
         rating.setHelpApplicationId(req.getHelpApplicationId());
         rating.setScore(req.getScore());
         rating.setFeedback(req.getFeedback());
-        rating.setCreatedAt(LocalDateTime.now());
+        rating.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         ratingRepository.save(rating);
 
         return ratingSuccessResult();

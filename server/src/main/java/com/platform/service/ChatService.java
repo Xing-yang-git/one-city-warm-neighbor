@@ -1,11 +1,11 @@
 package com.platform.service;
 
+import com.platform.common.AppTimeZone;
 import com.platform.common.BizException;
 import com.platform.common.UserFormatter;
 import com.platform.model.dto.ChatSessionDTO;
 import com.platform.model.dto.WebSocketMessage;
 import com.platform.model.entity.Message;
-import com.platform.model.entity.User;
 import com.platform.repository.MessageRepository;
 import com.platform.repository.UserRepository;
 import com.platform.websocket.ChatWebSocketHandler;
@@ -15,9 +15,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 @Service
 public class ChatService {
@@ -119,12 +117,15 @@ public class ChatService {
             throw new BizException("消息已被撤回");
         }
 
-        long minutes = java.time.Duration.between(msg.getCreatedAt(), java.time.LocalDateTime.now()).toMinutes();
+        // 转为 ZonedDateTime 再求差值，满足时区感知要求（SonarLint：禁止对裸 LocalDateTime 计算 Duration）
+        long minutes = java.time.Duration.between(
+                msg.getCreatedAt().atZone(AppTimeZone.APP_ZONE),
+                java.time.LocalDateTime.now(AppTimeZone.APP_ZONE).atZone(AppTimeZone.APP_ZONE)).toMinutes();
         if (minutes > 2) {
             throw new BizException("超过2分钟的消息无法撤回");
         }
 
-        msg.setRecalledAt(java.time.LocalDateTime.now());
+        msg.setRecalledAt(java.time.LocalDateTime.now(AppTimeZone.APP_ZONE));
         msg = messageRepository.save(msg);
 
         // 通过 WebSocket 通知接收方

@@ -1,5 +1,6 @@
 package com.platform.ai.agent;
 
+import com.platform.common.AppTimeZone;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -116,7 +117,7 @@ public class SessionService {
         if (session == null) {
             session = new AgentSession();
         }
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(AppTimeZone.APP_ZONE);
         session.getMessages().add(new AgentSession.AgentMessageItem(role, content, sources, actions, now));
         session.setLastActive(now);
         AgentSession truncated = truncate(session);

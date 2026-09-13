@@ -1,5 +1,6 @@
 package com.platform.ai.embedding;
 
+import com.platform.common.AiGenerationException;
 import com.platform.config.AiConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,17 +50,17 @@ public class EmbeddingClient {
                     .body(Map.class);
 
             if (response == null || !response.containsKey("data")) {
-                throw new RuntimeException("Embedding API 响应缺少 data 字段");
+                throw new AiGenerationException("Embedding API 响应缺少 data 字段");
             }
 
             List<Map<String, Object>> dataList = (List<Map<String, Object>>) response.get("data");
             if (dataList == null || dataList.isEmpty()) {
-                throw new RuntimeException("Embedding API 返回的 data 数组为空");
+                throw new AiGenerationException("Embedding API 返回的 data 数组为空");
             }
 
             List<Double> embeddingList = (List<Double>) dataList.get(0).get("embedding");
             if (embeddingList == null || embeddingList.isEmpty()) {
-                throw new RuntimeException("Embedding API 返回的 embedding 向量为空");
+                throw new AiGenerationException("Embedding API 返回的 embedding 向量为空");
             }
 
             // 将 List<Double> 转为 float[]

@@ -90,11 +90,11 @@ public final class UserFormatter {
     public static String getUserTypeLabel(String userType) {
         if (userType == null) return "";
         return switch (userType) {
-            case "owner" -> "业主";
-            case "tenant" -> "租客";
-            case "admin" -> "管理员";
-            case "senior_admin" -> "高级管理员";
-            case "super_admin" -> "超级管理员";
+            case UserType.OWNER -> "业主";
+            case UserType.TENANT -> "租客";
+            case UserType.ADMIN -> "管理员";
+            case UserType.SENIOR_ADMIN -> "高级管理员";
+            case UserType.SUPER_ADMIN -> "超级管理员";
             default -> userType;
         };
     }

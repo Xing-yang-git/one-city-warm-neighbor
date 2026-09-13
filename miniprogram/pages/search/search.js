@@ -1,6 +1,6 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
-const { POST_TYPE } = require('../../utils/constants');
+const { POST_TYPE, CONTENT_TYPE } = require('../../utils/constants');
 
 /**
  * 搜索页 — 闲置物品/互助求助关键词搜索。
@@ -10,6 +10,9 @@ const { POST_TYPE } = require('../../utils/constants');
  */
 Page({
   data: {
+    // 业务常量（供 WXML 模板引用）
+    CONTENT_TYPE: CONTENT_TYPE,
+
     keyword: '',
     autoFocus: true,
     history: [],
@@ -107,7 +110,7 @@ Page({
 
       const lendList = (lendData.content || lendData.list || lendData.records || []).map((item, i) => ({
         ...item,
-        type: 'idle',
+        type: CONTENT_TYPE.IDLE,
         bgColor: bgColorsIdle[i % bgColorsIdle.length],
         subtitle: `闲置借出 · ${item.userRoom || ''}`,
         titleSegments: this.highlightKeyword(item.title, keyword)
@@ -115,7 +118,7 @@ Page({
 
       const wantedList = (wantedData.content || wantedData.list || wantedData.records || []).map((item, i) => ({
         ...item,
-        type: 'idle',
+        type: CONTENT_TYPE.IDLE,
         bgColor: bgColorsIdle[(i + lendList.length) % bgColorsIdle.length],
         subtitle: `需求借入 · ${item.userRoom || ''}`,
         titleSegments: this.highlightKeyword(item.title, keyword)
@@ -125,7 +128,7 @@ Page({
 
       const helpList = (helpData.content || helpData.list || helpData.records || []).map((item, i) => ({
         ...item,
-        type: 'help',
+        type: CONTENT_TYPE.HELP,
         bgColor: bgColorsHelp[i % bgColorsHelp.length],
         subtitle: `求助 · ${item.userRoom || ''}${item.isUrgent ? ' · 紧急' : ''}`,
         titleSegments: this.highlightKeyword(item.title, keyword)
@@ -158,9 +161,9 @@ Page({
   applyFilter() {
     const { currentFilter, idleResults, helpResults } = this.data;
     let filtered;
-    if (currentFilter === 'idle') {
+    if (currentFilter === CONTENT_TYPE.IDLE) {
       filtered = idleResults;
-    } else if (currentFilter === 'help') {
+    } else if (currentFilter === CONTENT_TYPE.HELP) {
       filtered = helpResults;
     } else {
       filtered = [...idleResults, ...helpResults];
@@ -187,7 +190,7 @@ Page({
 
   onResultTap(e) {
     const item = e.currentTarget.dataset.item;
-    if (item.type === 'help') {
+    if (item.type === CONTENT_TYPE.HELP) {
       wx.navigateTo({ url: `/pages/help-detail/help-detail?id=${item.id}` });
     } else {
       wx.navigateTo({ url: `/pages/idle-detail/idle-detail?id=${item.id}` });

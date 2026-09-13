@@ -1,5 +1,8 @@
 package com.platform.service;
 
+import com.platform.common.AppTimeZone;
+import com.platform.common.BizStatus;
+import com.platform.common.RatingType;
 import com.platform.model.dto.RatingRequest;
 import com.platform.model.dto.UserRatingsDTO;
 import com.platform.model.entity.*;
@@ -72,7 +75,7 @@ class RatingServiceTest {
                 .id(borrowId)
                 .idleId(idleId)
                 .borrowerId(fromUserId)
-                .status("returned")
+                .status(BizStatus.RETURNED)
                 .build();
 
         IdleItem idleItem = IdleItem.builder()
@@ -121,7 +124,7 @@ class RatingServiceTest {
         BorrowRequest borrowRequest = BorrowRequest.builder()
                 .id(borrowId)
                 .borrowerId(fromUserId)
-                .status("approved")
+                .status(BizStatus.APPROVED)
                 .build();
 
         when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.of(borrowRequest));
@@ -144,7 +147,7 @@ class RatingServiceTest {
         BorrowRequest borrowRequest = BorrowRequest.builder()
                 .id(borrowId)
                 .borrowerId(otherUserId)
-                .status("returned")
+                .status(BizStatus.RETURNED)
                 .build();
 
         when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.of(borrowRequest));
@@ -167,7 +170,7 @@ class RatingServiceTest {
                 .id(borrowId)
                 .idleId(idleId)
                 .borrowerId(fromUserId)
-                .status("returned")
+                .status(BizStatus.RETURNED)
                 .build();
 
         when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.of(borrowRequest));
@@ -195,7 +198,7 @@ class RatingServiceTest {
                 .id(borrowId)
                 .idleId(idleId)
                 .borrowerId(fromUserId)
-                .status("returned")
+                .status(BizStatus.RETURNED)
                 .build();
 
         when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.of(borrowRequest));
@@ -214,14 +217,14 @@ class RatingServiceTest {
         // 准备
         RatingRequest req = new RatingRequest();
         req.setTargetId(borrowId);
-        req.setRatingType("borrow");
+        req.setRatingType(RatingType.BORROW);
         req.setOverallScore(4);
 
         BorrowRequest borrowRequest = BorrowRequest.builder()
                 .id(borrowId)
                 .idleId(idleId)
                 .borrowerId(fromUserId)
-                .status("returned")
+                .status(BizStatus.RETURNED)
                 .build();
 
         IdleItem idleItem = IdleItem.builder()
@@ -256,7 +259,7 @@ class RatingServiceTest {
                 .id(helpApplicationId)
                 .helpId(helpId)
                 .helperId(fromUserId)
-                .status("completed")
+                .status(BizStatus.COMPLETED)
                 .build();
 
         HelpRequest helpRequest = HelpRequest.builder()
@@ -305,7 +308,7 @@ class RatingServiceTest {
         HelpApplication application = HelpApplication.builder()
                 .id(helpApplicationId)
                 .helperId(fromUserId)
-                .status("approved")
+                .status(BizStatus.APPROVED)
                 .build();
 
         when(helpApplicationRepository.findById(helpApplicationId)).thenReturn(Optional.of(application));
@@ -328,7 +331,7 @@ class RatingServiceTest {
         HelpApplication application = HelpApplication.builder()
                 .id(helpApplicationId)
                 .helperId(otherUserId)
-                .status("completed")
+                .status(BizStatus.COMPLETED)
                 .build();
 
         when(helpApplicationRepository.findById(helpApplicationId)).thenReturn(Optional.of(application));
@@ -363,14 +366,14 @@ class RatingServiceTest {
                 .fromUserId(5L)
                 .toUserId(ownerId)
                 .score(5)
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
         Rating rating2 = Rating.builder()
                 .id(501L)
                 .fromUserId(6L)
                 .toUserId(ownerId)
                 .score(4)
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
 
         when(ratingRepository.findByToUserId(ownerId)).thenReturn(List.of(rating1, rating2));

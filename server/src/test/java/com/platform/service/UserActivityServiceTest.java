@@ -1,5 +1,12 @@
 package com.platform.service;
 
+import com.platform.common.ActivityRole;
+import com.platform.common.AppTimeZone;
+import com.platform.common.BizStatus;
+import com.platform.common.ContentType;
+import com.platform.common.DurationUnit;
+import com.platform.common.PostType;
+import com.platform.common.UserType;
 import com.platform.model.dto.MyPostItemDTO;
 import com.platform.model.dto.UserProfileDTO;
 import com.platform.model.entity.BorrowRequest;
@@ -74,15 +81,15 @@ class UserActivityServiceTest {
         user = User.builder()
                 .id(userId)
                 .name("测试用户")
-                .userType("owner")
-                .authStatus("approved")
+                .userType(UserType.OWNER)
+                .authStatus(BizStatus.APPROVED)
                 .build();
 
         otherUser = User.builder()
                 .id(ownerId)
                 .name("其他用户")
-                .userType("owner")
-                .authStatus("approved")
+                .userType(UserType.OWNER)
+                .authStatus(BizStatus.APPROVED)
                 .build();
     }
 
@@ -150,11 +157,11 @@ class UserActivityServiceTest {
     void should_returnMyPosts_when_userHasItems() {
         // 准备
         IdleItem idleItem = IdleItem.builder()
-                .id(1L).userId(userId).title("测试闲置").postType("LEND")
-                .status("online").createdAt(LocalDateTime.now()).build();
+                .id(1L).userId(userId).title("测试闲置").postType(PostType.LEND)
+                .status(BizStatus.ONLINE).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
         HelpRequest helpReq = HelpRequest.builder()
-                .id(2L).userId(userId).title("测试求助").status("online")
-                .createdAt(LocalDateTime.now()).build();
+                .id(2L).userId(userId).title("测试求助").status(BizStatus.ONLINE)
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
 
         when(idleItemRepository.findByUserId(userId)).thenReturn(List.of(idleItem));
         when(helpRequestRepository.findByUserId(userId)).thenReturn(List.of(helpReq));
@@ -172,11 +179,11 @@ class UserActivityServiceTest {
     void should_filterByStatus_when_statusFilterGiven() {
         // 准备
         IdleItem onlineItem = IdleItem.builder()
-                .id(1L).userId(userId).title("在线物品").postType("LEND")
-                .status("online").createdAt(LocalDateTime.now()).build();
+                .id(1L).userId(userId).title("在线物品").postType(PostType.LEND)
+                .status(BizStatus.ONLINE).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
         IdleItem offlineItem = IdleItem.builder()
-                .id(2L).userId(userId).title("已下架物品").postType("LEND")
-                .status("offline").createdAt(LocalDateTime.now()).build();
+                .id(2L).userId(userId).title("已下架物品").postType(PostType.LEND)
+                .status(BizStatus.OFFLINE).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
 
         when(idleItemRepository.findByUserId(userId)).thenReturn(List.of(onlineItem, offlineItem));
         when(helpRequestRepository.findByUserId(userId)).thenReturn(Collections.emptyList());
@@ -212,13 +219,13 @@ class UserActivityServiceTest {
         Long lendIdleId = 10L;
         /** borrow 类型查 WANTED 帖（我是借入方，有人愿意借出给我） */
         IdleItem wantedItem = IdleItem.builder()
-                .id(lendIdleId).userId(userId).title("求借物品").postType("WANTED")
-                .createdAt(LocalDateTime.now()).build();
+                .id(lendIdleId).userId(userId).title("求借物品").postType(PostType.WANTED)
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
         BorrowRequest br = BorrowRequest.builder()
                 .id(100L).idleId(lendIdleId).borrowerId(borrowerId)
-                .durationType("day").durationDays(3)
-                .startDate(LocalDate.now())
-                .status("pending").createdAt(LocalDateTime.now())
+                .durationType(DurationUnit.DAY).durationDays(3)
+                .startDate(LocalDate.now(AppTimeZone.APP_ZONE))
+                .status(BizStatus.PENDING).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
         br.setIdleItem(wantedItem); // 设置关联以避免懒加载
 
@@ -233,12 +240,12 @@ class UserActivityServiceTest {
         when(ratingRepository.findByToUserId(borrowerId)).thenReturn(Collections.emptyList());
 
         // 执行
-        List<MyPostItemDTO> result = service.getApprovals(userId, "borrow");
+        List<MyPostItemDTO> result = service.getApprovals(userId, ActivityRole.BORROW);
 
         // 断言
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getType()).isEqualTo("idle");
-        assertThat(result.get(0).getSubType()).isEqualTo("borrow");
+        assertThat(result.get(0).getType()).isEqualTo(ContentType.IDLE);
+        assertThat(result.get(0).getSubType()).isEqualTo(ActivityRole.BORROW);
         assertThat(result.get(0).getTitle()).isEqualTo("求借物品");
     }
 
@@ -251,12 +258,12 @@ class UserActivityServiceTest {
         Long wantedIdleId = 20L;
         /** lend 类型查 LEND 帖（我是借出方，有人想借我的东西） */
         IdleItem lendItem = IdleItem.builder()
-                .id(wantedIdleId).userId(userId).title("出借物品").postType("LEND")
-                .createdAt(LocalDateTime.now()).build();
+                .id(wantedIdleId).userId(userId).title("出借物品").postType(PostType.LEND)
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
         BorrowRequest br = BorrowRequest.builder()
                 .id(200L).idleId(wantedIdleId).borrowerId(borrowerId)
-                .durationType("week").durationDays(7)
-                .status("pending").createdAt(LocalDateTime.now())
+                .durationType(DurationUnit.WEEK).durationDays(7)
+                .status(BizStatus.PENDING).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
         br.setIdleItem(lendItem);
 
@@ -271,11 +278,11 @@ class UserActivityServiceTest {
         when(ratingRepository.findByToUserId(borrowerId)).thenReturn(Collections.emptyList());
 
         // 执行
-        List<MyPostItemDTO> result = service.getApprovals(userId, "lend");
+        List<MyPostItemDTO> result = service.getApprovals(userId, ActivityRole.LEND);
 
         // 断言：LEND 帖的 lending 意向
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getSubType()).isEqualTo("lend");
+        assertThat(result.get(0).getSubType()).isEqualTo(ActivityRole.LEND);
     }
 
     // ==================== getApprovals — help ====================
@@ -285,16 +292,16 @@ class UserActivityServiceTest {
     void should_returnApprovals_when_helpType() {
         // 准备
         HelpRequest hr = HelpRequest.builder()
-                .id(1L).userId(userId).title("帮我搬东西").status("online")
-                .createdAt(LocalDateTime.now()).build();
+                .id(1L).userId(userId).title("帮我搬东西").status(BizStatus.ONLINE)
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
         HelpApplication app = HelpApplication.builder()
                 .id(10L).helpId(1L).helperId(helperId).note("我可以帮忙")
-                .status("pending").createdAt(LocalDateTime.now()).build();
+                .status(BizStatus.PENDING).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
 
         when(helpRequestRepository.findByUserId(userId)).thenReturn(List.of(hr));
         when(helpApplicationRepository.findByHelpIdAndStatus(1L, "pending")).thenReturn(List.of(app));
         when(userRepository.findById(helperId)).thenReturn(Optional.of(
-                User.builder().id(helperId).name("帮助者").userType("tenant").build()));
+                User.builder().id(helperId).name("帮助者").userType(UserType.TENANT).build()));
         when(ratingRepository.getAverageScore(helperId)).thenReturn(null);
         when(ratingRepository.findByToUserId(helperId)).thenReturn(Collections.emptyList());
         when(borrowRequestRepository.findByBorrowerId(helperId)).thenReturn(Collections.emptyList());
@@ -305,8 +312,8 @@ class UserActivityServiceTest {
 
         // 断言
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getType()).isEqualTo("help");
-        assertThat(result.get(0).getSubType()).isEqualTo("helpReq");
+        assertThat(result.get(0).getType()).isEqualTo(ContentType.HELP);
+        assertThat(result.get(0).getSubType()).isEqualTo(ActivityRole.HELP_REQ);
         assertThat(result.get(0).getNote()).isEqualTo("我可以帮忙");
     }
 
@@ -319,7 +326,7 @@ class UserActivityServiceTest {
         when(borrowRequestRepository.findByOwnerIdAndStatus(userId, "pending")).thenReturn(Collections.emptyList());
 
         // 执行
-        List<MyPostItemDTO> result = service.getApprovals(userId, "borrow");
+        List<MyPostItemDTO> result = service.getApprovals(userId, ActivityRole.BORROW);
 
         // 断言
         assertThat(result).isEmpty();
@@ -333,27 +340,27 @@ class UserActivityServiceTest {
         // 准备
         Long idleId = 10L;
         IdleItem lendItem = IdleItem.builder()
-                .id(idleId).userId(ownerId).title("出借品").postType("LEND")
-                .createdAt(LocalDateTime.now()).build();
+                .id(idleId).userId(ownerId).title("出借品").postType(PostType.LEND)
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
         BorrowRequest br = BorrowRequest.builder()
                 .id(100L).idleId(idleId).borrowerId(userId)
-                .durationType("day").durationDays(7)
-                .startDate(LocalDate.now())
-                .status("approved").createdAt(LocalDateTime.now())
+                .durationType(DurationUnit.DAY).durationDays(7)
+                .startDate(LocalDate.now(AppTimeZone.APP_ZONE))
+                .status(BizStatus.APPROVED).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
         br.setIdleItem(lendItem);
 
         when(borrowRequestRepository.findByBorrowerIdAndStatus(userId, "approved")).thenReturn(List.of(br));
         when(borrowRequestRepository.findByOwnerIdAndStatus(userId, "approved")).thenReturn(Collections.emptyList());
         when(userRepository.findById(ownerId)).thenReturn(Optional.of(
-                User.builder().id(ownerId).name("借出租户").userType("owner").build()));
+                User.builder().id(ownerId).name("借出租户").userType(UserType.OWNER).build()));
 
         // 执行
-        List<MyPostItemDTO> result = service.getInProgress(userId, "borrow");
+        List<MyPostItemDTO> result = service.getInProgress(userId, ActivityRole.BORROW);
 
         // 断言：当前用户是 borrowerId，LEND 帖 → 真实角色 borrow
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getSubType()).isEqualTo("borrow");
+        assertThat(result.get(0).getSubType()).isEqualTo(ActivityRole.BORROW);
         assertThat(result.get(0).getRoleLabel()).isEqualTo("借出住户");
     }
 
@@ -365,13 +372,13 @@ class UserActivityServiceTest {
         // 准备：我是 WANTED 帖的 owner（即我是借入方），borrower 是响应出借的人
         Long wantedId = 20L;
         IdleItem wantedItem = IdleItem.builder()
-                .id(wantedId).userId(userId).title("求借物").postType("WANTED")
-                .createdAt(LocalDateTime.now()).build();
+                .id(wantedId).userId(userId).title("求借物").postType(PostType.WANTED)
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
         BorrowRequest br = BorrowRequest.builder()
                 .id(200L).idleId(wantedId).borrowerId(borrowerId)
-                .durationType("day").durationDays(14)
-                .startDate(LocalDate.now())
-                .status("approved").createdAt(LocalDateTime.now())
+                .durationType(DurationUnit.DAY).durationDays(14)
+                .startDate(LocalDate.now(AppTimeZone.APP_ZONE))
+                .status(BizStatus.APPROVED).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
         br.setIdleItem(wantedItem);
 
@@ -379,7 +386,7 @@ class UserActivityServiceTest {
         when(borrowRequestRepository.findByOwnerIdAndStatus(userId, "approved")).thenReturn(List.of(br));
 
         // 执行
-        List<MyPostItemDTO> result = service.getInProgress(userId, "lend");
+        List<MyPostItemDTO> result = service.getInProgress(userId, ActivityRole.LEND);
 
         // 断言：WANTED+owner → 真实角色为 borrow，但这里 role="lend" 不匹配，应过滤掉
         assertThat(result).isEmpty();
@@ -391,27 +398,27 @@ class UserActivityServiceTest {
         // 准备：我是 WANTED 帖的 borrower（响应者=出借方）
         Long wantedId = 30L;
         IdleItem wantedItem = IdleItem.builder()
-                .id(wantedId).userId(ownerId).title("求借物").postType("WANTED")
-                .createdAt(LocalDateTime.now()).build();
+                .id(wantedId).userId(ownerId).title("求借物").postType(PostType.WANTED)
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
         BorrowRequest br = BorrowRequest.builder()
                 .id(300L).idleId(wantedId).borrowerId(userId)
-                .durationType("week").durationDays(7)
-                .startDate(LocalDate.now())
-                .status("approved").createdAt(LocalDateTime.now())
+                .durationType(DurationUnit.WEEK).durationDays(7)
+                .startDate(LocalDate.now(AppTimeZone.APP_ZONE))
+                .status(BizStatus.APPROVED).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
         br.setIdleItem(wantedItem);
 
         when(borrowRequestRepository.findByBorrowerIdAndStatus(userId, "approved")).thenReturn(List.of(br));
         when(borrowRequestRepository.findByOwnerIdAndStatus(userId, "approved")).thenReturn(Collections.emptyList());
         when(userRepository.findById(ownerId)).thenReturn(Optional.of(
-                User.builder().id(ownerId).name("求借者").userType("owner").build()));
+                User.builder().id(ownerId).name("求借者").userType(UserType.OWNER).build()));
 
         // 执行
-        List<MyPostItemDTO> result = service.getInProgress(userId, "lend");
+        List<MyPostItemDTO> result = service.getInProgress(userId, ActivityRole.LEND);
 
         // 断言：WANTED+borrower → 真实角色 lend（我是出借方）
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getSubType()).isEqualTo("lend");
+        assertThat(result.get(0).getSubType()).isEqualTo(ActivityRole.LEND);
         assertThat(result.get(0).getRoleLabel()).isEqualTo("借走住户");
     }
 
@@ -422,24 +429,24 @@ class UserActivityServiceTest {
     void should_returnInProgress_when_helpReqRole() {
         // 准备
         HelpRequest hr = HelpRequest.builder()
-                .id(1L).userId(userId).title("帮翻译").status("online")
-                .createdAt(LocalDateTime.now()).build();
+                .id(1L).userId(userId).title("帮翻译").status(BizStatus.ONLINE)
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
         HelpApplication app = HelpApplication.builder()
                 .id(10L).helpId(1L).helperId(helperId).note("我懂英文")
-                .status("approved").createdAt(LocalDateTime.now()).build();
+                .status(BizStatus.APPROVED).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
 
         when(helpRequestRepository.findByUserId(userId)).thenReturn(List.of(hr));
         when(helpApplicationRepository.findByHelpIdAndStatus(1L, "approved")).thenReturn(List.of(app));
         when(userRepository.findById(helperId)).thenReturn(Optional.of(
-                User.builder().id(helperId).name("帮手").userType("tenant").build()));
+                User.builder().id(helperId).name("帮手").userType(UserType.TENANT).build()));
 
         // 执行
-        List<MyPostItemDTO> result = service.getInProgress(userId, "helpReq");
+        List<MyPostItemDTO> result = service.getInProgress(userId, ActivityRole.HELP_REQ);
 
         // 断言
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getType()).isEqualTo("help");
-        assertThat(result.get(0).getSubType()).isEqualTo("helpReq");
+        assertThat(result.get(0).getType()).isEqualTo(ContentType.HELP);
+        assertThat(result.get(0).getSubType()).isEqualTo(ActivityRole.HELP_REQ);
         assertThat(result.get(0).getDisplayStatus()).isEqualTo("进行中");
     }
 
@@ -450,23 +457,23 @@ class UserActivityServiceTest {
     void should_returnInProgress_when_helpProRole() {
         // 准备
         HelpRequest hr = HelpRequest.builder()
-                .id(2L).userId(requesterId).title("修水管").status("online")
-                .createdAt(LocalDateTime.now()).build();
+                .id(2L).userId(requesterId).title("修水管").status(BizStatus.ONLINE)
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
         HelpApplication app = HelpApplication.builder()
                 .id(20L).helpId(2L).helperId(userId).note("我会修")
-                .status("approved").createdAt(LocalDateTime.now()).build();
+                .status(BizStatus.APPROVED).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
 
         when(helpApplicationRepository.findByHelperId(userId)).thenReturn(List.of(app));
         when(helpRequestRepository.findById(2L)).thenReturn(Optional.of(hr));
         when(userRepository.findById(requesterId)).thenReturn(Optional.of(
-                User.builder().id(requesterId).name("求助者").userType("owner").build()));
+                User.builder().id(requesterId).name("求助者").userType(UserType.OWNER).build()));
 
         // 执行
-        List<MyPostItemDTO> result = service.getInProgress(userId, "helpPro");
+        List<MyPostItemDTO> result = service.getInProgress(userId, ActivityRole.HELP_PRO);
 
         // 断言
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getSubType()).isEqualTo("helpPro");
+        assertThat(result.get(0).getSubType()).isEqualTo(ActivityRole.HELP_PRO);
         assertThat(result.get(0).getRoleLabel()).isEqualTo("求助住户");
     }
 
@@ -491,7 +498,7 @@ class UserActivityServiceTest {
         when(borrowRequestRepository.findByOwnerIdAndStatus(userId, "approved")).thenReturn(Collections.emptyList());
 
         // 执行
-        List<MyPostItemDTO> result = service.getInProgress(userId, "borrow");
+        List<MyPostItemDTO> result = service.getInProgress(userId, ActivityRole.BORROW);
 
         // 断言
         assertThat(result).isEmpty();
@@ -505,30 +512,30 @@ class UserActivityServiceTest {
         // 准备
         Long idleId = 10L;
         IdleItem lendItem = IdleItem.builder()
-                .id(idleId).userId(ownerId).title("已借出物").postType("LEND")
-                .createdAt(LocalDateTime.now()).build();
+                .id(idleId).userId(ownerId).title("已借出物").postType(PostType.LEND)
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
         BorrowRequest br = BorrowRequest.builder()
                 .id(100L).idleId(idleId).borrowerId(userId)
-                .durationType("day").durationDays(3)
-                .status("returned")
-                .returnedAt(LocalDateTime.now())
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
+                .durationType(DurationUnit.DAY).durationDays(3)
+                .status(BizStatus.RETURNED)
+                .returnedAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
+                .updatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
         br.setIdleItem(lendItem);
 
         when(borrowRequestRepository.findByBorrowerIdAndStatus(userId, "returned")).thenReturn(List.of(br));
         when(borrowRequestRepository.findByOwnerIdAndStatus(userId, "returned")).thenReturn(Collections.emptyList());
         when(userRepository.findById(ownerId)).thenReturn(Optional.of(
-                User.builder().id(ownerId).name("借出租户").userType("owner").build()));
+                User.builder().id(ownerId).name("借出租户").userType(UserType.OWNER).build()));
         when(ratingRepository.findFirstByBorrowIdAndFromUserId(100L, userId)).thenReturn(Optional.empty());
 
         // 执行
-        List<MyPostItemDTO> result = service.getCompleted(userId, "borrow");
+        List<MyPostItemDTO> result = service.getCompleted(userId, ActivityRole.BORROW);
 
         // 断言
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getSubType()).isEqualTo("borrow");
+        assertThat(result.get(0).getSubType()).isEqualTo(ActivityRole.BORROW);
         assertThat(result.get(0).getCompletedAt()).isNotNull();
     }
 
@@ -539,26 +546,26 @@ class UserActivityServiceTest {
     void should_returnCompleted_when_helpReqRole() {
         // 准备
         HelpRequest hr = HelpRequest.builder()
-                .id(1L).userId(userId).title("帮买菜").status("online")
-                .createdAt(LocalDateTime.now()).build();
+                .id(1L).userId(userId).title("帮买菜").status(BizStatus.ONLINE)
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
         HelpApplication app = HelpApplication.builder()
                 .id(10L).helpId(1L).helperId(helperId).note("买好了")
-                .status("completed").createdAt(LocalDateTime.now())
-                .completedAt(LocalDateTime.now())
+                .status(BizStatus.COMPLETED).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
+                .completedAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
 
         when(helpRequestRepository.findByUserId(userId)).thenReturn(List.of(hr));
         when(helpApplicationRepository.findByHelpIdAndStatus(1L, "completed")).thenReturn(List.of(app));
         when(userRepository.findById(helperId)).thenReturn(Optional.of(
-                User.builder().id(helperId).name("帮手").userType("tenant").build()));
+                User.builder().id(helperId).name("帮手").userType(UserType.TENANT).build()));
         when(ratingRepository.findFirstByHelpApplicationIdAndFromUserId(10L, userId)).thenReturn(Optional.empty());
 
         // 执行
-        List<MyPostItemDTO> result = service.getCompleted(userId, "helpReq");
+        List<MyPostItemDTO> result = service.getCompleted(userId, ActivityRole.HELP_REQ);
 
         // 断言
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getSubType()).isEqualTo("helpReq");
+        assertThat(result.get(0).getSubType()).isEqualTo(ActivityRole.HELP_REQ);
         assertThat(result.get(0).getCompletedAt()).isNotNull();
     }
 

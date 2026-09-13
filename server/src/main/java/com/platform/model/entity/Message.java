@@ -1,5 +1,6 @@
 package com.platform.model.entity;
 
+import com.platform.common.AppTimeZone;
 import com.platform.common.MessageStatus;
 import com.platform.common.MessageType;
 import com.platform.model.entity.column.MessagesColumn;
@@ -78,13 +79,13 @@ public class Message {
 
     @PrePersist
     protected void onCreate() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(AppTimeZone.APP_ZONE);
         createdAt = now;
         updatedAt = now;
     }
 
     @PreUpdate
     protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now(AppTimeZone.APP_ZONE);
     }
 }

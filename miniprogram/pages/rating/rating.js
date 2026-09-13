@@ -1,5 +1,6 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
+const { RATING_TYPE } = require('../../utils/constants');
 
 /**
  * 评价页 — 借用/帮助完成后的互评。
@@ -11,7 +12,7 @@ Page({
   data: {
     borrowId: '',
     targetName: '',
-    ratingType: 'borrow', // 'borrow' or 'help'
+    ratingType: RATING_TYPE.BORROW, // 评价类型，取值见 constants.js 的 RATING_TYPE
     ratingTypeText: '',
     overallScore: 0
   },
@@ -20,9 +21,9 @@ Page({
     if (!auth.ensureAccess()) return;   // 登录/审核门禁：未通过则已跳转
     const borrowId = options.id || '';
     const targetName = decodeURIComponent(options.name || '用户');
-    const ratingType = options.type || 'borrow';
+    const ratingType = options.type || RATING_TYPE.BORROW;
 
-    const ratingTypeText = ratingType === 'help' ? '帮助评价' : '借出评价';
+    const ratingTypeText = ratingType === RATING_TYPE.HELP ? '帮助评价' : '借出评价';
 
     this.setData({
       borrowId,

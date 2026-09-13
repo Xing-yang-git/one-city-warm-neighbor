@@ -51,7 +51,7 @@
       <!-- 在线发布 -->
       <view wx:if="{{publishSubTab === 'online'}}">
         <block wx:for="{{onlinePosts}}" wx:key="id">
-          <view class="post-card" bindtap="onOpenEdit" data-post="{{item}}" data-type="{{item.postType === 'HELP' ? 'help' : 'idle'}}" data-source="online">
+          <view class="post-card" bindtap="onOpenEdit" data-post="{{item}}" data-type="{{item.postType === POST_TYPE.HELP ? CONTENT_TYPE.HELP : CONTENT_TYPE.IDLE}}" data-source="online">
             <view class="post-img" style="background: {{item.iconBg}};">
               <image class="post-icon" src="{{item.iconSrc}}" mode="aspectFit" />
             </view>
@@ -95,7 +95,7 @@
       <!-- 已下架发布 -->
       <view wx:if="{{publishSubTab === POST_STATUS.DRAFT}}">
         <block wx:for="{{offlinePosts}}" wx:key="id">
-          <view class="post-card" bindtap="onOpenEdit" data-post="{{item}}" data-type="{{item.postType === 'HELP' ? 'help' : 'idle'}}" data-source="{{POST_STATUS.DRAFT}}">
+          <view class="post-card" bindtap="onOpenEdit" data-post="{{item}}" data-type="{{item.postType === POST_TYPE.HELP ? CONTENT_TYPE.HELP : CONTENT_TYPE.IDLE}}" data-source="{{POST_STATUS.DRAFT}}">
             <view class="post-img" style="background: {{item.iconBg}};">
               <image class="post-icon" src="{{item.iconSrc}}" mode="aspectFit" />
             </view>
@@ -106,7 +106,7 @@
                 <text class="post-time">· {{item.timeText}}</text>
               </view>
             </view>
-            <view class="post-act-btn primary" catchtap="onOpenEdit" data-post="{{item}}" data-type="{{item.postType === 'HELP' ? 'help' : 'idle'}}" data-source="{{POST_STATUS.DRAFT}}">重新发布</view>
+            <view class="post-act-btn primary" catchtap="onOpenEdit" data-post="{{item}}" data-type="{{item.postType === POST_TYPE.HELP ? CONTENT_TYPE.HELP : CONTENT_TYPE.IDLE}}" data-source="{{POST_STATUS.DRAFT}}">重新发布</view>
           </view>
         </block>
         <view class="list-end" wx:if="{{offlinePosts.length > 0}}">— 共 {{offlineCount}} 条已下架 —</view>
@@ -121,13 +121,13 @@
   <view wx:if="{{mainTab === 'approval'}}" class="panel-wrap">
     <view class="seg-sub-wrap">
       <view class="segment">
-        <view class="segment-item {{approvalSubTab === 'borrow' ? 'active' : ''}}" bindtap="onApprovalSubTap" data-sub="borrow">
+        <view class="segment-item {{approvalSubTab === ACTIVITY_ROLE.BORROW ? 'active' : ''}}" bindtap="onApprovalSubTap" data-sub="{{ACTIVITY_ROLE.BORROW}}">
           借入 <text class="seg-count">{{borrowApprovals.length}}</text>
         </view>
-        <view class="segment-item {{approvalSubTab === 'lend' ? 'active' : ''}}" bindtap="onApprovalSubTap" data-sub="lend">
+        <view class="segment-item {{approvalSubTab === ACTIVITY_ROLE.LEND ? 'active' : ''}}" bindtap="onApprovalSubTap" data-sub="{{ACTIVITY_ROLE.LEND}}">
           借出 <text class="seg-count">{{lendApprovals.length}}</text>
         </view>
-        <view class="segment-item {{approvalSubTab === 'help' ? 'active' : ''}}" bindtap="onApprovalSubTap" data-sub="help">
+        <view class="segment-item {{approvalSubTab === ACTIVITY_ROLE.HELP ? 'active' : ''}}" bindtap="onApprovalSubTap" data-sub="{{ACTIVITY_ROLE.HELP}}">
           求助 <text class="seg-count">{{helpApprovals.length}}</text>
         </view>
       </view>
@@ -135,15 +135,15 @@
 
     <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}" refresher-enabled refresher-triggered="{{refreshing}}" bindrefresherrefresh="onPullRefresh">
       <!-- 借入审批 — 我发布的需求借入（WANTED），别人主动借给我，由我确认借入 -->
-      <view wx:if="{{approvalSubTab === 'borrow'}}">
+      <view wx:if="{{approvalSubTab === ACTIVITY_ROLE.BORROW}}">
         <block wx:for="{{borrowApprovals}}" wx:key="id">
-          <view class="progress-item" bindtap="onApprovalDetail" data-id="{{item.id}}" data-type="borrow">
+          <view class="progress-item" bindtap="onApprovalDetail" data-id="{{item.id}}" data-type="{{ACTIVITY_ROLE.BORROW}}">
             <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
               <view class="progress-name">愿意借出的住户：{{item.applicantName}}</view>
             </view>
-            <view class="progress-act-btn return-btn" catchtap="onApprovalDetail" data-id="{{item.id}}" data-type="borrow">审批</view>
+            <view class="progress-act-btn return-btn" catchtap="onApprovalDetail" data-id="{{item.id}}" data-type="{{ACTIVITY_ROLE.BORROW}}">审批</view>
           </view>
         </block>
         <view class="empty-state" wx:if="{{borrowApprovals.length === 0}}">
@@ -152,15 +152,15 @@
       </view>
 
       <!-- 借出审批 — 我发布的闲置（LEND），别人申请借走，由我审批借出 -->
-      <view wx:if="{{approvalSubTab === 'lend'}}">
+      <view wx:if="{{approvalSubTab === ACTIVITY_ROLE.LEND}}">
         <block wx:for="{{lendApprovals}}" wx:key="id">
-          <view class="progress-item" bindtap="onApprovalDetail" data-id="{{item.id}}" data-type="lend">
+          <view class="progress-item" bindtap="onApprovalDetail" data-id="{{item.id}}" data-type="{{ACTIVITY_ROLE.LEND}}">
             <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
               <view class="progress-name">希望借用的住户：{{item.applicantName}}</view>
             </view>
-            <view class="progress-act-btn return-btn" catchtap="onApprovalDetail" data-id="{{item.id}}" data-type="lend">审批</view>
+            <view class="progress-act-btn return-btn" catchtap="onApprovalDetail" data-id="{{item.id}}" data-type="{{ACTIVITY_ROLE.LEND}}">审批</view>
           </view>
         </block>
         <view class="empty-state" wx:if="{{lendApprovals.length === 0}}">
@@ -169,15 +169,15 @@
       </view>
 
       <!-- 帮助审批 -->
-      <view wx:if="{{approvalSubTab === 'help'}}">
+      <view wx:if="{{approvalSubTab === ACTIVITY_ROLE.HELP}}">
         <block wx:for="{{helpApprovals}}" wx:key="id">
-          <view class="progress-item" bindtap="onApprovalDetail" data-id="{{item.id}}" data-type="help">
+          <view class="progress-item" bindtap="onApprovalDetail" data-id="{{item.id}}" data-type="{{ACTIVITY_ROLE.HELP}}">
             <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
               <view class="progress-name">主动帮忙的住户：{{item.applicantName}}</view>
             </view>
-            <view class="progress-act-btn return-btn" catchtap="onApprovalDetail" data-id="{{item.id}}" data-type="help">审批</view>
+            <view class="progress-act-btn return-btn" catchtap="onApprovalDetail" data-id="{{item.id}}" data-type="{{ACTIVITY_ROLE.HELP}}">审批</view>
           </view>
         </block>
         <view class="empty-state" wx:if="{{helpApprovals.length === 0}}">
@@ -191,16 +191,16 @@
   <view wx:if="{{mainTab === 'inProgress'}}" class="panel-wrap">
     <view class="seg-sub-wrap">
       <view class="segment">
-        <view class="segment-item {{inProgressSubTab === 'borrow' ? 'active' : ''}}" bindtap="onInProgressSubTap" data-sub="borrow">借入 <text class="seg-count">{{inProgressBorrows.length}}</text></view>
-        <view class="segment-item {{inProgressSubTab === 'lend' ? 'active' : ''}}" bindtap="onInProgressSubTap" data-sub="lend">借出 <text class="seg-count">{{inProgressLends.length}}</text></view>
-        <view class="segment-item {{inProgressSubTab === 'helpReq' ? 'active' : ''}}" bindtap="onInProgressSubTap" data-sub="helpReq">求助 <text class="seg-count">{{inProgressHelpReqs.length}}</text></view>
-        <view class="segment-item {{inProgressSubTab === 'helpPro' ? 'active' : ''}}" bindtap="onInProgressSubTap" data-sub="helpPro">帮助 <text class="seg-count">{{inProgressHelpPros.length}}</text></view>
+        <view class="segment-item {{inProgressSubTab === ACTIVITY_ROLE.BORROW ? 'active' : ''}}" bindtap="onInProgressSubTap" data-sub="{{ACTIVITY_ROLE.BORROW}}">借入 <text class="seg-count">{{inProgressBorrows.length}}</text></view>
+        <view class="segment-item {{inProgressSubTab === ACTIVITY_ROLE.LEND ? 'active' : ''}}" bindtap="onInProgressSubTap" data-sub="{{ACTIVITY_ROLE.LEND}}">借出 <text class="seg-count">{{inProgressLends.length}}</text></view>
+        <view class="segment-item {{inProgressSubTab === ACTIVITY_ROLE.HELP_REQ ? 'active' : ''}}" bindtap="onInProgressSubTap" data-sub="{{ACTIVITY_ROLE.HELP_REQ}}">求助 <text class="seg-count">{{inProgressHelpReqs.length}}</text></view>
+        <view class="segment-item {{inProgressSubTab === ACTIVITY_ROLE.HELP_PRO ? 'active' : ''}}" bindtap="onInProgressSubTap" data-sub="{{ACTIVITY_ROLE.HELP_PRO}}">帮助 <text class="seg-count">{{inProgressHelpPros.length}}</text></view>
       </view>
     </view>
 
     <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}" refresher-enabled refresher-triggered="{{refreshing}}" bindrefresherrefresh="onPullRefresh">
       <!-- 进行中 - 借入：已经借进来自己还未归还 -->
-      <view wx:if="{{inProgressSubTab === 'borrow'}}">
+      <view wx:if="{{inProgressSubTab === ACTIVITY_ROLE.BORROW}}">
         <block wx:for="{{inProgressBorrows}}" wx:key="id">
           <view class="progress-item" bindtap="onReturnBorrow" data-id="{{item.id}}">
             <view class="progress-avatar">👤</view>
@@ -218,7 +218,7 @@
       </view>
 
       <!-- 进行中 - 借出：已经借出去他人还未归还 -->
-      <view wx:if="{{inProgressSubTab === 'lend'}}">
+      <view wx:if="{{inProgressSubTab === ACTIVITY_ROLE.LEND}}">
         <block wx:for="{{inProgressLends}}" wx:key="id">
           <view class="progress-item" bindtap="onReturnLend" data-id="{{item.id}}">
             <view class="progress-avatar">👤</view>
@@ -236,7 +236,7 @@
       </view>
 
       <!-- 进行中 - 求助：发起的求助已经在进行中还未结束 -->
-      <view wx:if="{{inProgressSubTab === 'helpReq'}}">
+      <view wx:if="{{inProgressSubTab === ACTIVITY_ROLE.HELP_REQ}}">
         <block wx:for="{{inProgressHelpReqs}}" wx:key="id">
           <view class="progress-item" bindtap="onEndHelpReq" data-id="{{item.id}}">
             <view class="progress-avatar">👤</view>
@@ -253,7 +253,7 @@
       </view>
 
       <!-- 进行中 - 帮助：主动帮助他人的还在进行中 -->
-      <view wx:if="{{inProgressSubTab === 'helpPro'}}">
+      <view wx:if="{{inProgressSubTab === ACTIVITY_ROLE.HELP_PRO}}">
         <block wx:for="{{inProgressHelpPros}}" wx:key="id">
           <view class="progress-item" bindtap="onEndHelpPro" data-id="{{item.id}}">
             <view class="progress-avatar">👤</view>
@@ -275,18 +275,18 @@
   <view wx:if="{{mainTab === 'completed'}}" class="panel-wrap">
     <view class="seg-sub-wrap">
       <view class="segment">
-        <view class="segment-item {{completedSubTab === 'borrow' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="borrow">借入 <text class="seg-count">{{completedBorrows.length}}</text><text class="rate-dot" wx:if="{{pendingRating.borrow}}"></text></view>
-        <view class="segment-item {{completedSubTab === 'lend' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="lend">借出 <text class="seg-count">{{completedLends.length}}</text><text class="rate-dot" wx:if="{{pendingRating.lend}}"></text></view>
-        <view class="segment-item {{completedSubTab === 'helpReq' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="helpReq">求助 <text class="seg-count">{{completedHelpReqs.length}}</text><text class="rate-dot" wx:if="{{pendingRating.helpReq}}"></text></view>
-        <view class="segment-item {{completedSubTab === 'helpPro' ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="helpPro">帮助 <text class="seg-count">{{completedHelpPros.length}}</text><text class="rate-dot" wx:if="{{pendingRating.helpPro}}"></text></view>
+        <view class="segment-item {{completedSubTab === ACTIVITY_ROLE.BORROW ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="{{ACTIVITY_ROLE.BORROW}}">借入 <text class="seg-count">{{completedBorrows.length}}</text><text class="rate-dot" wx:if="{{pendingRating.borrow}}"></text></view>
+        <view class="segment-item {{completedSubTab === ACTIVITY_ROLE.LEND ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="{{ACTIVITY_ROLE.LEND}}">借出 <text class="seg-count">{{completedLends.length}}</text><text class="rate-dot" wx:if="{{pendingRating.lend}}"></text></view>
+        <view class="segment-item {{completedSubTab === ACTIVITY_ROLE.HELP_REQ ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="{{ACTIVITY_ROLE.HELP_REQ}}">求助 <text class="seg-count">{{completedHelpReqs.length}}</text><text class="rate-dot" wx:if="{{pendingRating.helpReq}}"></text></view>
+        <view class="segment-item {{completedSubTab === ACTIVITY_ROLE.HELP_PRO ? 'active' : ''}}" bindtap="onCompletedSubTap" data-sub="{{ACTIVITY_ROLE.HELP_PRO}}">帮助 <text class="seg-count">{{completedHelpPros.length}}</text><text class="rate-dot" wx:if="{{pendingRating.helpPro}}"></text></view>
       </view>
     </view>
 
     <scroll-view class="page-content" scroll-y enhanced show-scrollbar="{{false}}" refresher-enabled refresher-triggered="{{refreshing}}" bindrefresherrefresh="onPullRefresh">
       <!-- 已完成 - 借入 -->
-      <view wx:if="{{completedSubTab === 'borrow'}}">
+      <view wx:if="{{completedSubTab === ACTIVITY_ROLE.BORROW}}">
         <block wx:for="{{completedBorrows}}" wx:key="id">
-          <view class="progress-item" bindtap="onCompletedDetail" data-id="{{item.id}}" data-type="borrow">
+          <view class="progress-item" bindtap="onCompletedDetail" data-id="{{item.id}}" data-type="{{ACTIVITY_ROLE.BORROW}}">
             <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
@@ -303,9 +303,9 @@
       </view>
 
       <!-- 已完成 - 借出 -->
-      <view wx:if="{{completedSubTab === 'lend'}}">
+      <view wx:if="{{completedSubTab === ACTIVITY_ROLE.LEND}}">
         <block wx:for="{{completedLends}}" wx:key="id">
-          <view class="progress-item" bindtap="onCompletedDetail" data-id="{{item.id}}" data-type="lend">
+          <view class="progress-item" bindtap="onCompletedDetail" data-id="{{item.id}}" data-type="{{ACTIVITY_ROLE.LEND}}">
             <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
@@ -322,9 +322,9 @@
       </view>
 
       <!-- 已完成 - 求助 -->
-      <view wx:if="{{completedSubTab === 'helpReq'}}">
+      <view wx:if="{{completedSubTab === ACTIVITY_ROLE.HELP_REQ}}">
         <block wx:for="{{completedHelpReqs}}" wx:key="id">
-          <view class="progress-item" bindtap="onCompletedDetail" data-id="{{item.id}}" data-type="helpReq">
+          <view class="progress-item" bindtap="onCompletedDetail" data-id="{{item.id}}" data-type="{{ACTIVITY_ROLE.HELP_REQ}}">
             <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
@@ -341,9 +341,9 @@
       </view>
 
       <!-- 已完成 - 帮助 -->
-      <view wx:if="{{completedSubTab === 'helpPro'}}">
+      <view wx:if="{{completedSubTab === ACTIVITY_ROLE.HELP_PRO}}">
         <block wx:for="{{completedHelpPros}}" wx:key="id">
-          <view class="progress-item" bindtap="onCompletedDetail" data-id="{{item.id}}" data-type="helpPro">
+          <view class="progress-item" bindtap="onCompletedDetail" data-id="{{item.id}}" data-type="{{ACTIVITY_ROLE.HELP_PRO}}">
             <view class="progress-avatar">👤</view>
             <view class="progress-info">
               <view class="progress-title progress-title-lg">{{item.itemTitle}}</view>
@@ -411,14 +411,14 @@
     <view class="input-group">
       <text class="edit-input-label">发布类型</text>
       <view class="segment" style="margin:0;">
-        <view class="segment-item {{editPostType === 'LEND' ? 'active' : ''}}">闲置借出</view>
-        <view class="segment-item {{editPostType === 'WANTED' ? 'active' : ''}}">需求借入</view>
-        <view class="segment-item {{editPostType === 'HELP' ? 'active' : ''}}">技能求助</view>
+        <view class="segment-item {{editPostType === POST_TYPE.LEND ? 'active' : ''}}">闲置借出</view>
+        <view class="segment-item {{editPostType === POST_TYPE.WANTED ? 'active' : ''}}">需求借入</view>
+        <view class="segment-item {{editPostType === POST_TYPE.HELP ? 'active' : ''}}">技能求助</view>
       </view>
     </view>
 
     <!-- ===== LEND: 闲置借出 ===== -->
-    <block wx:if="{{editPostType === 'LEND'}}">
+    <block wx:if="{{editPostType === POST_TYPE.LEND}}">
 
       <view class="input-group">
         <text class="edit-input-label">物品标题</text>
@@ -505,7 +505,7 @@
     </block>
 
     <!-- ===== WANTED: 需求借入 ===== -->
-    <block wx:if="{{editPostType === 'WANTED'}}">
+    <block wx:if="{{editPostType === POST_TYPE.WANTED}}">
 
       <view class="input-group">
         <text class="edit-input-label">物品名称</text>
@@ -570,7 +570,7 @@
     </block>
 
     <!-- ===== HELP: 技能求助 ===== -->
-    <block wx:if="{{editPostType === 'HELP'}}">
+    <block wx:if="{{editPostType === POST_TYPE.HELP}}">
 
       <view class="input-group">
         <text class="edit-input-label">求助标题</text>
@@ -696,35 +696,35 @@
   <scroll-view class="approval-sheet-body" scroll-y enhanced show-scrollbar="{{false}}">
     <!-- 标题行：闲置物品用"物品"，求助用"求助标题" -->
     <view class="approval-section">
-      <text class="approval-section-label">{{approvalSheetItem.approvalType === 'help' ? '求助标题' : '物品'}}</text>
+      <text class="approval-section-label">{{approvalSheetItem.approvalType === ACTIVITY_ROLE.HELP ? '求助标题' : '物品'}}</text>
       <text class="approval-item-title">{{approvalSheetItem.itemTitle}}</text>
       <!-- 借入/借出类型：显示对方期望的可借出时长 -->
-      <view class="approval-duration-row" wx:if="{{approvalSheetItem.maxDuration && (approvalSheetItem.approvalType === 'borrow' || approvalSheetItem.approvalType === 'lend')}}">
+      <view class="approval-duration-row" wx:if="{{approvalSheetItem.maxDuration && (approvalSheetItem.approvalType === ACTIVITY_ROLE.BORROW || approvalSheetItem.approvalType === ACTIVITY_ROLE.LEND)}}">
         <text class="approval-duration-label">可借出时长：</text>
         <text class="approval-duration-value">{{approvalSheetItem.maxDuration}}{{(approvalSheetItem.durationUnit === 'hour' ? '小时' : '天')}}</text>
       </view>
       <!-- 求助类型：显示时间段 -->
-      <view class="approval-duration-row" wx:if="{{approvalSheetItem.approvalType === 'help'}}">
+      <view class="approval-duration-row" wx:if="{{approvalSheetItem.approvalType === ACTIVITY_ROLE.HELP}}">
         <text class="approval-duration-label">时间段：</text>
         <text class="approval-duration-value">{{approvalSheetItem.timeStart && approvalSheetItem.timeEnd ? (approvalSheetItem.timeStart + ' ~ ' + approvalSheetItem.timeEnd) : '--'}}</text>
       </view>
     </view>
 
     <!-- 求助类型：备注（帮住者填写的说明） -->
-    <view class="approval-section" wx:if="{{approvalSheetItem.approvalType === 'help'}}">
+    <view class="approval-section" wx:if="{{approvalSheetItem.approvalType === ACTIVITY_ROLE.HELP}}">
       <text class="approval-section-label">备注</text>
       <text class="approval-note-text">{{approvalSheetItem.note || '无'}}</text>
     </view>
 
     <!-- 借入/借出类型：申请人备注 -->
     <view class="approval-section" wx:elif="{{approvalSheetItem.note}}">
-      <text class="approval-section-label">{{approvalSheetItem.postType === 'WANTED' ? '借出说明' : '借入说明'}}</text>
+      <text class="approval-section-label">{{approvalSheetItem.postType === POST_TYPE.WANTED ? '借出说明' : '借入说明'}}</text>
       <text class="approval-note-text">{{approvalSheetItem.note}}</text>
     </view>
 
     <!-- 申请人信息 -->
     <view class="approval-section">
-      <text class="approval-section-label">{{approvalSheetItem.approvalType === 'borrow' ? '愿意借出的住户' : (approvalSheetItem.approvalType === 'lend' ? '希望借用的住户' : '主动帮忙的住户')}}</text>
+      <text class="approval-section-label">{{approvalSheetItem.approvalType === ACTIVITY_ROLE.BORROW ? '愿意借出的住户' : (approvalSheetItem.approvalType === ACTIVITY_ROLE.LEND ? '希望借用的住户' : '主动帮忙的住户')}}</text>
       <view class="approval-resident-card">
         <view class="approval-resident-row">
           <text class="approval-resident-addr approval-resident-addr-link" wx:if="{{approvalSheetItem.applicantUserId}}" catchtap="onTapChatWithUser" data-user-id="{{approvalSheetItem.applicantUserId}}" data-user-name="{{approvalSheetItem.applicantName}}">{{approvalSheetItem.applicantAddress}}</text>
@@ -773,14 +773,14 @@
         <text class="approval-tip-icon">💡</text>
         <text class="approval-tip-title">温馨提示</text>
       </view>
-      <text class="approval-tip-text">您可以根据对方的过往记录来判断是否{{approvalSheetItem.approvalType === 'help' ? '接受帮助' : (approvalSheetItem.approvalType === 'borrow' ? '确认借用' : '同意借给')}}{{approvalSheetItem.approvalType === 'borrow' ? '愿意借出的住户' : (approvalSheetItem.approvalType === 'lend' ? '希望借用的住户' : '主动帮忙的住户')}}，良好的互助记录通常意味着更可靠的合作体验。</text>
+      <text class="approval-tip-text">您可以根据对方的过往记录来判断是否{{approvalSheetItem.approvalType === ACTIVITY_ROLE.HELP ? '接受帮助' : (approvalSheetItem.approvalType === ACTIVITY_ROLE.BORROW ? '确认借用' : '同意借给')}}{{approvalSheetItem.approvalType === ACTIVITY_ROLE.BORROW ? '愿意借出的住户' : (approvalSheetItem.approvalType === ACTIVITY_ROLE.LEND ? '希望借用的住户' : '主动帮忙的住户')}}，良好的互助记录通常意味着更可靠的合作体验。</text>
     </view>
     <view style="height:20rpx;"></view>
   </scroll-view>
 
   <view class="approval-sheet-footer">
     <view class="approval-footer-row">
-      <view class="approval-confirm-btn" bindtap="onConfirmApproval">{{approvalSheetItem.approvalType === 'borrow' ? '确认借入' : '同意'}}</view>
+      <view class="approval-confirm-btn" bindtap="onConfirmApproval">{{approvalSheetItem.approvalType === ACTIVITY_ROLE.BORROW ? '确认借入' : '同意'}}</view>
       <view class="approval-reject-btn" bindtap="onRejectClick">拒绝</view>
     </view>
   </view>
@@ -791,19 +791,19 @@
 <view class="progress-sheet" wx:if="{{showProgressSheet}}">
   <view class="progress-sheet-header">
     <view class="progress-sheet-handle"></view>
-    <view class="progress-sheet-title">{{progressSheetType === 'helpReq' || progressSheetType === 'helpPro' ? '结束' : (progressSheetType === 'lend' ? '确认归还' : '归还物品')}}</view>
+    <view class="progress-sheet-title">{{progressSheetType === ACTIVITY_ROLE.HELP_REQ || progressSheetType === ACTIVITY_ROLE.HELP_PRO ? '结束' : (progressSheetType === ACTIVITY_ROLE.LEND ? '确认归还' : '归还物品')}}</view>
   </view>
 
   <scroll-view class="progress-sheet-body" scroll-y enhanced show-scrollbar="{{false}}" style="padding-bottom: {{sheetPaddingBottom}}px;">
     <!-- 物品标题 -->
     <view class="approval-section">
-      <text class="approval-section-label">{{progressSheetType === 'helpReq' || progressSheetType === 'helpPro' ? '标题' : '物品'}}</text>
+      <text class="approval-section-label">{{progressSheetType === ACTIVITY_ROLE.HELP_REQ || progressSheetType === ACTIVITY_ROLE.HELP_PRO ? '标题' : '物品'}}</text>
       <text class="approval-item-title">{{progressSheetItem.itemTitle}}</text>
     </view>
 
     <!-- 备注（借入说明/借出说明/求助说明） -->
     <view class="approval-section" wx:if="{{progressSheetItem.note}}">
-      <text class="approval-section-label">{{progressSheetType === 'helpReq' ? '求助说明' : (progressSheetType === 'helpPro' ? '帮助说明' : (progressSheetItem.postType === 'WANTED' ? '借出说明' : '借入说明'))}}</text>
+      <text class="approval-section-label">{{progressSheetType === ACTIVITY_ROLE.HELP_REQ ? '求助说明' : (progressSheetType === ACTIVITY_ROLE.HELP_PRO ? '帮助说明' : (progressSheetItem.postType === POST_TYPE.WANTED ? '借出说明' : '借入说明'))}}</text>
       <text class="approval-note-text">{{progressSheetItem.note}}</text>
     </view>
 
@@ -826,7 +826,7 @@
     </view>
 
     <!-- 归还时间（仅借入/借出） -->
-    <view class="approval-section" wx:if="{{progressSheetType === 'borrow' || progressSheetType === 'lend'}}">
+    <view class="approval-section" wx:if="{{progressSheetType === ACTIVITY_ROLE.BORROW || progressSheetType === ACTIVITY_ROLE.LEND}}">
       <text class="approval-section-label">归还时间</text>
       <view class="progress-return-time {{progressSheetItem.isOverdue ? 'overdue' : ''}}">
         <text wx:if="{{progressSheetItem.isOverdue && progressSheetItem.remainingDays < 0 && -progressSheetItem.remainingDays >= 1}}">已超出归还时间 {{-progressSheetItem.remainingDays}} 天</text>
@@ -839,7 +839,7 @@
     </view>
 
     <!-- 使用后物品状况（借出专用，必填） -->
-    <view class="approval-section" wx:if="{{progressSheetType === 'lend'}}">
+    <view class="approval-section" wx:if="{{progressSheetType === ACTIVITY_ROLE.LEND}}">
       <text class="approval-section-label">使用后物品状况 <text style="color:var(--red);">*</text></text>
       <view class="segment" style="margin:0;">
         <view class="segment-item {{progressSheetCondition === 'normal' ? 'active' : ''}}" bindtap="onProgressConditionTap" data-value="normal">正常损耗</view>
@@ -876,7 +876,7 @@
   </scroll-view>
 
   <view class="progress-sheet-footer">
-    <view class="progress-confirm-btn" bindtap="onConfirmReturn">{{progressSheetType === 'helpReq' || progressSheetType === 'helpPro' ? '结束' : (progressSheetType === 'lend' ? '对方已归还' : '我已归还')}}</view>
+    <view class="progress-confirm-btn" bindtap="onConfirmReturn">{{progressSheetType === ACTIVITY_ROLE.HELP_REQ || progressSheetType === ACTIVITY_ROLE.HELP_PRO ? '结束' : (progressSheetType === ACTIVITY_ROLE.LEND ? '对方已归还' : '我已归还')}}</view>
   </view>
 </view>
 
@@ -891,13 +891,13 @@
   <scroll-view class="completed-sheet-body" scroll-y enhanced show-scrollbar="{{false}}" style="padding-bottom: {{sheetPaddingBottom}}px;">
     <!-- 物品标题 -->
     <view class="approval-section">
-      <text class="approval-section-label">{{completedSheetItem.type === 'helpReq' || completedSheetItem.type === 'helpPro' ? '标题' : '物品'}}</text>
+      <text class="approval-section-label">{{completedSheetItem.type === ACTIVITY_ROLE.HELP_REQ || completedSheetItem.type === ACTIVITY_ROLE.HELP_PRO ? '标题' : '物品'}}</text>
       <text class="approval-item-title">{{completedSheetItem.itemTitle}}</text>
     </view>
 
     <!-- 备注（借入说明/借出说明/求助说明） -->
     <view class="approval-section" wx:if="{{completedSheetItem.note}}">
-      <text class="approval-section-label">{{completedSheetItem.type === 'helpReq' || completedSheetItem.type === 'helpPro' ? '求助说明' : (completedSheetItem.postType === 'WANTED' ? '借出说明' : '借入说明')}}</text>
+      <text class="approval-section-label">{{completedSheetItem.type === ACTIVITY_ROLE.HELP_REQ || completedSheetItem.type === ACTIVITY_ROLE.HELP_PRO ? '求助说明' : (completedSheetItem.postType === POST_TYPE.WANTED ? '借出说明' : '借入说明')}}</text>
       <text class="approval-note-text">{{completedSheetItem.note}}</text>
     </view>
 
@@ -913,7 +913,7 @@
     </view>
 
     <!-- 使用后物品状况（借出方专用：已填写则展示，未填写则提供补填入口） -->
-    <view class="approval-section" wx:if="{{completedSheetItem.type === 'lend'}}">
+    <view class="approval-section" wx:if="{{completedSheetItem.type === ACTIVITY_ROLE.LEND}}">
       <text class="approval-section-label">使用后物品状况 <text style="color:var(--red);">*</text></text>
       <view wx:if="{{completedSheetItem.damageType}}" class="completed-damage-display">
         <text class="completed-damage-text">{{completedSheetItem.damageType === 'normal' ? '正常损耗' : completedSheetItem.damageType === 'severe' ? '非正常损坏' : completedSheetItem.damageType === 'broken' ? '完全损坏' : completedSheetItem.damageType}}</text>
@@ -1011,8 +1011,8 @@
 <!-- ===== Return Confirm Alert ===== -->
 <view class="alert-overlay" wx:if="{{showReturnConfirmAlert}}" catchtap="onCancelReturnConfirm">
   <view class="alert" catchtap="">
-    <view class="alert-title">确认{{returnConfirmData.type === 'helpReq' || returnConfirmData.type === 'helpPro' ? '结束' : '归还'}}</view>
-    <view class="alert-body">{{returnConfirmData.type === 'helpReq' || returnConfirmData.type === 'helpPro' ? '确认结束此次互助？' : (returnConfirmData.type === 'lend' ? '确认对方已归还该物品？' : '确认我已归还该物品？')}}</view>
+    <view class="alert-title">确认{{returnConfirmData.type === ACTIVITY_ROLE.HELP_REQ || returnConfirmData.type === ACTIVITY_ROLE.HELP_PRO ? '结束' : '归还'}}</view>
+    <view class="alert-body">{{returnConfirmData.type === ACTIVITY_ROLE.HELP_REQ || returnConfirmData.type === ACTIVITY_ROLE.HELP_PRO ? '确认结束此次互助？' : (returnConfirmData.type === ACTIVITY_ROLE.LEND ? '确认对方已归还该物品？' : '确认我已归还该物品？')}}</view>
     <view class="alert-actions">
       <view class="alert-btn" bindtap="onCancelReturnConfirm">取消</view>
       <view class="alert-btn alert-btn-bold" bindtap="onDoReturn">确认</view>

@@ -1,5 +1,6 @@
 package com.platform.security;
 
+import com.platform.common.UserType;
 import com.platform.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
@@ -63,7 +64,7 @@ class JwtAuthenticationFilterTest {
         givenRequestUri("/api/idle-items/home");
         when(jwtProvider.validate(VALID_TOKEN)).thenReturn(true);
         when(jwtProvider.getUserId(VALID_TOKEN)).thenReturn("1");
-        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn("owner");
+        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn(UserType.OWNER);
         // ROLE_USER 路径需要 tokenVersion 与探针校验
         when(jwtProvider.getTokenVersion(VALID_TOKEN)).thenReturn(1);
         UserRepository.AuthProbe probe = mockProbe(1, "approved");
@@ -89,7 +90,7 @@ class JwtAuthenticationFilterTest {
         givenRequestUri("/api/admin/users");
         when(jwtProvider.validate(VALID_TOKEN)).thenReturn(true);
         when(jwtProvider.getUserId(VALID_TOKEN)).thenReturn("1");
-        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn("super_admin");
+        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn(UserType.SUPER_ADMIN);
 
         // 执行
         filter.doFilterInternal(request, response, filterChain);
@@ -107,7 +108,7 @@ class JwtAuthenticationFilterTest {
         givenRequestUri("/api/admin/users");
         when(jwtProvider.validate(VALID_TOKEN)).thenReturn(true);
         when(jwtProvider.getUserId(VALID_TOKEN)).thenReturn("2");
-        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn("admin");
+        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn(UserType.ADMIN);
 
         // 执行
         filter.doFilterInternal(request, response, filterChain);
@@ -125,7 +126,7 @@ class JwtAuthenticationFilterTest {
         givenRequestUri("/api/idle-items/home");
         when(jwtProvider.validate(VALID_TOKEN)).thenReturn(true);
         when(jwtProvider.getUserId(VALID_TOKEN)).thenReturn("3");
-        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn("tenant");
+        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn(UserType.TENANT);
         // ROLE_USER 路径需要 tokenVersion 与探针校验
         when(jwtProvider.getTokenVersion(VALID_TOKEN)).thenReturn(1);
         UserRepository.AuthProbe probe = mockProbe(1, "approved");
@@ -198,7 +199,7 @@ class JwtAuthenticationFilterTest {
         givenRequestUri("/api/idle-items/home");
         when(jwtProvider.validate(VALID_TOKEN)).thenReturn(true);
         when(jwtProvider.getUserId(VALID_TOKEN)).thenReturn("1");
-        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn("owner");
+        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn(UserType.OWNER);
         when(jwtProvider.getTokenVersion(VALID_TOKEN)).thenReturn(1);
 
         UserRepository.AuthProbe probe = mockProbe(2, "approved");
@@ -220,7 +221,7 @@ class JwtAuthenticationFilterTest {
         givenRequestUri("/api/auth/status");
         when(jwtProvider.validate(VALID_TOKEN)).thenReturn(true);
         when(jwtProvider.getUserId(VALID_TOKEN)).thenReturn("1");
-        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn("owner");
+        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn(UserType.OWNER);
         when(jwtProvider.getTokenVersion(VALID_TOKEN)).thenReturn(1);
 
         UserRepository.AuthProbe probe = mockProbe(2, "approved");
@@ -247,7 +248,7 @@ class JwtAuthenticationFilterTest {
         givenRequestUri("/api/idle-items/publish");
         when(jwtProvider.validate(VALID_TOKEN)).thenReturn(true);
         when(jwtProvider.getUserId(VALID_TOKEN)).thenReturn("1");
-        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn("owner");
+        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn(UserType.OWNER);
         when(jwtProvider.getTokenVersion(VALID_TOKEN)).thenReturn(1);
 
         UserRepository.AuthProbe probe = mockProbe(1, "pending");
@@ -271,7 +272,7 @@ class JwtAuthenticationFilterTest {
         givenRequestUri("/api/common/buildings/1");
         when(jwtProvider.validate(VALID_TOKEN)).thenReturn(true);
         when(jwtProvider.getUserId(VALID_TOKEN)).thenReturn("1");
-        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn("owner");
+        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn(UserType.OWNER);
         when(jwtProvider.getTokenVersion(VALID_TOKEN)).thenReturn(1);
 
         UserRepository.AuthProbe probe = mockProbe(1, "pending");
@@ -294,7 +295,7 @@ class JwtAuthenticationFilterTest {
         givenRequestUri("/uploads/abc.jpg");
         when(jwtProvider.validate(VALID_TOKEN)).thenReturn(true);
         when(jwtProvider.getUserId(VALID_TOKEN)).thenReturn("1");
-        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn("owner");
+        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn(UserType.OWNER);
         when(jwtProvider.getTokenVersion(VALID_TOKEN)).thenReturn(1);
 
         UserRepository.AuthProbe probe = mockProbe(1, "rejected");
@@ -319,7 +320,7 @@ class JwtAuthenticationFilterTest {
         givenRequestUri("/api/admin/users");
         when(jwtProvider.validate(VALID_TOKEN)).thenReturn(true);
         when(jwtProvider.getUserId(VALID_TOKEN)).thenReturn("1");
-        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn("admin");
+        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn(UserType.ADMIN);
 
         // 执行
         filter.doFilterInternal(request, response, filterChain);
@@ -342,7 +343,7 @@ class JwtAuthenticationFilterTest {
         givenRequestUri("/api/idle-items/home");
         when(jwtProvider.validate(VALID_TOKEN)).thenReturn(true);
         when(jwtProvider.getUserId(VALID_TOKEN)).thenReturn("not_a_number");
-        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn("owner");
+        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn(UserType.OWNER);
         when(jwtProvider.getTokenVersion(VALID_TOKEN)).thenReturn(1);
 
         // 执行
@@ -367,7 +368,7 @@ class JwtAuthenticationFilterTest {
         givenRequestUri("/api/auth/status");
         when(jwtProvider.validate(VALID_TOKEN)).thenReturn(true);
         when(jwtProvider.getUserId(VALID_TOKEN)).thenReturn("1");
-        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn("owner");
+        when(jwtProvider.getUserType(VALID_TOKEN)).thenReturn(UserType.OWNER);
         when(jwtProvider.getTokenVersion(VALID_TOKEN)).thenReturn(null);  // B端风格token无ver
 
         // userRepository.findAuthProbeById 返回 null（用户已删除）

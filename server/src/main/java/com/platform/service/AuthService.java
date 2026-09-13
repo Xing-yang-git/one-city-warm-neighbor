@@ -3,9 +3,11 @@ package com.platform.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.platform.common.AppTimeZone;
 import com.platform.common.BizException;
 import com.platform.common.BizStatus;
 import com.platform.common.UserFormatter;
+import com.platform.common.UserType;
 import com.platform.model.dto.AuthResponseDTO;
 import com.platform.model.dto.AuthStatusDTO;
 import com.platform.model.dto.LoginRequest;
@@ -33,9 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @Service
 public class AuthService {
@@ -95,7 +95,7 @@ public class AuthService {
             user.setName(req.getName() != null ? req.getName() : "微信用户");
             user.setUserType("业主");
             user.setAuthStatus(BizStatus.REGISTERING);
-            user.setCreatedAt(LocalDateTime.now());
+            user.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
             user = userRepository.save(user);
             needRegister = true;
         } else if (BizStatus.PENDING.equals(user.getAuthStatus()) && user.getRoom() == null) {
@@ -123,7 +123,9 @@ public class AuthService {
         User user = userRepository.findByUsername(req.getUsername())
                 .orElseThrow(() -> new BizException("账号或密码错误"));
 
-        if (!"admin".equals(user.getUserType()) && !"senior_admin".equals(user.getUserType()) && !"super_admin".equals(user.getUserType())) {
+        if (!UserType.ADMIN.equals(user.getUserType())
+                && !UserType.SENIOR_ADMIN.equals(user.getUserType())
+                && !UserType.SUPER_ADMIN.equals(user.getUserType())) {
             throw new BizException("账号或密码错误");
         }
 
@@ -232,7 +234,7 @@ public class AuthService {
             // 手机号不匹配 → 残留旧 token，新建用户
         }
         User user = new User();
-        user.setCreatedAt(LocalDateTime.now());
+        user.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         return user;
     }
 
@@ -279,18 +281,14 @@ public class AuthService {
     }
 
     /**
-     * 根据 楼栋/单元/房号 的文本输入解析房间。
-     * 若 Building、Unit、Room 实体不存在则自动创建。
-     */
-    /**
      * 将前端用户类型编码映射为数据库 CHECK 约束值。
      * 数据库约束：user_type IN ('业主','租客','物业','admin','senior_admin','super_admin')
      */
     private String mapUserType(String raw) {
         if (raw == null) return null;
         return switch (raw) {
-            case "owner"  -> "业主";
-            case "tenant" -> "租客";
+            case UserType.OWNER  -> "业主";
+            case UserType.TENANT -> "租客";
             case "物业"   -> "物业";
             default       -> raw;  // admin / super_admin / 已是中文的值直接透传
         };

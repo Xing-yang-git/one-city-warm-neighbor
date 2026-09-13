@@ -1,6 +1,7 @@
 package com.platform.ai.search;
 
 import com.platform.ai.common.AiApiInvoker;
+import com.platform.common.AiGenerationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -96,11 +97,11 @@ public class RerankerService {
                 .body(Map.class);
 
         if (response == null || !response.containsKey("results")) {
-            throw new RuntimeException("重排响应缺少 results 字段");
+            throw new AiGenerationException("重排响应缺少 results 字段");
         }
         List<Map<String, Object>> results = (List<Map<String, Object>>) response.get("results");
         if (results == null || results.isEmpty()) {
-            throw new RuntimeException("重排响应 results 为空");
+            throw new AiGenerationException("重排响应 results 为空");
         }
 
         // 按 relevance_score 降序；index 映射回候选，同时用分数做关卡过滤（score < minScore 丢弃）

@@ -1,6 +1,7 @@
 package com.platform.model.entity;
 
 import com.platform.common.AgentConversationStatus;
+import com.platform.common.AppTimeZone;
 import com.platform.model.entity.column.AgentConversationsColumn;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -79,13 +80,13 @@ public class AgentConversation {
     /** 插入前自动填充创建/更新时间 */
     @PrePersist
     void onCreate() {
-        createdAt = LocalDateTime.now();
+        createdAt = LocalDateTime.now(AppTimeZone.APP_ZONE);
         updatedAt = createdAt;
     }
 
     /** 更新前自动刷新更新时间 */
     @PreUpdate
     void onUpdate() {
-        updatedAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now(AppTimeZone.APP_ZONE);
     }
 }

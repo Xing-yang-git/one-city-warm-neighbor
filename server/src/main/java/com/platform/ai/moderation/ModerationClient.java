@@ -1,6 +1,7 @@
 package com.platform.ai.moderation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.platform.common.AiGenerationException;
 import com.platform.config.AiConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -134,7 +135,7 @@ public class ModerationClient {
             return callApi(requestBody, chatRestClient, aiConfig.getChatApiKey());
         } catch (Exception e) {
             log.error("图片审核失败: imageUrl={}", imageUrl, e);
-            throw new RuntimeException("图片审核失败", e);
+            throw new AiGenerationException("图片审核失败", e);
         }
     }
 
@@ -166,7 +167,7 @@ public class ModerationClient {
             return callApi(requestBody, deepseekRestClient, aiConfig.getDeepseekApiKey());
         } catch (Exception e) {
             log.error("文本审核失败: title={}", title, e);
-            throw new RuntimeException("文本审核失败", e);
+            throw new AiGenerationException("文本审核失败", e);
         }
     }
 
@@ -187,23 +188,23 @@ public class ModerationClient {
                 .body(Map.class);
 
         if (response == null || !response.containsKey("choices")) {
-            throw new RuntimeException("Chat API 响应缺少 choices 字段");
+            throw new AiGenerationException("Chat API 响应缺少 choices 字段");
         }
 
         List<Map<String, Object>> choices = (List<Map<String, Object>>) response.get("choices");
         if (choices == null || choices.isEmpty()) {
-            throw new RuntimeException("Chat API 返回的 choices 数组为空");
+            throw new AiGenerationException("Chat API 返回的 choices 数组为空");
         }
 
         Map<String, Object> choice = choices.get(0);
         Map<String, Object> msg = (Map<String, Object>) choice.get("message");
         if (msg == null) {
-            throw new RuntimeException("Chat API 响应缺少 message 字段");
+            throw new AiGenerationException("Chat API 响应缺少 message 字段");
         }
 
         String content = (String) msg.get("content");
         if (content == null || content.isBlank()) {
-            throw new RuntimeException("Chat API 响应 content 为空");
+            throw new AiGenerationException("Chat API 响应 content 为空");
         }
 
         // 解析模型返回的 JSON（可能包含 markdown 代码块包裹）
@@ -212,7 +213,7 @@ public class ModerationClient {
             return objectMapper.readValue(jsonStr, ModerationResult.class);
         } catch (Exception e) {
             log.error("解析审核结果 JSON 失败: content={}", content, e);
-            throw new RuntimeException("审核结果 JSON 解析失败", e);
+            throw new AiGenerationException("审核结果 JSON 解析失败", e);
         }
     }
 

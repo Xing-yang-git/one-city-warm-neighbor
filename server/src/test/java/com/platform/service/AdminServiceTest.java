@@ -1,9 +1,14 @@
 package com.platform.service;
 
+import com.platform.common.AppTimeZone;
+import com.platform.common.ContentType;
+import com.platform.common.DamageType;
+import com.platform.common.PostType;
 import com.platform.model.dto.*;
 import com.platform.model.entity.*;
 import com.platform.repository.*;
 import com.platform.websocket.ChatWebSocketHandler;
+import com.platform.common.ActivityRole;
 import com.platform.common.BizStatus;
 import com.platform.common.UserType;
 import org.junit.jupiter.api.BeforeEach;
@@ -88,8 +93,8 @@ class AdminServiceTest {
                 .name("管理员")
                 .userType(UserType.SENIOR_ADMIN)
                 .tenantId(tenantId)
-                .authStatus("approved")
-                .createdAt(LocalDateTime.now())
+                .authStatus(BizStatus.APPROVED)
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
 
         user = User.builder()
@@ -97,8 +102,8 @@ class AdminServiceTest {
                 .name("测试用户")
                 .userType("业主")
                 .tenantId(tenantId)
-                .authStatus("approved")
-                .createdAt(LocalDateTime.now())
+                .authStatus(BizStatus.APPROVED)
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
 
         idleItem = IdleItem.builder()
@@ -107,11 +112,11 @@ class AdminServiceTest {
                 .tenantId(tenantId)
                 .title("闲置物品")
                 .description("物品描述")
-                .postType("LEND")
+                .postType(PostType.LEND)
                 .category("数码")
-                .status("online")
+                .status(BizStatus.ONLINE)
                 .isProxy(false)
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
 
         helpRequest = HelpRequest.builder()
@@ -122,9 +127,9 @@ class AdminServiceTest {
                 .description("求助描述")
                 .category("搬家")
                 .isUrgent(false)
-                .status("online")
+                .status(BizStatus.ONLINE)
                 .isProxy(false)
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
     }
 
@@ -132,9 +137,9 @@ class AdminServiceTest {
 
     /** 构造一条租户内借用记录（供看板测试，idleId 需落在 idleItems 映射内） */
     private BorrowRequest buildBorrow(Long idleId, Long borrowerId) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(AppTimeZone.APP_ZONE);
         return BorrowRequest.builder().idleId(idleId).borrowerId(borrowerId)
-                .status(BizStatus.RETURNED).damageType("normal")
+                .status(BizStatus.RETURNED).damageType(DamageType.NORMAL)
                 .createdAt(now).returnedAt(now)
                 .build();
     }
@@ -143,7 +148,7 @@ class AdminServiceTest {
     @DisplayName("获取仪表盘 - 正常返回统计数据")
     void should_returnDashboard_when_dataExists() {
         // 准备：本月归还完成且有正常耗损的借用 + 本月完成的帮助接单
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(AppTimeZone.APP_ZONE);
         BorrowRequest borrow = buildBorrow(itemId, userId);
         HelpApplication helpApp = HelpApplication.builder()
                 .id(400L).helpId(helpId).helperId(userId)
@@ -164,9 +169,9 @@ class AdminServiceTest {
         // 断言
         assertThat(result).isNotNull();
         assertThat(result.getKpis()).hasSize(4);
-        assertThat(result.getKpis().get(0).getKey()).isEqualTo("idle");
+        assertThat(result.getKpis().get(0).getKey()).isEqualTo(ContentType.IDLE);
         assertThat(result.getKpis().get(0).getValue()).isEqualTo(1);   // LEND online
-        assertThat(result.getKpis().get(1).getKey()).isEqualTo("help");
+        assertThat(result.getKpis().get(1).getKey()).isEqualTo(ContentType.HELP);
         assertThat(result.getKpis().get(1).getValue()).isEqualTo(1);   // 求助 online
         assertThat(result.getCompletion().getCompleted()).isEqualTo(2); // 归还借用 + 完成帮助
         assertThat(result.getDamage().getNormal()).isEqualTo(1);
@@ -177,18 +182,18 @@ class AdminServiceTest {
     @Test
     @DisplayName("KPI 环比 - 本月 vs 上月发布增速")
     void should_computeKpiMomChange_correctly() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(AppTimeZone.APP_ZONE);
         LocalDateTime lastMonth = now.minusMonths(1);
         List<IdleItem> idleItems = new ArrayList<>();
         // 本月 3 条 LEND 发布
         for (int i = 0; i < 3; i++) {
             idleItems.add(IdleItem.builder().id(100L + i).userId(userId).tenantId(tenantId)
-                    .postType("LEND").status("online").category("数码").createdAt(now).build());
+                    .postType(PostType.LEND).status(BizStatus.ONLINE).category("数码").createdAt(now).build());
         }
         // 上月 6 条 LEND 发布
         for (int i = 0; i < 6; i++) {
             idleItems.add(IdleItem.builder().id(200L + i).userId(userId).tenantId(tenantId)
-                    .postType("LEND").status("online").category("数码").createdAt(lastMonth).build());
+                    .postType(PostType.LEND).status(BizStatus.ONLINE).category("数码").createdAt(lastMonth).build());
         }
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         when(idleItemRepository.findAll()).thenReturn(idleItems);
@@ -211,16 +216,16 @@ class AdminServiceTest {
     @Test
     @DisplayName("损坏统计 - 三态分布")
     void should_computeDamageThreeStates() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(AppTimeZone.APP_ZONE);
         IdleItem i1 = IdleItem.builder().id(itemId).userId(userId).tenantId(tenantId)
-                .postType("LEND").status("online").createdAt(now).build();
+                .postType(PostType.LEND).status(BizStatus.ONLINE).createdAt(now).build();
         IdleItem i2 = IdleItem.builder().id(itemId + 1).userId(userId).tenantId(tenantId)
-                .postType("LEND").status("online").createdAt(now).build();
+                .postType(PostType.LEND).status(BizStatus.ONLINE).createdAt(now).build();
         List<BorrowRequest> borrows = List.of(
-                BorrowRequest.builder().idleId(i1.getId()).borrowerId(userId).damageType("normal").build(),
-                BorrowRequest.builder().idleId(i1.getId()).borrowerId(userId).damageType("normal").build(),
-                BorrowRequest.builder().idleId(i2.getId()).borrowerId(userId).damageType("severe").build(),
-                BorrowRequest.builder().idleId(i2.getId()).borrowerId(userId).damageType("broken").build());
+                BorrowRequest.builder().idleId(i1.getId()).borrowerId(userId).damageType(DamageType.NORMAL).build(),
+                BorrowRequest.builder().idleId(i1.getId()).borrowerId(userId).damageType(DamageType.NORMAL).build(),
+                BorrowRequest.builder().idleId(i2.getId()).borrowerId(userId).damageType(DamageType.ABNORMAL).build(),
+                BorrowRequest.builder().idleId(i2.getId()).borrowerId(userId).damageType(DamageType.BROKEN).build());
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         when(idleItemRepository.findAll()).thenReturn(List.of(i1, i2));
         when(helpRequestRepository.findAll()).thenReturn(Collections.emptyList());
@@ -239,10 +244,10 @@ class AdminServiceTest {
     @Test
     @DisplayName("趋势 - 周/月/季分桶结构与当日计数")
     void should_computeTrendBuckets() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(AppTimeZone.APP_ZONE);
         // 今日发布 1 条闲置、今日归还 1 条借用（应落在 week 最后一个桶「今日」）
         IdleItem todayIdle = IdleItem.builder().id(itemId).userId(userId).tenantId(tenantId)
-                .postType("LEND").status("online").createdAt(now).build();
+                .postType(PostType.LEND).status(BizStatus.ONLINE).createdAt(now).build();
         BorrowRequest todayReturned = BorrowRequest.builder().id(300L).idleId(itemId).borrowerId(userId)
                 .status(BizStatus.RETURNED).createdAt(now).returnedAt(now).build();
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
@@ -271,18 +276,18 @@ class AdminServiceTest {
     @Test
     @DisplayName("排行 - 按住户合并闲置借入与技能接单次数")
     void should_computeRanking_groupedByUserAndType() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(AppTimeZone.APP_ZONE);
         Building building = Building.builder().id(1L).buildingNo(3).tenantId(tenantId).build();
         Unit unit = Unit.builder().id(1L).unitNo(2).building(building).build();
         Room room = Room.builder().id(1L).roomNumber("1502").unit(unit).build();
         User borrower = User.builder().id(3L).name("借入住户").userType(UserType.OWNER)
-                .tenantId(tenantId).room(room).authStatus("approved").createdAt(now).build();
+                .tenantId(tenantId).room(room).authStatus(BizStatus.APPROVED).createdAt(now).build();
         User helper = User.builder().id(4L).name("接单住户").userType(UserType.TENANT)
-                .tenantId(tenantId).authStatus("approved").createdAt(now).build();
+                .tenantId(tenantId).authStatus(BizStatus.APPROVED).createdAt(now).build();
         IdleItem i1 = IdleItem.builder().id(itemId).userId(3L).tenantId(tenantId)
-                .postType("LEND").status("online").createdAt(now).build();
+                .postType(PostType.LEND).status(BizStatus.ONLINE).createdAt(now).build();
         HelpRequest hr = HelpRequest.builder().id(helpId).userId(4L).tenantId(tenantId)
-                .title("求助").status("completed").createdAt(now).build();
+                .title("求助").status(BizStatus.COMPLETED).createdAt(now).build();
         // 3 号住户：2 次借入 + 1 次完成接单 → 合并 3 次；4 号住户：1 次完成接单 → 1 次
         HelpApplication appForBorrower = HelpApplication.builder().id(401L).helpId(helpId).helperId(3L)
                 .status(BizStatus.COMPLETED).createdAt(now).completedAt(now).build();
@@ -332,9 +337,9 @@ class AdminServiceTest {
     @Test
     @DisplayName("仪表盘 - 跨租户数据不计入")
     void should_exclude_otherTenant_when_dashboard() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(AppTimeZone.APP_ZONE);
         IdleItem otherTenant = IdleItem.builder().id(900L).userId(9L).tenantId(99L)
-                .postType("LEND").status("online").createdAt(now).build();
+                .postType(PostType.LEND).status(BizStatus.ONLINE).createdAt(now).build();
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
         when(idleItemRepository.findAll()).thenReturn(List.of(otherTenant));
         when(helpRequestRepository.findAll()).thenReturn(Collections.emptyList());
@@ -424,7 +429,7 @@ class AdminServiceTest {
         // 断言
         assertThat(result.get("success")).isEqualTo(true);
         assertThat(result.get("message")).isEqualTo("审核通过");
-        assertThat(user.getAuthStatus()).isEqualTo("approved");
+        assertThat(user.getAuthStatus()).isEqualTo(BizStatus.APPROVED);
         assertThat(user.getRejectReason()).isNull();
         verify(operationLogRepository).save(any(OperationLog.class));
     }
@@ -509,7 +514,7 @@ class AdminServiceTest {
 
         // 断言
         assertThat(result).isNotNull();
-        assertThat(result.getType()).isEqualTo("idle");
+        assertThat(result.getType()).isEqualTo(ContentType.IDLE);
         assertThat(result.getTitle()).isEqualTo("闲置物品");
     }
 
@@ -526,7 +531,7 @@ class AdminServiceTest {
 
         // 断言
         assertThat(result).isNotNull();
-        assertThat(result.getType()).isEqualTo("help");
+        assertThat(result.getType()).isEqualTo(ContentType.HELP);
         assertThat(result.getTitle()).isEqualTo("求助信息");
     }
 
@@ -539,10 +544,10 @@ class AdminServiceTest {
                 .userId(userId)
                 .tenantId(tenantId)
                 .title("借用中的物品")
-                .postType("LEND")
-                .status("active")
+                .postType(PostType.LEND)
+                .status(BizStatus.ACTIVE)
                 .isProxy(false)
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
 
         User borrower = User.builder()
@@ -556,10 +561,10 @@ class AdminServiceTest {
                 .id(300L)
                 .idleId(itemId)
                 .borrowerId(3L)
-                .status("active")
+                .status(BizStatus.ACTIVE)
                 .startDate(LocalDate.of(2026, 7, 20))
                 .durationDays(7)
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
 
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
@@ -591,10 +596,10 @@ class AdminServiceTest {
                 .userId(userId)
                 .tenantId(tenantId)
                 .title("已完成的物品")
-                .postType("LEND")
-                .status("completed")
+                .postType(PostType.LEND)
+                .status(BizStatus.COMPLETED)
                 .isProxy(false)
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
 
         User borrower = User.builder()
@@ -604,12 +609,12 @@ class AdminServiceTest {
                 .tenantId(tenantId)
                 .build();
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(AppTimeZone.APP_ZONE);
         BorrowRequest completedBorrow = BorrowRequest.builder()
                 .id(300L)
                 .idleId(itemId)
                 .borrowerId(3L)
-                .status("returned")
+                .status(BizStatus.RETURNED)
                 .startDate(LocalDate.of(2026, 7, 15))
                 .durationDays(5)
                 .createdAt(now.minusDays(10))
@@ -668,9 +673,9 @@ class AdminServiceTest {
                 .userId(userId)
                 .tenantId(tenantId)
                 .title("帮助中的求助")
-                .status("active")
+                .status(BizStatus.ACTIVE)
                 .isProxy(false)
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
 
         User helper = User.builder()
@@ -685,7 +690,7 @@ class AdminServiceTest {
                 .helpId(helpId)
                 .helperId(4L)
                 .status(BizStatus.APPROVED)
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
 
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
@@ -699,7 +704,7 @@ class AdminServiceTest {
 
         // 断言
         assertThat(result).isNotNull();
-        assertThat(result.getType()).isEqualTo("help");
+        assertThat(result.getType()).isEqualTo(ContentType.HELP);
         assertThat(result.getPeerName()).isEqualTo("帮助者");
         // 已完成特有字段应为空
         assertThat(result.getPeerRating()).isNull();
@@ -716,10 +721,10 @@ class AdminServiceTest {
                 .userId(userId)
                 .tenantId(tenantId)
                 .title("已完成的求助")
-                .status("completed")
+                .status(BizStatus.COMPLETED)
                 .timeStart(LocalDateTime.of(2026, 7, 10, 9, 0))
                 .isProxy(false)
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
 
         User helper = User.builder()
@@ -729,12 +734,12 @@ class AdminServiceTest {
                 .tenantId(tenantId)
                 .build();
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(AppTimeZone.APP_ZONE);
         HelpApplication completedApp = HelpApplication.builder()
                 .id(500L)
                 .helpId(helpId)
                 .helperId(4L)
-                .status("completed")
+                .status(BizStatus.COMPLETED)
                 .createdAt(now.minusDays(5))
                 .build();
         completedApp.setCompletedAt(now);
@@ -879,7 +884,7 @@ class AdminServiceTest {
         req.setUserId(userId);
         req.setTitle("代发物品");
         req.setDescription("测试代发");
-        req.setPostType("LEND");
+        req.setPostType(PostType.LEND);
         req.setCategory("数码");
         req.setPrice(java.math.BigDecimal.TEN);
 
@@ -908,7 +913,7 @@ class AdminServiceTest {
         IdleItemRequest req = new IdleItemRequest();
         req.setTitle("管理员代发");
         req.setDescription("测试");
-        req.setPostType("LEND");
+        req.setPostType(PostType.LEND);
         req.setCategory("数码");
 
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
@@ -968,8 +973,8 @@ class AdminServiceTest {
                 .id(300L)
                 .idleId(itemId)
                 .borrowerId(userId)
-                .status("returned")
-                .createdAt(LocalDateTime.now())
+                .status(BizStatus.RETURNED)
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
 
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
@@ -978,11 +983,11 @@ class AdminServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
         // 执行
-        List<RecordItemDTO> result = adminService.getRecords(adminId, "borrow");
+        List<RecordItemDTO> result = adminService.getRecords(adminId, ActivityRole.BORROW);
 
         // 断言
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getType()).isEqualTo("borrow");
+        assertThat(result.get(0).getType()).isEqualTo(ActivityRole.BORROW);
     }
 
     @Test
@@ -1010,7 +1015,7 @@ class AdminServiceTest {
                 .targetType("user")
                 .targetId(userId)
                 .detail("审核通过")
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
 
         // 仅超级管理员可查看，且日志按同小区管理员过滤；service 先全量过滤再内存分页

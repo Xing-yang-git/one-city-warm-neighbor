@@ -1,5 +1,6 @@
 package com.platform.model.entity;
 
+import com.platform.common.AppTimeZone;
 import com.platform.model.entity.column.TenantsColumn;
 import jakarta.persistence.*;
 import lombok.*;
@@ -35,6 +36,6 @@ public class Tenant {
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
+        createdAt = LocalDateTime.now(AppTimeZone.APP_ZONE);
     }
 }
