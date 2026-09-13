@@ -142,7 +142,7 @@ community-platform/
 │       └── styles/            # b-end.css
 │
 ├── rerank-service/            # 语义重排服务（FastAPI + bge-reranker-v2-m3，Docker，仅回环 127.0.0.1:8001）
-├── reviews/                   # 质量审查报告归档
+├── .claude/                   # Claude 协作机制（agents/skills）+ 审查报告归档（review-reports/）
 ├── CLAUDE.md                  # 项目约定与协作机制
 └── README.md
 ```
