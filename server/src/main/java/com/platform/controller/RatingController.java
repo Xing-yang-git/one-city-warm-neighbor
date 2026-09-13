@@ -2,6 +2,8 @@ package com.platform.controller;
 
 import com.platform.common.Result;
 import com.platform.model.dto.RatingRequest;
+import com.platform.model.dto.UserRatingsDTO;
+import com.platform.security.LoginUser;
 import com.platform.service.RatingService;
 import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
@@ -31,8 +33,8 @@ public class RatingController {
      * @return 空响应
      */
     @PostMapping
-    public Result<?> submit(@Valid @RequestBody RatingRequest req, Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+    public Result<Void> submit(@Valid @RequestBody RatingRequest req, Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         ratingService.submitRating(userId, req);
         return Result.ok();
     }
@@ -44,7 +46,7 @@ public class RatingController {
      * @return 评价统计信息 + 评价列表
      */
     @GetMapping("/user/{userId}")
-    public Result<?> getUserRatings(@PathVariable Long userId) {
+    public Result<UserRatingsDTO> getUserRatings(@PathVariable Long userId) {
         return Result.ok(ratingService.getUserRatings(userId));
     }
 }

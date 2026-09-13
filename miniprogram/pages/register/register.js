@@ -57,7 +57,9 @@ Page({
     api.get('/api/common/tenants')
       .then((data) => {
         wx.hideLoading();
-        this.setData({ tenants: data.list || data, filteredTenants: data.list || data });
+        // ListDTO 分页包装：content 为数组；兼容旧的裸数组返回
+        const list = data?.content || (Array.isArray(data) ? data : []);
+        this.setData({ tenants: list, filteredTenants: list });
       })
       .catch((err) => {
         wx.hideLoading();

@@ -526,7 +526,7 @@ const exportingLogs = ref(false);
 async function fetchLogs(): Promise<void> {
   logsLoading.value = true;
   try {
-    const res = await getLogs({ page: 0, size: 20 });
+    const res = await getLogs();
     operationLogs.value = res.data.data.content || [];
   } catch {
     // silent

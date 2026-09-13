@@ -59,6 +59,14 @@ public interface KnowledgeDocumentRepository extends JpaRepository<KnowledgeDocu
                                    @Param("status") String status,
                                    Pageable pageable);
 
+    /** 无分页变体（B端知识库列表一次性取全部） */
+    @Query("SELECT d FROM KnowledgeDocument d "
+            + "WHERE (:tenantId IS NULL OR d.tenantId = :tenantId) "
+            + "AND (:status IS NULL OR d.status = :status) "
+            + "ORDER BY d.createdAt DESC")
+    List<KnowledgeDocument> searchAll(@Param("tenantId") Long tenantId,
+                                      @Param("status") String status);
+
     /**
      * 按状态 + 更新时间阈值查询（卡死解析重置 / 过期文件清理）。
      *

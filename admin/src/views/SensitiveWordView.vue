@@ -55,18 +55,6 @@
             </el-table>
           </div>
 
-          <!-- 分页（服务端分页） -->
-          <div class="pagination-row">
-            <el-pagination
-              v-model:current-page="page"
-              v-model:page-size="pageSize"
-              :total="total"
-              :page-sizes="[10, 20, 50]"
-              layout="total, sizes, prev, pager, next, jumper"
-              @current-change="loadList"
-              @size-change="handleSizeChange"
-            />
-          </div>
         </div>
   </AppLayout>
 
@@ -109,7 +97,7 @@
  * 行内开关一键启停（等价于编辑状态），删除需二次确认。
  * 权限：仅 super_admin（后端每个端点首行校验，前端路由/菜单亦按角色收敛）。
  */
-import { ref, reactive, onMounted } from "vue";
+import { ref, reactive, computed, onMounted } from "vue";
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from "element-plus";
 import AppLayout from "@/layouts/AppLayout.vue";
 import {
@@ -128,29 +116,21 @@ const STATUS = SENSITIVE_WORD_STATUS;
 
 /** 表格加载状态 */
 const loading = ref<boolean>(false);
-/** 敏感词列表（当前页数据） */
+/** 敏感词列表（一次性加载全部） */
 const list = ref<SensitiveWordDTO[]>([]);
-/** 总条数（分页用） */
-const total = ref<number>(0);
-/** 当前页码（1 基，el-pagination 约定；调用后端时转 0 基） */
-const page = ref<number>(1);
-/** 每页条数 */
-const pageSize = ref<number>(10);
+/** 总条数（一次性加载后取列表长度） */
+const total = computed<number>(() => list.value.length);
 /** 状态过滤值（空表示全部） */
 const filterStatus = ref<string>("");
 
-/** 加载敏感词列表（服务端分页 + 状态过滤） */
+/** 加载敏感词列表（一次性全部 + 状态过滤） */
 async function loadList(): Promise<void> {
   loading.value = true;
   try {
     const res = await getSensitiveWords({
-      page: page.value - 1,
-      size: pageSize.value,
       status: filterStatus.value || undefined,
     });
-    const pageData = res.data?.data;
-    list.value = pageData?.content ?? [];
-    total.value = pageData?.totalElements ?? 0;
+    list.value = res.data?.data?.content ?? [];
   } catch {
     ElMessage.error("加载敏感词列表失败");
   } finally {
@@ -158,15 +138,8 @@ async function loadList(): Promise<void> {
   }
 }
 
-/** 查询按钮：回到第一页并重新加载 */
+/** 查询按钮：重新加载 */
 function handleSearch(): void {
-  page.value = 1;
-  loadList();
-}
-
-/** 每页条数变化：回到第一页并重新加载 */
-function handleSizeChange(): void {
-  page.value = 1;
   loadList();
 }
 

@@ -86,7 +86,7 @@ community-platform/
 │   └── src/
 │       ├── main/java/com/platform/
 │       │   ├── config/        # CORS, Security, WebSocket, DataInitializer, SchemaMigration, AiConfig
-│       │   ├── security/      # JwtTokenProvider, JwtAuthenticationFilter, JwtHandshakeInterceptor
+│       │   ├── security/      # JwtTokenProvider, JwtAuthenticationFilter, JwtHandshakeInterceptor, LoginUser（登录主体，controller 经 SecurityContext 取用户 id/角色）
 │       │   ├── ai/            # AI 模块（嵌入、审核、匹配、RAG 检索、文档导入、文案生成、Agent 对话）
 │       │   │   ├── embedding/ # EmbeddingClient, EmbeddingService
 │       │   │   ├── moderation/# ModerationClient/Service/Scheduler（内容审核）
@@ -102,7 +102,7 @@ community-platform/
 │       │   │                  #   AgentConversation, AgentMessage, AgentMemorySegment,
 │       │   │                  #   KnowledgeDocument, SensitiveWord）
 │       │   ├── model/entity/column/  # 20 表字段常量类（实体列名集中管理）
-│       │   ├── model/dto/     # DTO
+│       │   ├── model/dto/     # 60 DTO（请求参数、响应视图模型、SSE/WebSocket 消息）
 │       │   ├── repository/    # 20 Repository
 │       │   ├── service/       # 15 Service（含 WeChatService、KnowledgeDocumentService、KnowledgeImportService、SensitiveWordService）
 │       │   ├── controller/    # 12 Controller

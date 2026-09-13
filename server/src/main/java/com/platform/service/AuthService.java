@@ -3,9 +3,13 @@ package com.platform.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.platform.common.BizException;
 import com.platform.common.BizStatus;
 import com.platform.common.UserFormatter;
+import com.platform.model.dto.AuthResponseDTO;
+import com.platform.model.dto.AuthStatusDTO;
 import com.platform.model.dto.LoginRequest;
+import com.platform.model.dto.OperationResultDTO;
 import com.platform.model.dto.PhoneLoginRequest;
 import com.platform.model.dto.RegisterRequest;
 import com.platform.model.dto.UserDTO;
@@ -79,7 +83,7 @@ public class AuthService {
     }
 
     @Transactional
-    public Map<String, Object> wxLogin(WxLoginRequest req) {
+    public AuthResponseDTO wxLogin(WxLoginRequest req) {
         // 真机: code → 微信 API → 稳定 openid;  本地开发: 未配 AppID 时 code 即 openid
         String openid = weChatService.code2Session(req.getCode());
         User user = userRepository.findByOpenid(openid).orElse(null);
@@ -108,59 +112,57 @@ public class AuthService {
         }
 
         String token = issueUserToken(user);
-        Map<String, Object> result = new HashMap<>();
-        result.put("token", token);
-        result.put("user", toDTO(user));
-        if (needRegister) {
-            result.put("needRegister", true);
-        }
-        return result;
+        return AuthResponseDTO.builder()
+                .token(token)
+                .user(toDTO(user))
+                .needRegister(needRegister ? Boolean.TRUE : null)
+                .build();
     }
 
-    public Map<String, Object> adminLogin(LoginRequest req) {
+    public AuthResponseDTO adminLogin(LoginRequest req) {
         User user = userRepository.findByUsername(req.getUsername())
-                .orElseThrow(() -> new RuntimeException("账号或密码错误"));
+                .orElseThrow(() -> new BizException("账号或密码错误"));
 
         if (!"admin".equals(user.getUserType()) && !"senior_admin".equals(user.getUserType()) && !"super_admin".equals(user.getUserType())) {
-            throw new RuntimeException("账号或密码错误");
+            throw new BizException("账号或密码错误");
         }
 
         if (!passwordEncoder.matches(req.getPassword(), user.getPasswordHash())) {
-            throw new RuntimeException("账号或密码错误");
+            throw new BizException("账号或密码错误");
         }
 
         String token = jwtTokenProvider.generateToken(user.getId().toString(), user.getUserType());
-        Map<String, Object> result = new HashMap<>();
-        result.put("token", token);
-        result.put("user", toDTO(user));
-        return result;
+        return AuthResponseDTO.builder()
+                .token(token)
+                .user(toDTO(user))
+                .build();
     }
 
-    public Map<String, Object> phoneLogin(PhoneLoginRequest req) {
+    public AuthResponseDTO phoneLogin(PhoneLoginRequest req) {
         if (req.getTenantId() == null) {
-            throw new RuntimeException("请选择小区");
+            throw new BizException("请选择小区");
         }
         User user = userRepository.findByPhoneAndTenantId(req.getPhone(), req.getTenantId())
-                .orElseThrow(() -> new RuntimeException("手机号未注册"));
+                .orElseThrow(() -> new BizException("手机号未注册"));
 
         if (user.getPasswordHash() == null || user.getPasswordHash().isEmpty()) {
-            throw new RuntimeException("该账号未设置密码，请使用微信登录");
+            throw new BizException("该账号未设置密码，请使用微信登录");
         }
 
         if (!passwordEncoder.matches(req.getPassword(), user.getPasswordHash())) {
-            throw new RuntimeException("密码错误");
+            throw new BizException("密码错误");
         }
 
         if (BizStatus.BANNED.equals(user.getAuthStatus())) {
             String reason = user.getBannedReason() != null ? user.getBannedReason() : "如有疑问请联系物业";
-            throw new RuntimeException("账号已被封禁：" + reason);
+            throw new BizException("账号已被封禁：" + reason);
         }
 
         String token = issueUserToken(user);
-        Map<String, Object> result = new HashMap<>();
-        result.put("token", token);
-        result.put("user", toDTO(user));
-        return result;
+        return AuthResponseDTO.builder()
+                .token(token)
+                .user(toDTO(user))
+                .build();
     }
 
     @Transactional
@@ -168,7 +170,7 @@ public class AuthService {
      * 用户注册：校验唯一性 → 创建/更新用户 → 签发 token。
      * @param userId 已有用户 ID（wxLogin 预创建），为 null 时新建用户
      */
-    public Map<String, Object> register(RegisterRequest req, Long userId) {
+    public AuthResponseDTO register(RegisterRequest req, Long userId) {
         Room room = resolveRoom(req.getTenantId(), req.getBuildingNo(), req.getUnitNo(), req.getRoom());
         validateUniqueness(req, userId, room);
 
@@ -181,10 +183,10 @@ public class AuthService {
         // 注册不是"换设备登录"，不应踢掉当前设备的 WS；直接签发 token，tokenVersion 保持不变即可。
         String token = jwtTokenProvider.generateToken(
                 user.getId().toString(), user.getUserType(), user.getTokenVersion());
-        Map<String, Object> result = new HashMap<>();
-        result.put("token", token);
-        result.put("user", toDTO(user));
-        return result;
+        return AuthResponseDTO.builder()
+                .token(token)
+                .user(toDTO(user))
+                .build();
     }
 
     /**
@@ -198,17 +200,17 @@ public class AuthService {
         userRepository.findByPhoneAndTenantId(req.getPhone(), req.getTenantId())
                 .ifPresent(existing -> {
                     if (userId != null && existing.getId().equals(userId)) return;
-                    throw new RuntimeException("该手机号已在本小区注册");
+                    throw new BizException("该手机号已在本小区注册");
                 });
         // 同一房间同一身份只能注册一个住户
         String mappedUserType = mapUserType(req.getUserType());
         if (mappedUserType == null || mappedUserType.isEmpty()) {
-            throw new RuntimeException("请选择住户身份");
+            throw new BizException("请选择住户身份");
         }
         userRepository.findByRoomIdAndUserType(room.getId(), mappedUserType)
                 .ifPresent(existing -> {
                     if (userId != null && existing.getId().equals(userId)) return;
-                    throw new RuntimeException("该房间已有" + mappedUserType + "注册");
+                    throw new BizException("该房间已有" + mappedUserType + "注册");
                 });
     }
 
@@ -221,7 +223,7 @@ public class AuthService {
     private User getOrCreateUser(Long userId, RegisterRequest req) {
         if (userId != null) {
             User existing = userRepository.findById(userId)
-                    .orElseThrow(() -> new RuntimeException("用户不存在"));
+                    .orElseThrow(() -> new BizException("用户不存在"));
             // 已有用户无手机号（wxLogin 预创建）或手机号匹配 → 同一用户补充注册
             if (existing.getPhone() == null || existing.getPhone().isEmpty()
                     || existing.getPhone().equals(req.getPhone())) {
@@ -268,10 +270,10 @@ public class AuthService {
      */
     private void validateAndSetPassword(User user, String password) {
         if (password.length() < 8 || password.length() > 20) {
-            throw new RuntimeException("密码长度需要8-20位");
+            throw new BizException("密码长度需要8-20位");
         }
         if (!password.matches(".*[a-zA-Z].*") || !password.matches(".*[0-9].*")) {
-            throw new RuntimeException("密码需要包含字母和数字");
+            throw new BizException("密码需要包含字母和数字");
         }
         user.setPasswordHash(passwordEncoder.encode(password));
     }
@@ -296,7 +298,7 @@ public class AuthService {
 
     private Room resolveRoom(Long tenantId, Integer buildingNo, Integer unitNo, String roomText) {
         if (tenantId == null || buildingNo == null || unitNo == null || roomText == null) {
-            throw new RuntimeException("请完整填写小区、栋号、单元号和房号");
+            throw new BizException("请完整填写小区、栋号、单元号和房号");
         }
 
         // 查找或创建楼栋（按数值楼栋号，避免字符串拼接产生"1栋栋"类脏数据）
@@ -324,34 +326,34 @@ public class AuthService {
                                 .build()));
     }
 
-    public Map<String, Object> getAuthStatus(Long userId) {
+    public AuthStatusDTO getAuthStatus(Long userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("用户不存在"));
+                .orElseThrow(() -> new BizException("用户不存在"));
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("authStatus", user.getAuthStatus());
-        result.put("rejectReason", user.getRejectReason());
-        result.put("bannedReason", user.getBannedReason());
-        return result;
+        return AuthStatusDTO.builder()
+                .authStatus(user.getAuthStatus())
+                .rejectReason(user.getRejectReason())
+                .bannedReason(user.getBannedReason())
+                .build();
     }
 
     @Transactional
-    public Map<String, Object> appeal(Long userId) {
+    public OperationResultDTO appeal(Long userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("用户不存在"));
+                .orElseThrow(() -> new BizException("用户不存在"));
 
         if (!BizStatus.BANNED.equals(user.getAuthStatus())) {
-            throw new RuntimeException("当前状态不支持申诉");
+            throw new BizException("当前状态不支持申诉");
         }
 
         user.setAuthStatus(BizStatus.PENDING);
         user.setRejectReason(null);
         userRepository.save(user);
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("success", true);
-        result.put("message", "申诉已提交，请等待物业审核");
-        return result;
+        return OperationResultDTO.builder()
+                .success(true)
+                .message("申诉已提交，请等待物业审核")
+                .build();
     }
 
     private UserDTO toDTO(User user) {

@@ -451,7 +451,7 @@ Page({
       roles.map((role) =>
         api
           .get("/api/users/completed", { role })
-          .then((data) => (Array.isArray(data) ? data : []))
+          .then((data) => (data?.content || (Array.isArray(data) ? data : [])))
           .catch(() => []),
       ),
     );
@@ -466,7 +466,7 @@ Page({
   async loadMyPosts() {
     try {
       const data = await api.get("/api/users/posts");
-      const allPosts = Array.isArray(data) ? data : [];
+      const allPosts = data?.content || (Array.isArray(data) ? data : []);
       const onlinePosts = allPosts
         .filter((p) => p.status === POST_STATUS.ONLINE)
         .map((p) => this.formatPostFromDTO(p, POST_STATUS.ONLINE));
@@ -491,7 +491,7 @@ Page({
   async loadReviewPosts() {
     try {
       const data = await api.get("/api/users/posts", { status: "pending_review" });
-      const items = (Array.isArray(data) ? data : []).map((dto) => ({
+      const items = (data?.content || (Array.isArray(data) ? data : [])).map((dto) => ({
         id: dto.id,
         postType: dto.type === "idle" ? (dto.postType || POST_TYPE.LEND) : POST_TYPE.HELP,
         title: dto.title || "",
@@ -601,7 +601,7 @@ Page({
   async loadApprovals(type) {
     try {
       const data = await api.get("/api/users/approvals", { type });
-      const items = (Array.isArray(data) ? data : []).map((dto) => ({
+      const items = (data?.content || (Array.isArray(data) ? data : [])).map((dto) => ({
         id: dto.id,
         itemTitle: dto.title || "",
         postType: dto.postType || "",
@@ -658,7 +658,7 @@ Page({
   async loadInProgress(role) {
     try {
       const data = await api.get("/api/users/in-progress", { role });
-      const items = (Array.isArray(data) ? data : []).map((dto) => ({
+      const items = (data?.content || (Array.isArray(data) ? data : [])).map((dto) => ({
         id: dto.id,
         personName: dto.personName || "",
         personAddress: dto.personRoom || "",
@@ -714,7 +714,7 @@ Page({
         helpReq: "helpReq",
         helpPro: "helpPro",
       };
-      const items = (Array.isArray(data) ? data : []).map((dto) =>
+      const items = (data?.content || (Array.isArray(data) ? data : [])).map((dto) =>
         this.formatCompletedItem(
           {
             id: dto.id,

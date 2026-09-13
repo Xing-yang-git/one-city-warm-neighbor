@@ -168,7 +168,13 @@ public class KnowledgeImportService {
 
     /** 持久化切片（短事务）：先删旧切片保证幂等，再批量入库 */
     public int persistChunks(Long docId, List<Chunk> chunks, List<String> embeddings) {
-        return transactionTemplate.execute(status -> {
+        // 构造器注入的 final 字段理论非空；SonarLint 无法跨构造器推断为可空，本地判空兜底避免 NPE
+        TransactionTemplate tt = transactionTemplate;
+        if (tt == null) {
+            log.error("事务模板未初始化，无法写入切片 docId={}", docId);
+            return 0;
+        }
+        return tt.execute(status -> {
             // 文档已被删除或替换 → 丢弃本次结果（防止在途任务回写已删文档）
             Optional<KnowledgeDocument> fresh = documentRepository.findById(docId);
             if (fresh.isEmpty() || !DocumentStatus.PARSING.equals(fresh.get().getStatus())) {
@@ -211,12 +217,12 @@ public class KnowledgeImportService {
         }
         int failedEmbedding = total - embeddedCount;
         if (failedEmbedding > 0) {
-            if (warn.length() > 0) {
+            if (!warn.isEmpty()) {
                 warn.append("；");
             }
             warn.append("embedding 失败 ").append(failedEmbedding).append(" 条，可在管理端 reindex 补齐");
         }
-        return warn.length() > 0 ? warn.toString() : null;
+        return !warn.isEmpty() ? warn.toString() : null;
     }
 
     /** 标记文档就绪 */

@@ -1,6 +1,10 @@
 package com.platform.controller;
 
 import com.platform.common.Result;
+import com.platform.model.dto.ListDTO;
+import com.platform.model.dto.NotificationDTO;
+import com.platform.model.dto.UnreadCountDTO;
+import com.platform.security.LoginUser;
 import com.platform.service.NotificationService;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -28,9 +32,9 @@ public class NotificationController {
      * @return 通知列表（含已读/未读状态）
      */
     @GetMapping
-    public Result<?> getNotifications(Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
-        return Result.ok(notificationService.getNotifications(userId));
+    public Result<ListDTO<NotificationDTO>> getNotifications(Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
+        return Result.ok(new ListDTO<>(notificationService.getNotifications(userId)));
     }
 
     /**
@@ -40,9 +44,9 @@ public class NotificationController {
      * @return 未读通知数量
      */
     @GetMapping("/unread-count")
-    public Result<?> getUnreadCount(Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
-        return Result.ok(notificationService.getUnreadCount(userId));
+    public Result<UnreadCountDTO> getUnreadCount(Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
+        return Result.ok(new UnreadCountDTO(notificationService.getUnreadCount(userId)));
     }
 
     /**
@@ -52,8 +56,8 @@ public class NotificationController {
      * @return 空响应
      */
     @PutMapping("/read-all")
-    public Result<?> markAllRead(Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+    public Result<Void> markAllRead(Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         notificationService.markAllRead(userId);
         return Result.ok();
     }
@@ -65,8 +69,8 @@ public class NotificationController {
      * @return 空响应
      */
     @DeleteMapping("/all")
-    public Result<?> deleteAll(Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+    public Result<Void> deleteAll(Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         notificationService.deleteAll(userId);
         return Result.ok();
     }

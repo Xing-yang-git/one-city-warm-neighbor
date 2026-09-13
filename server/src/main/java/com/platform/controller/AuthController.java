@@ -3,6 +3,7 @@ package com.platform.controller;
 import com.platform.common.Result;
 import com.platform.model.dto.*;
 import com.platform.security.JwtTokenProvider;
+import com.platform.security.LoginUser;
 import com.platform.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
@@ -42,7 +43,7 @@ public class AuthController {
      * @return JWT token + 用户信息
      */
     @PostMapping("/wx-login")
-    public Result<?> wxLogin(@Valid @RequestBody WxLoginRequest req) {
+    public Result<AuthResponseDTO> wxLogin(@Valid @RequestBody WxLoginRequest req) {
         return Result.ok(authService.wxLogin(req));
     }
 
@@ -53,7 +54,7 @@ public class AuthController {
      * @return JWT token + 管理员信息
      */
     @PostMapping("/login")
-    public Result<?> adminLogin(@Valid @RequestBody LoginRequest req) {
+    public Result<AuthResponseDTO> adminLogin(@Valid @RequestBody LoginRequest req) {
         return Result.ok(authService.adminLogin(req));
     }
 
@@ -64,7 +65,7 @@ public class AuthController {
      * @return JWT token + 用户信息
      */
     @PostMapping("/phone-login")
-    public Result<?> phoneLogin(@Valid @RequestBody PhoneLoginRequest req) {
+    public Result<AuthResponseDTO> phoneLogin(@Valid @RequestBody PhoneLoginRequest req) {
         return Result.ok(authService.phoneLogin(req));
     }
 
@@ -78,8 +79,9 @@ public class AuthController {
      * @return 注册结果
      */
     @PostMapping("/register")
-    public Result<?> register(@Valid @RequestBody RegisterRequest req, Authentication auth) {
-        Long userId = auth != null ? Long.valueOf(auth.getName()) : null;
+    public Result<AuthResponseDTO> register(@Valid @RequestBody RegisterRequest req, Authentication auth) {
+        Long userId = auth != null && auth.getPrincipal() instanceof LoginUser loginUser
+                ? loginUser.getUserId() : null;
         return Result.ok(authService.register(req, userId));
     }
 
@@ -90,8 +92,8 @@ public class AuthController {
      * @return 认证状态：pending(待审核) / approved(已通过) / rejected(已驳回) / registering(注册中)
      */
     @GetMapping("/status")
-    public Result<?> getStatus(Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+    public Result<AuthStatusDTO> getStatus(Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         return Result.ok(authService.getAuthStatus(userId));
     }
 
@@ -102,8 +104,8 @@ public class AuthController {
      * @return 申诉结果
      */
     @PostMapping("/appeal")
-    public Result<?> appeal(Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+    public Result<OperationResultDTO> appeal(Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         return Result.ok(authService.appeal(userId));
     }
 }

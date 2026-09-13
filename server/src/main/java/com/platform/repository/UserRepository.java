@@ -66,6 +66,16 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @EntityGraph(attributePaths = {"room", "room.unit", "room.unit.building"})
     Page<User> findByTenantIdAndAuthStatusAndUserTypeNotIn(Long tenantId, String authStatus, List<String> userTypes, Pageable pageable);
 
+    // ── 无分页变体（B端列表一次性取全部） ──
+    @EntityGraph(attributePaths = {"room", "room.unit", "room.unit.building"})
+    List<User> findByTenantIdAndAuthStatus(Long tenantId, String authStatus);
+
+    @EntityGraph(attributePaths = {"room", "room.unit", "room.unit.building"})
+    List<User> findByAuthStatusNot(String authStatus);
+
+    @EntityGraph(attributePaths = {"room", "room.unit", "room.unit.building"})
+    List<User> findByTenantIdAndAuthStatusNot(Long tenantId, String authStatus);
+
     long countByTenantIdAndAuthStatus(Long tenantId, String authStatus);
 
     long countByTenantIdAndAuthStatusNot(Long tenantId, String authStatus);
@@ -95,6 +105,23 @@ public interface UserRepository extends JpaRepository<User, Long> {
                              @Param("userType") String userType,
                              @Param("keyword") String keyword,
                              Pageable pageable);
+
+    /** 无分页变体（B端住户选择器一次性取全部，按创建时间倒序） */
+    @Query("SELECT u FROM User u JOIN u.room r JOIN r.unit un JOIN un.building b " +
+           "WHERE u.authStatus = 'approved' " +
+           "AND b.tenantId = :tenantId " +
+           "AND (:buildingNo IS NULL OR b.buildingNo = :buildingNo) " +
+           "AND (:unitNo IS NULL OR un.unitNo = :unitNo) " +
+           "AND (:room IS NULL OR r.roomNumber LIKE %:room%) " +
+           "AND (:userType IS NULL OR u.userType = :userType) " +
+           "AND (:keyword IS NULL OR u.name LIKE %:keyword% OR u.phone LIKE %:keyword%) " +
+           "ORDER BY u.createdAt DESC")
+    List<User> findResidentsAll(@Param("tenantId") Long tenantId,
+                                @Param("buildingNo") Integer buildingNo,
+                                @Param("unitNo") Integer unitNo,
+                                @Param("room") String room,
+                                @Param("userType") String userType,
+                                @Param("keyword") String keyword);
 
     List<User> findByTenantIdAndUserTypeIn(Long tenantId, List<String> userTypes);
 

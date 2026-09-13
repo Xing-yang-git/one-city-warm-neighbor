@@ -1,7 +1,13 @@
 package com.platform.controller;
 
 import com.platform.common.Result;
+import com.platform.model.dto.ChatHistoryDTO;
+import com.platform.model.dto.ChatMessageDTO;
+import com.platform.model.dto.ChatSessionDTO;
+import com.platform.model.dto.ListDTO;
+import com.platform.model.dto.SendMessageResponseDTO;
 import com.platform.model.entity.Message;
+import com.platform.security.LoginUser;
 import com.platform.service.ChatService;
 import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
@@ -32,18 +38,18 @@ public class ChatController {
      * 返回消息的数据库 id，供客户端替换乐观更新的临时 id。
      */
     @PostMapping("/send")
-    public Result<Map<String, Object>> send(@Valid @RequestBody Map<String, Object> body, Authentication auth) {
-        Long fromUserId = Long.valueOf(auth.getName());
+    public Result<SendMessageResponseDTO> send(@Valid @RequestBody Map<String, Object> body, Authentication auth) {
+        Long fromUserId = ((LoginUser) auth.getPrincipal()).getUserId();
         Long toUserId = Long.valueOf(body.get("toUserId").toString());
         String content = (String) body.get("content");
         String messageType = (String) body.getOrDefault("messageType", "text");
         String sessionId = body.get("sessionId") != null ? body.get("sessionId").toString() : null;
 
         Message msg = chatService.sendMessage(fromUserId, toUserId, content, messageType, sessionId);
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("id", msg.getId());
-        data.put("createdAt", msg.getCreatedAt().toString());
-        return Result.ok(data);
+        return Result.ok(SendMessageResponseDTO.builder()
+                .id(msg.getId())
+                .createdAt(msg.getCreatedAt().toString())
+                .build());
     }
 
     /**
@@ -53,36 +59,36 @@ public class ChatController {
      * @param size      每页条数，默认 30
      */
     @GetMapping("/history")
-    public Result<Map<String, Object>> history(@RequestParam String sessionId,
-                                                @RequestParam(required = false) Long beforeId,
-                                                @RequestParam(defaultValue = "30") int size,
-                                                Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+    public Result<ChatHistoryDTO> history(@RequestParam String sessionId,
+                                          @RequestParam(required = false) Long beforeId,
+                                          @RequestParam(defaultValue = "30") int size,
+                                          Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
 
         List<Message> messages = chatService.getHistory(sessionId, beforeId, Math.min(size, 100));
 
         boolean hasMore = messages.size() == size;
         Long oldestId = messages.isEmpty() ? null : messages.get(messages.size() - 1).getId();
 
-        // 转为前端友好的 Map 列表，屏蔽掉无权限查看的消息（仅发送/接收方可查看）
-        List<Map<String, Object>> list = messages.stream()
+        // 转为前端友好的 DTO 列表，屏蔽掉无权限查看的消息（仅发送/接收方可查看）
+        List<ChatMessageDTO> list = messages.stream()
                 .filter(m -> userId.equals(m.getFromUserId()) || userId.equals(m.getToUserId()))
-                .map(this::toMap)
+                .map(this::toMessageDTO)
                 .collect(Collectors.toList());
 
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("messages", list);
-        result.put("hasMore", hasMore);
-        result.put("oldestId", oldestId);
-        return Result.ok(result);
+        return Result.ok(ChatHistoryDTO.builder()
+                .messages(list)
+                .hasMore(hasMore)
+                .oldestId(oldestId)
+                .build());
     }
 
     /**
      * 撤回消息 — 仅发送方可在 2 分钟内撤回。
      */
     @PostMapping("/recall/{id}")
-    public Result<?> recall(@PathVariable Long id, Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+    public Result<Void> recall(@PathVariable Long id, Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         chatService.recallMessage(id, userId);
         return Result.ok();
     }
@@ -92,14 +98,14 @@ public class ChatController {
      * 消息页以本地存储为主、此接口为辅，弥补 WebSocket 断连时丢失的消息。
      */
     @GetMapping("/sessions")
-    public Result<List<Map<String, Object>>> sessions(Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
-        return Result.ok(chatService.getUserSessions(userId));
+    public Result<ListDTO<ChatSessionDTO>> sessions(Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
+        return Result.ok(new ListDTO<>(chatService.getUserSessions(userId)));
     }
 
     // —— 兼容旧版 /api/chat/relay 路径（过渡期保留，下个版本移除） ——
     @PostMapping("/relay")
-    public Result<Map<String, Object>> relay(@Valid @RequestBody Map<String, Object> body, Authentication auth) {
+    public Result<SendMessageResponseDTO> relay(@Valid @RequestBody Map<String, Object> body, Authentication auth) {
         return send(body, auth);
     }
 
@@ -112,18 +118,18 @@ public class ChatController {
     // 序列化辅助
     // ============================================================
 
-    private Map<String, Object> toMap(Message m) {
-        Map<String, Object> map = new LinkedHashMap<>();
-        map.put("id", m.getId());
-        map.put("sessionId", m.getSessionId());
-        map.put("fromUserId", m.getFromUserId());
-        map.put("toUserId", m.getToUserId());
-        // 撤回后的消息不返回 content
-        map.put("content", m.getRecalledAt() != null ? null : m.getContent());
-        map.put("messageType", m.getMessageType());
-        map.put("status", m.getStatus());
-        map.put("recalledAt", m.getRecalledAt() != null ? m.getRecalledAt().toString() : null);
-        map.put("createdAt", m.getCreatedAt().toString());
-        return map;
+    private ChatMessageDTO toMessageDTO(Message m) {
+        return ChatMessageDTO.builder()
+                .id(m.getId())
+                .sessionId(m.getSessionId())
+                .fromUserId(m.getFromUserId())
+                .toUserId(m.getToUserId())
+                // 撤回后的消息不返回 content
+                .content(m.getRecalledAt() != null ? null : m.getContent())
+                .messageType(m.getMessageType())
+                .status(m.getStatus())
+                .recalledAt(m.getRecalledAt() != null ? m.getRecalledAt().toString() : null)
+                .createdAt(m.getCreatedAt().toString())
+                .build();
     }
 }

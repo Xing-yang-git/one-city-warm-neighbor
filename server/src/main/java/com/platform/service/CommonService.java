@@ -1,5 +1,6 @@
 package com.platform.service;
 
+import com.platform.common.BizException;
 import com.platform.model.dto.BuildingDTO;
 import com.platform.model.dto.RoomDTO;
 import com.platform.model.dto.TenantDTO;
@@ -67,7 +68,7 @@ public class CommonService {
 
     public String uploadFile(MultipartFile file) {
         if (file.isEmpty()) {
-            throw new RuntimeException("文件为空");
+            throw new BizException("文件为空");
         }
 
         // 上传端点匿名可访问（注册流程需上传证件照）且 /uploads/** 被静态托管，
@@ -77,7 +78,7 @@ public class CommonService {
         // 改为读取文件头魔数识别真实类型，存盘扩展名由服务端按魔数生成，恶意类型无法落盘。
         String ext = detectImageExtension(file);
         if (ext == null) {
-            throw new RuntimeException("仅支持上传 jpg/jpeg/png/gif/webp 图片");
+            throw new BizException("仅支持上传 jpg/jpeg/png/gif/webp 图片");
         }
 
         try {
@@ -125,11 +126,11 @@ public class CommonService {
     /** 上传语音文件，仅接受 mp3/wav/aac/m4a 格式 */
     public String uploadVoice(MultipartFile file) {
         if (file.isEmpty()) {
-            throw new RuntimeException("文件为空");
+            throw new BizException("文件为空");
         }
         String ext = detectAudioExtension(file);
         if (ext == null) {
-            throw new RuntimeException("仅支持上传 mp3/wav/aac/m4a 音频格式");
+            throw new BizException("仅支持上传 mp3/wav/aac/m4a 音频格式");
         }
         try {
             Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();

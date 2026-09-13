@@ -1,5 +1,6 @@
 package com.platform.service;
 
+import com.platform.common.BizException;
 import com.platform.common.BizStatus;
 import com.platform.common.PostType;
 import com.platform.model.dto.ApproveRequest;
@@ -47,7 +48,7 @@ public class BorrowService {
 
     public BorrowResponseDTO getDetail(Long borrowId) {
         BorrowRequest br = borrowRequestRepository.findById(borrowId)
-                .orElseThrow(() -> new RuntimeException("借入记录不存在"));
+                .orElseThrow(() -> new BizException("借入记录不存在"));
         return toDTO(br);
     }
 
@@ -55,14 +56,14 @@ public class BorrowService {
         // 悲观写锁（SELECT ... FOR UPDATE）：防止两个住户同时申请借入同一物品，
         // 确保"检查状态 → 创建申请 → 标记 reserved"三步在锁保护下原子执行
         IdleItem idleItem = idleItemRepository.findByIdWithLock(req.getIdleId())
-                .orElseThrow(() -> new RuntimeException("物品不存在"));
+                .orElseThrow(() -> new BizException("物品不存在"));
 
         if (!BizStatus.ONLINE.equals(idleItem.getStatus())) {
-            throw new RuntimeException("该物品已被其他住户抢先申请，请浏览其他物品");
+            throw new BizException("该物品已被其他住户抢先申请，请浏览其他物品");
         }
 
         if (idleItem.getUserId().equals(borrowerId)) {
-            throw new RuntimeException("不能借入自己的物品");
+            throw new BizException("不能借入自己的物品");
         }
 
         BorrowRequest borrowRequest = new BorrowRequest();
@@ -103,15 +104,15 @@ public class BorrowService {
      */
     public BorrowResponseDTO approveReject(Long ownerId, Long borrowId, ApproveRequest req) {
         BorrowRequest borrowRequest = borrowRequestRepository.findById(borrowId)
-                .orElseThrow(() -> new RuntimeException("借入申请不存在"));
+                .orElseThrow(() -> new BizException("借入申请不存在"));
         IdleItem idleItem = idleItemRepository.findById(borrowRequest.getIdleId())
-                .orElseThrow(() -> new RuntimeException("物品不存在"));
+                .orElseThrow(() -> new BizException("物品不存在"));
 
         if (!idleItem.getUserId().equals(ownerId)) {
-            throw new RuntimeException("无权操作该申请");
+            throw new BizException("无权操作该申请");
         }
         if (!BizStatus.PENDING.equals(borrowRequest.getStatus())) {
-            throw new RuntimeException("该申请已被处理，无法重复操作");
+            throw new BizException("该申请已被处理，无法重复操作");
         }
 
         boolean approved = req.getApproved();
@@ -193,7 +194,7 @@ public class BorrowService {
      */
     public BorrowResponseDTO confirmReturn(Long actorId, Long borrowId, ReturnRequest req) {
         BorrowRequest borrowRequest = borrowRequestRepository.findById(borrowId)
-                .orElseThrow(() -> new RuntimeException("借入记录不存在"));
+                .orElseThrow(() -> new BizException("借入记录不存在"));
 
         IdleItem idleItem = idleItemRepository.findById(borrowRequest.getIdleId()).orElse(null);
         Long ownerId = idleItem != null ? idleItem.getUserId() : null;
@@ -201,11 +202,11 @@ public class BorrowService {
         boolean isBorrower = borrowRequest.getBorrowerId().equals(actorId);
         boolean isOwner = ownerId != null && ownerId.equals(actorId);
         if (!isBorrower && !isOwner) {
-            throw new RuntimeException("无权操作该记录");
+            throw new BizException("无权操作该记录");
         }
 
         if (!BizStatus.APPROVED.equals(borrowRequest.getStatus())) {
-            throw new RuntimeException("该借入不在进行中，无法归还");
+            throw new BizException("该借入不在进行中，无法归还");
         }
 
         borrowRequest.setReturnStatus(req.getReturnStatus());
@@ -246,17 +247,17 @@ public class BorrowService {
      */
     public void updateDamage(Long userId, Long borrowId, String damageType) {
         BorrowRequest br = borrowRequestRepository.findById(borrowId)
-                .orElseThrow(() -> new RuntimeException("借入记录不存在"));
+                .orElseThrow(() -> new BizException("借入记录不存在"));
         IdleItem idleItem = idleItemRepository.findById(br.getIdleId()).orElse(null);
         Long ownerId = idleItem != null ? idleItem.getUserId() : null;
         if (ownerId == null || !ownerId.equals(userId)) {
-            throw new RuntimeException("只有物品所有者可以填写物品状况");
+            throw new BizException("只有物品所有者可以填写物品状况");
         }
         if (!BizStatus.RETURNED.equals(br.getStatus())) {
-            throw new RuntimeException("仅已完成归还的记录可补充物品状况");
+            throw new BizException("仅已完成归还的记录可补充物品状况");
         }
         if (damageType == null || damageType.isEmpty()) {
-            throw new RuntimeException("请选择物品状况");
+            throw new BizException("请选择物品状况");
         }
         br.setDamageType(damageType);
         borrowRequestRepository.save(br);

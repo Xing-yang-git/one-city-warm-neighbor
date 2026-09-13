@@ -7,6 +7,7 @@ import com.platform.ai.search.KnowledgeHit;
 import com.platform.ai.search.KnowledgeRetrievalService;
 import com.platform.common.BizStatus;
 import com.platform.common.PostType;
+import com.platform.model.dto.ApprovalCountDTO;
 import com.platform.model.dto.BorrowResponseDTO;
 import com.platform.model.dto.HelpResponseDTO;
 import com.platform.model.dto.IdleItemDTO;
@@ -353,11 +354,11 @@ public class AgentToolDispatcher {
             return limit;
         }
         try {
-            Map<String, Integer> counts = userActivityService.getApprovalCounts(userId);
-            int borrow = counts.getOrDefault("borrow", 0);
-            int lend = counts.getOrDefault("lend", 0);
-            int help = counts.getOrDefault("help", 0);
-            int totalApproval = counts.getOrDefault("total", borrow + lend + help);
+            ApprovalCountDTO counts = userActivityService.getApprovalCounts(userId);
+            int borrow = counts.getBorrow();
+            int lend = counts.getLend();
+            int help = counts.getHelp();
+            int totalApproval = counts.getTotal();
 
             List<MyPostItemDTO> inProgressBorrow = userActivityService.getInProgress(userId, "borrow");
             List<MyPostItemDTO> inProgressLend = userActivityService.getInProgress(userId, "lend");

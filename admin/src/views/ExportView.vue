@@ -226,7 +226,7 @@ async function doExport(): Promise<void> {
 async function loadExportLogs(): Promise<void> {
   loadingLogs.value = true;
   try {
-    const res = await getExportLogs({ page: 0, size: 10 });
+    const res = await getExportLogs();
     exportLogs.value = res.data?.data?.content || [];
   } catch (err: any) {
     console.error("加载导出日志失败:", err);

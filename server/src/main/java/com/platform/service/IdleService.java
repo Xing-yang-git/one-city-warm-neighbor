@@ -4,6 +4,7 @@ import com.platform.ai.embedding.EmbeddingService;
 import com.platform.ai.matching.MatchingScheduler;
 import com.platform.ai.moderation.ModerationService;
 import com.platform.ai.search.SemanticSearchService;
+import com.platform.common.BizException;
 import com.platform.common.BizStatus;
 import com.platform.common.ModerationStatus;
 import com.platform.common.PostType;
@@ -73,7 +74,7 @@ public class IdleService {
 
     public IdleItemDTO publish(Long userId, IdleItemRequest req) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("用户不存在"));
+                .orElseThrow(() -> new BizException("用户不存在"));
 
         IdleItem item = new IdleItem();
         item.setUserId(userId);
@@ -149,7 +150,7 @@ public class IdleService {
      */
     public IdleItemDTO getDetail(Long itemId, Long currentUserId) {
         IdleItem item = idleItemRepository.findById(itemId)
-                .orElseThrow(() -> new RuntimeException("物品不存在"));
+                .orElseThrow(() -> new BizException("物品不存在"));
         IdleItemDTO dto = enrichWithUserStats(toDTO(item));
 
         // 检查当前用户是否对该物品提交过借用申请
@@ -243,10 +244,10 @@ public class IdleService {
 
     public IdleItemDTO delist(Long userId, Long itemId) {
         IdleItem item = idleItemRepository.findById(itemId)
-                .orElseThrow(() -> new RuntimeException("物品不存在"));
+                .orElseThrow(() -> new BizException("物品不存在"));
 
         if (!item.getUserId().equals(userId)) {
-            throw new RuntimeException("无权操作该物品");
+            throw new BizException("无权操作该物品");
         }
 
         item.setStatus(BizStatus.DRAFT);
@@ -257,10 +258,10 @@ public class IdleService {
 
     public IdleItemDTO deleteItem(Long userId, Long itemId) {
         IdleItem item = idleItemRepository.findById(itemId)
-                .orElseThrow(() -> new RuntimeException("物品不存在"));
+                .orElseThrow(() -> new BizException("物品不存在"));
 
         if (!item.getUserId().equals(userId)) {
-            throw new RuntimeException("无权操作该物品");
+            throw new BizException("无权操作该物品");
         }
 
         item.setStatus(BizStatus.OFFLINE);
@@ -276,10 +277,10 @@ public class IdleService {
      */
     public IdleItemDTO update(Long userId, Long itemId, IdleItemRequest req) {
         IdleItem item = idleItemRepository.findById(itemId)
-                .orElseThrow(() -> new RuntimeException("物品不存在"));
+                .orElseThrow(() -> new BizException("物品不存在"));
 
         if (!item.getUserId().equals(userId)) {
-            throw new RuntimeException("无权操作该物品");
+            throw new BizException("无权操作该物品");
         }
 
         // 保存原始状态，用于判断是否需要重新审核

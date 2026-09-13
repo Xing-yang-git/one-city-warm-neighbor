@@ -114,9 +114,10 @@ Page({
         // 获取最新一条通知作为预览
         let noticeLast = null;
         try {
-          const noticeList = await api.get('/api/notifications?page=0&size=1');
-          if (Array.isArray(noticeList) && noticeList.length > 0) {
-            noticeLast = noticeList[0];
+          const noticeList = await api.get('/api/notifications');
+          const notices = noticeList?.content || (Array.isArray(noticeList) ? noticeList : []);
+          if (notices.length > 0) {
+            noticeLast = notices[0];
           }
         } catch (e2) { /* 静默失败 */ }
 
@@ -163,9 +164,10 @@ Page({
       // 补充后端数据：本地存储可能因 WebSocket 断连丢失会话，后端作为兜底
       try {
         const backendSessions = await api.get('/api/chats/sessions');
-        if (Array.isArray(backendSessions)) {
+        const sessionList = backendSessions?.content || (Array.isArray(backendSessions) ? backendSessions : []);
+        if (sessionList.length > 0) {
           const localIds = new Set(sessions.map(s => s.id));
-          for (const bs of backendSessions) {
+          for (const bs of sessionList) {
             if (localIds.has(bs.sessionId)) continue; // 本地已有，跳过
             // 后端 lastMessage 可能是管道符格式（如 voice 的 "3|/uploads/...")，formatPreview 统一格式化
             const lastMsg = this.formatServerLastMsg(bs.lastMessage, bs.lastMessageType);

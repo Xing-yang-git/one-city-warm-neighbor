@@ -1,5 +1,5 @@
 <template>
-  <AppLayout title="物业运营端">
+  <AppLayout title="物业运营端" :loading="loading">
     <template #subtitle>{{ todayWithTime }}</template>
     <template #actions="{ logout }">
       <span class="logout-btn" @click="logout" title="退出登录">
@@ -22,19 +22,19 @@
         <!-- 快速统计 -->
         <div class="quick-stats">
           <div class="quick-stat">
-            <span class="qs-value text-orange">3</span>
+            <span class="qs-value text-orange">{{ stats.pending }}</span>
             <span class="qs-label">待审核住户</span>
           </div>
           <div class="quick-stat">
-            <span class="qs-value">128</span>
+            <span class="qs-value">{{ stats.idle }}</span>
             <span class="qs-label">在线闲置</span>
           </div>
           <div class="quick-stat">
-            <span class="qs-value">256</span>
+            <span class="qs-value">{{ stats.pub }}</span>
             <span class="qs-label">本月发布</span>
           </div>
           <div class="quick-stat">
-            <span class="qs-value">89</span>
+            <span class="qs-value">{{ stats.mau }}</span>
             <span class="qs-label">本月活跃住户</span>
           </div>
         </div>
@@ -65,7 +65,7 @@
             </div>
             <div class="card-title">住户管理</div>
             <div class="card-desc">审核工作台 · 住户列表 · 封禁管理</div>
-            <div class="card-badge tag tag-red">3 人待审</div>
+            <div v-if="stats.pending > 0" class="card-badge tag tag-red">{{ stats.pending }} 人待审</div>
           </div>
           <div class="launch-card" @click="$router.push('/content')">
             <div
@@ -210,21 +210,41 @@
   权限：需管理员 / 超级管理员登录。
 -->
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 
 import { useAuthStore } from "@/stores/auth";
 import { USER_TYPE } from "@/utils/constants";
 import AppLayout from "@/layouts/AppLayout.vue";
+import { getAuditCounts, getDashboard, type AuditCounts, type DashboardDTO, type DashboardKpi } from "@/api/admin";
+
+/** 首页快速统计卡片的数据结构 */
+interface QuickStats {
+  /** 待审核住户数 */
+  pending: number;
+  /** 在线闲置物品数 */
+  idle: number;
+  /** 本月发布总数 */
+  pub: number;
+  /** 本月活跃住户数 */
+  mau: number;
+}
 
 const router = useRouter();
 const authStore = useAuthStore();
+
+/** 首页快速统计加载中（配合 AppLayout v-loading 遮罩） */
+const loading = ref<boolean>(false);
+/** 首页快速统计数据 — 默认 0，接口返回后填充 */
+const stats = reactive<QuickStats>({ pending: 0, idle: 0, pub: 0, mau: 0 });
 
 // super_admin 仅管理平台，自动跳转系统设置页
 onMounted(() => {
   if (authStore.user?.userType === USER_TYPE.SUPER_ADMIN) {
     router.replace('/settings');
+    return; // 超管无小区业务数据，直接跳转设置页，不请求看板统计
   }
+  loadQuickStats();
 });
 
 /** 是否为高级管理员及以上 */
@@ -240,6 +260,35 @@ const todayWithTime = computed(() => {
   const pad = (n: number): string => String(n).padStart(2, "0");
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日周${days[d.getDay()]} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 });
+
+/** 从看板 KPI 列表取指定 key 的数值，缺失时返回 0 */
+function kpiValue(key: DashboardKpi["key"], kpis: DashboardKpi[]): number {
+  return kpis.find((k) => k.key === key)?.value ?? 0;
+}
+
+/**
+ * 拉取首页快速统计：看板 KPI（在线闲置/本月发布/本月活跃住户）+ 待审核住户数。
+ * 统计属非关键路径，失败静默保留默认 0，不影响首页导航入口。
+ */
+async function loadQuickStats(): Promise<void> {
+  loading.value = true;
+  try {
+    const [dashboardRes, auditRes] = await Promise.all([getDashboard(), getAuditCounts()]);
+    const dashboard = dashboardRes.data?.data as DashboardDTO | undefined;
+    const audit = auditRes.data?.data as AuditCounts | undefined;
+    if (dashboard?.kpis) {
+      stats.idle = kpiValue("idle", dashboard.kpis);
+      stats.pub = kpiValue("pub", dashboard.kpis);
+      stats.mau = kpiValue("mau", dashboard.kpis);
+    }
+    stats.pending = audit?.pending ?? 0;
+  } catch {
+    // 统计加载失败不阻断首页：保留默认 0，仅记录日志便于排查
+    console.warn("[Home] 快速统计数据加载失败");
+  } finally {
+    loading.value = false;
+  }
+}
 
 </script>
 

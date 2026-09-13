@@ -3,6 +3,10 @@ package com.platform.controller;
 import com.platform.common.Result;
 import com.platform.model.dto.ApproveRequest;
 import com.platform.model.dto.HelpRequestDTO;
+import com.platform.model.dto.HelpResponseDTO;
+import com.platform.model.dto.ListDTO;
+import com.platform.model.dto.PageDTO;
+import com.platform.security.LoginUser;
 import com.platform.service.HelpService;
 import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
@@ -45,7 +49,7 @@ public class HelpController {
      * @return 创建成功的求助摘要
      */
     @PostMapping
-    public Result<?> publish(@Valid @RequestBody HelpRequestDTO req, Authentication auth) {
+    public Result<HelpResponseDTO> publish(@Valid @RequestBody HelpRequestDTO req, Authentication auth) {
         Long userId = resolveUserId(auth, req.getUserId());
         return Result.ok(helpService.publish(userId, req));
     }
@@ -62,7 +66,7 @@ public class HelpController {
                 return requestUserId;
             }
         }
-        return Long.valueOf(auth.getName());
+        return ((LoginUser) auth.getPrincipal()).getUserId();
     }
 
     /**
@@ -74,10 +78,11 @@ public class HelpController {
      * @return 分页求助列表
      */
     @GetMapping("/home")
-    public Result<?> homeList(@RequestParam(defaultValue = "0") int page,
+    public Result<PageDTO<HelpResponseDTO>> homeList(@RequestParam(defaultValue = "0") int page,
                                @RequestParam(defaultValue = "10") int size,
                                Authentication auth) {
-        Long userId = auth != null ? Long.valueOf(auth.getName()) : null;
+        Long userId = auth != null && auth.getPrincipal() instanceof LoginUser loginUser
+                ? loginUser.getUserId() : null;
         return Result.ok(helpService.getHomeList(userId, page, size));
     }
 
@@ -88,7 +93,7 @@ public class HelpController {
      * @return 求助详情（含发布者信息）
      */
     @GetMapping("/{id}")
-    public Result<?> detail(@PathVariable Long id) {
+    public Result<HelpResponseDTO> detail(@PathVariable Long id) {
         return Result.ok(helpService.getDetail(id));
     }
 
@@ -102,11 +107,12 @@ public class HelpController {
      * @return 搜索结果分页
      */
     @GetMapping("/search")
-    public Result<?> search(@RequestParam String keyword,
+    public Result<PageDTO<HelpResponseDTO>> search(@RequestParam String keyword,
                              @RequestParam(defaultValue = "0") int page,
                              @RequestParam(defaultValue = "10") int size,
                              Authentication auth) {
-        Long userId = auth != null ? Long.valueOf(auth.getName()) : null;
+        Long userId = auth != null && auth.getPrincipal() instanceof LoginUser loginUser
+                ? loginUser.getUserId() : null;
         return Result.ok(helpService.search(userId, keyword, page, size));
     }
 
@@ -117,9 +123,9 @@ public class HelpController {
      * @return 用户发布的求助列表
      */
     @GetMapping("/my")
-    public Result<?> myPosts(Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
-        return Result.ok(helpService.getMyPosts(userId));
+    public Result<ListDTO<HelpResponseDTO>> myPosts(Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
+        return Result.ok(new ListDTO<>(helpService.getMyPosts(userId)));
     }
 
     /**
@@ -130,8 +136,8 @@ public class HelpController {
      * @return 空响应
      */
     @PutMapping("/{id}/delist")
-    public Result<?> delist(@PathVariable Long id, Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+    public Result<Void> delist(@PathVariable Long id, Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         helpService.delist(userId, id);
         return Result.ok();
     }
@@ -145,9 +151,9 @@ public class HelpController {
      * @return 空响应
      */
     @PostMapping("/{id}/apply")
-    public Result<?> apply(@PathVariable Long id, @Valid @RequestBody Map<String, String> body,
+    public Result<Void> apply(@PathVariable Long id, @Valid @RequestBody Map<String, String> body,
                            Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         helpService.apply(userId, id, body.getOrDefault("note", ""));
         return Result.ok();
     }
@@ -161,9 +167,9 @@ public class HelpController {
      * @return 空响应
      */
     @PutMapping("/applications/{appId}/approve")
-    public Result<?> approveApplication(@PathVariable Long appId, @Valid @RequestBody ApproveRequest req,
+    public Result<Void> approveApplication(@PathVariable Long appId, @Valid @RequestBody ApproveRequest req,
                                         Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         helpService.approveReject(userId, appId, req);
         return Result.ok();
     }
@@ -175,9 +181,9 @@ public class HelpController {
      * @return 接单申请列表
      */
     @GetMapping("/applications/my")
-    public Result<?> myApplications(Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
-        return Result.ok(helpService.getMyApplications(userId));
+    public Result<ListDTO<HelpResponseDTO>> myApplications(Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
+        return Result.ok(new ListDTO<>(helpService.getMyApplications(userId)));
     }
 
     /**
@@ -187,9 +193,9 @@ public class HelpController {
      * @return 待审批接单列表
      */
     @GetMapping("/applications/pending")
-    public Result<?> pendingApprovals(Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
-        return Result.ok(helpService.getPendingApprovals(userId));
+    public Result<ListDTO<HelpResponseDTO>> pendingApprovals(Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
+        return Result.ok(new ListDTO<>(helpService.getPendingApprovals(userId)));
     }
 
     /**
@@ -201,9 +207,9 @@ public class HelpController {
      * @return 更新后的求助信息
      */
     @PutMapping("/{id}")
-    public Result<?> update(@PathVariable Long id, @Valid @RequestBody HelpRequestDTO req,
+    public Result<HelpResponseDTO> update(@PathVariable Long id, @Valid @RequestBody HelpRequestDTO req,
                             Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         return Result.ok(helpService.update(userId, id, req));
     }
 
@@ -215,8 +221,8 @@ public class HelpController {
      * @return 完成结果
      */
     @PutMapping("/applications/{appId}/complete")
-    public Result<?> completeHelp(@PathVariable Long appId, Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+    public Result<HelpResponseDTO> completeHelp(@PathVariable Long appId, Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         return Result.ok(helpService.completeHelp(userId, appId));
     }
 }

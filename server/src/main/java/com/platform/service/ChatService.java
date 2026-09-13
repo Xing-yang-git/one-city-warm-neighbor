@@ -1,6 +1,8 @@
 package com.platform.service;
 
+import com.platform.common.BizException;
 import com.platform.common.UserFormatter;
+import com.platform.model.dto.ChatSessionDTO;
 import com.platform.model.dto.WebSocketMessage;
 import com.platform.model.entity.Message;
 import com.platform.model.entity.User;
@@ -107,19 +109,19 @@ public class ChatService {
      */
     public Message recallMessage(Long messageId, Long userId) {
         Message msg = messageRepository.findById(messageId)
-                .orElseThrow(() -> new RuntimeException("消息不存在"));
+                .orElseThrow(() -> new BizException("消息不存在"));
 
         if (!msg.getFromUserId().equals(userId)) {
-            throw new RuntimeException("只能撤回自己发送的消息");
+            throw new BizException("只能撤回自己发送的消息");
         }
 
         if (msg.getRecalledAt() != null) {
-            throw new RuntimeException("消息已被撤回");
+            throw new BizException("消息已被撤回");
         }
 
         long minutes = java.time.Duration.between(msg.getCreatedAt(), java.time.LocalDateTime.now()).toMinutes();
         if (minutes > 2) {
-            throw new RuntimeException("超过2分钟的消息无法撤回");
+            throw new BizException("超过2分钟的消息无法撤回");
         }
 
         msg.setRecalledAt(java.time.LocalDateTime.now());
@@ -146,9 +148,9 @@ public class ChatService {
      * 获取用户参与的全部会话摘要，按最新消息时间倒序。
      * 消息页优先使用本地存储（即时、离线可用），后端数据作为补充和修复源。
      */
-    public List<Map<String, Object>> getUserSessions(Long userId) {
+    public List<ChatSessionDTO> getUserSessions(Long userId) {
         List<String> sessionIds = messageRepository.findDistinctSessionsByUser(userId);
-        List<Map<String, Object>> result = new ArrayList<>();
+        List<ChatSessionDTO> result = new ArrayList<>();
         for (String sid : sessionIds) {
             List<Message> latest = messageRepository.findLatestBySession(sid, PageRequest.of(0, 1));
             if (latest.isEmpty()) continue;
@@ -159,17 +161,17 @@ public class ChatService {
             String otherUserName = userRepository.findById(otherUserId)
                     .map(UserFormatter::formatPersonName).orElse("用户");
 
-            Map<String, Object> session = new LinkedHashMap<>();
-            session.put("sessionId", sid);
-            session.put("otherUserId", otherUserId.toString());
-            session.put("otherUserName", otherUserName);
-            session.put("lastMessage", lastMsg.getContent());
-            session.put("lastMessageType", lastMsg.getMessageType());
-            session.put("lastTime", lastMsg.getCreatedAt().toString());
-            result.add(session);
+            result.add(ChatSessionDTO.builder()
+                    .sessionId(sid)
+                    .otherUserId(otherUserId.toString())
+                    .otherUserName(otherUserName)
+                    .lastMessage(lastMsg.getContent())
+                    .lastMessageType(lastMsg.getMessageType())
+                    .lastTime(lastMsg.getCreatedAt().toString())
+                    .build());
         }
         // 按 lastMsg.createdAt 倒序（latest first）
-        result.sort((a, b) -> String.valueOf(b.get("lastTime")).compareTo(String.valueOf(a.get("lastTime"))));
+        result.sort((a, b) -> String.valueOf(b.getLastTime()).compareTo(String.valueOf(a.getLastTime())));
         return result;
     }
 

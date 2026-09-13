@@ -1,7 +1,7 @@
 package com.platform.service;
 
-import com.platform.model.dto.RatingDTO;
 import com.platform.model.dto.RatingRequest;
+import com.platform.model.dto.UserRatingsDTO;
 import com.platform.model.entity.*;
 import com.platform.repository.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -378,15 +378,12 @@ class RatingServiceTest {
                 User.builder().name("评分者").build()));
 
         // 执行
-        Map<String, Object> result = ratingService.getUserRatings(ownerId);
+        UserRatingsDTO result = ratingService.getUserRatings(ownerId);
 
         // 断言
-        assertThat(result.get("ratings")).isInstanceOf(List.class);
-        @SuppressWarnings("unchecked")
-        List<RatingDTO> ratings = (List<RatingDTO>) result.get("ratings");
-        assertThat(ratings).hasSize(2);
-        assertThat((Double) result.get("averageScore")).isEqualTo(4.5);
-        assertThat((Long) result.get("totalRatings")).isEqualTo(2L);
+        assertThat(result.getRatings()).hasSize(2);
+        assertThat(result.getAverageScore()).isEqualTo(4.5);
+        assertThat(result.getTotalRatings()).isEqualTo(2L);
     }
 
     @Test
@@ -396,13 +393,11 @@ class RatingServiceTest {
         when(ratingRepository.findByToUserId(ownerId)).thenReturn(Collections.emptyList());
 
         // 执行
-        Map<String, Object> result = ratingService.getUserRatings(ownerId);
+        UserRatingsDTO result = ratingService.getUserRatings(ownerId);
 
         // 断言
-        @SuppressWarnings("unchecked")
-        List<RatingDTO> ratings = (List<RatingDTO>) result.get("ratings");
-        assertThat(ratings).isEmpty();
-        assertThat(((Number) result.get("averageScore")).doubleValue()).isEqualTo(5.0);
-        assertThat((Long) result.get("totalRatings")).isEqualTo(0L);
+        assertThat(result.getRatings()).isEmpty();
+        assertThat(result.getAverageScore()).isEqualTo(5.0);
+        assertThat(result.getTotalRatings()).isEqualTo(0L);
     }
 }

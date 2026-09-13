@@ -11,10 +11,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -275,21 +271,20 @@ class SensitiveWordServiceTest {
     }
 
     @Test
-    @DisplayName("列表 - 按 ENABLED 状态过滤返回分页")
+    @DisplayName("列表 - 按 ENABLED 状态过滤返回全部启用词")
     void should_list_when_statusFiltered() {
-        Page<SensitiveWord> page = new PageImpl<>(List.of(enabledWord("傻逼")));
-        when(repository.findByStatus(SensitiveWordStatus.ENABLED, PageRequest.of(0, 10))).thenReturn(page);
+        when(repository.findByStatusOrderByUpdatedAtDesc(SensitiveWordStatus.ENABLED)).thenReturn(List.of(enabledWord("傻逼")));
 
-        Page<SensitiveWordDTO> result = service.list("ENABLED", 0, 10);
+        List<SensitiveWordDTO> result = service.list("ENABLED");
 
-        assertThat(result.getContent()).hasSize(1);
-        assertThat(result.getContent().get(0).getWord()).isEqualTo("傻逼");
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getWord()).isEqualTo("傻逼");
     }
 
     @Test
     @DisplayName("列表 - 未知状态过滤抛业务异常")
     void should_throw_when_unknownStatus() {
-        assertThatThrownBy(() -> service.list("UNKNOWN", 0, 10))
+        assertThatThrownBy(() -> service.list("UNKNOWN"))
                 .isInstanceOf(BizException.class)
                 .hasMessageContaining("未知状态");
     }

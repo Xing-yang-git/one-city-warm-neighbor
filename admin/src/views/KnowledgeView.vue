@@ -280,9 +280,6 @@ const DOC_STATUS = {
   FAILED: "failed",
 } as const;
 
-/** 一次性获取时的最大条数（文档规模下足够覆盖全量） */
-const LIST_FETCH_ALL_SIZE = 10000;
-
 // ==================== 文档列表 ====================
 
 /** 表格加载状态 */
@@ -356,10 +353,7 @@ const filteredDocs = computed<KnowledgeDocumentDTO[]>(() => {
 async function loadDocs(): Promise<void> {
   loading.value = true;
   try {
-    const res = await getKnowledgeDocuments({
-      page: 0,
-      size: LIST_FETCH_ALL_SIZE,
-    });
+    const res = await getKnowledgeDocuments();
     docs.value = res.data?.data?.content ?? [];
     // 没有解析中文档则停止轮询
     if (!docs.value.some((d) => d.status === DOC_STATUS.PARSING)) {

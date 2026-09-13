@@ -1698,7 +1698,6 @@ const tableData = ref<ContentRow[]>([]);
 /** 总记录数 */
 const totalCount = ref(0);
 /** 一次性拉取全量数据的条数上限 */
-const FETCH_ALL_SIZE = 9999;
 /** 表格勾选的行 */
 const selectedRows = ref<ContentRow[]>([]);
 /** el-table 组件引用 */
@@ -1791,20 +1790,14 @@ async function fetchContent(): Promise<void> {
       building_no: filterBuilding.value || undefined,
       unit_no: filterUnit.value || undefined,
       search: search.value || undefined,
-      page: 0,
-      size: FETCH_ALL_SIZE,
       ...(activeTab.value === "offline" && filterModeratedBy.value
         ? { moderatedBy: filterModeratedBy.value }
         : {}),
     };
     const res = await getContentList(params);
-    const pageData = unwrap<{
-      content: ContentRow[];
-      totalElements: number;
-      totalPages: number;
-    }>(res);
+    const pageData = unwrap<{ content: ContentRow[] }>(res);
     tableData.value = pageData?.content || [];
-    totalCount.value = pageData?.totalElements || 0;
+    totalCount.value = tableData.value.length;
   } catch {
     ElMessage.error("加载内容失败");
     tableData.value = [];
@@ -1905,8 +1898,6 @@ async function loadModerationList(): Promise<void> {
   try {
     const params: ModerationListParams = {
       status: "moderation",
-      page: 0,
-      size: FETCH_ALL_SIZE,
     };
     if (moderationFilter.status)
       params.moderationStatus = moderationFilter.status;
@@ -1917,13 +1908,9 @@ async function loadModerationList(): Promise<void> {
     if (moderationFilter.unit) params.unit_no = moderationFilter.unit;
     if (moderationFilter.search) params.search = moderationFilter.search;
     const res = await getModerationList(params);
-    const pageData = unwrap<{
-      content: ModerationItemDTO[];
-      totalElements: number;
-      totalPages: number;
-    }>(res);
+    const pageData = unwrap<{ content: ModerationItemDTO[] }>(res);
     moderationList.value = pageData?.content || [];
-    moderationTotal.value = pageData?.totalElements || 0;
+    moderationTotal.value = moderationList.value.length;
   } catch {
     ElMessage.error("加载审核列表失败");
     moderationList.value = [];
@@ -2660,8 +2647,6 @@ async function loadAllResidents(): Promise<void> {
   loadingResidents.value = true;
   try {
     const params = {
-      page: 0,
-      size: 200,
       userType: residentFilterType.value || undefined,
       building_no: residentFilterBuilding.value || undefined,
       unit_no: residentFilterUnit.value || undefined,
@@ -2669,11 +2654,7 @@ async function loadAllResidents(): Promise<void> {
     };
     const res = await searchResidents(params);
     const data = unwrap<{ content: unknown[] }>(res);
-    residentList.value = data?.content
-      ? data.content
-      : Array.isArray(data)
-        ? data
-        : [];
+    residentList.value = data?.content ? data.content : [];
   } catch (e) {
     residentList.value = [];
   } finally {

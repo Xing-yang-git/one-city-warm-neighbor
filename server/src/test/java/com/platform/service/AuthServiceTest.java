@@ -1,6 +1,9 @@
 package com.platform.service;
 
+import com.platform.model.dto.AuthResponseDTO;
+import com.platform.model.dto.AuthStatusDTO;
 import com.platform.model.dto.LoginRequest;
+import com.platform.model.dto.OperationResultDTO;
 import com.platform.model.dto.RegisterRequest;
 import com.platform.model.dto.UserDTO;
 import com.platform.model.dto.WxLoginRequest;
@@ -101,12 +104,12 @@ class AuthServiceTest {
         when(jwtTokenProvider.generateToken(userId.toString(), "业主", 1)).thenReturn(token);
 
         // 执行
-        Map<String, Object> result = authService.wxLogin(req);
+        AuthResponseDTO result = authService.wxLogin(req);
 
         // 断言
-        assertThat(result.get("token")).isEqualTo(token);
-        assertThat(result.get("user")).isNotNull();
-        assertThat(result.get("needRegister")).isEqualTo(true);
+        assertThat(result.getToken()).isEqualTo(token);
+        assertThat(result.getUser()).isNotNull();
+        assertThat(result.getNeedRegister()).isEqualTo(true);
         // 创建用户 + issueUserToken 各保存一次
         verify(userRepository, times(2)).save(any(User.class));
     }
@@ -124,11 +127,11 @@ class AuthServiceTest {
         when(jwtTokenProvider.generateToken(userId.toString(), "业主", 1)).thenReturn(token);
 
         // 执行
-        Map<String, Object> result = authService.wxLogin(req);
+        AuthResponseDTO result = authService.wxLogin(req);
 
         // 断言
-        assertThat(result.get("token")).isEqualTo(token);
-        assertThat(result.get("needRegister")).isNull();
+        assertThat(result.getToken()).isEqualTo(token);
+        assertThat(result.getNeedRegister()).isNull();
         // issueUserToken 会更新 tokenVersion 保存一次
         verify(userRepository, times(1)).save(any(User.class));
     }
@@ -148,10 +151,10 @@ class AuthServiceTest {
         when(jwtTokenProvider.generateToken(userId.toString(), "业主", 1)).thenReturn(token);
 
         // 执行
-        Map<String, Object> result = authService.wxLogin(req);
+        AuthResponseDTO result = authService.wxLogin(req);
 
         // 断言
-        assertThat(result.get("needRegister")).isEqualTo(true);
+        assertThat(result.getNeedRegister()).isEqualTo(true);
         assertThat(user.getAuthStatus()).isEqualTo(BizStatus.REGISTERING);
     }
 
@@ -173,10 +176,10 @@ class AuthServiceTest {
         when(jwtTokenProvider.generateToken(userId.toString(), "业主", 1)).thenReturn(token);
 
         // 执行
-        Map<String, Object> result = authService.wxLogin(req);
+        AuthResponseDTO result = authService.wxLogin(req);
 
         // 断言
-        UserDTO dto = (UserDTO) result.get("user");
+        UserDTO dto = result.getUser();
         assertThat(dto.getName()).isEqualTo("微信用户");
     }
 
@@ -204,11 +207,11 @@ class AuthServiceTest {
         when(jwtTokenProvider.generateToken(userId.toString(), "admin")).thenReturn(token);
 
         // 执行
-        Map<String, Object> result = authService.adminLogin(req);
+        AuthResponseDTO result = authService.adminLogin(req);
 
         // 断言
-        assertThat(result.get("token")).isEqualTo(token);
-        assertThat(result.get("user")).isNotNull();
+        assertThat(result.getToken()).isEqualTo(token);
+        assertThat(result.getUser()).isNotNull();
     }
 
     @Test
@@ -294,10 +297,10 @@ class AuthServiceTest {
         when(jwtTokenProvider.generateToken(userId.toString(), "super_admin")).thenReturn(token);
 
         // 执行
-        Map<String, Object> result = authService.adminLogin(req);
+        AuthResponseDTO result = authService.adminLogin(req);
 
         // 断言
-        assertThat(result.get("token")).isEqualTo(token);
+        assertThat(result.getToken()).isEqualTo(token);
     }
 
     // ==================== register ====================
@@ -333,12 +336,12 @@ class AuthServiceTest {
         when(jwtTokenProvider.generateToken(userId.toString(), "业主", 0)).thenReturn("mock-token");
 
         // 执行
-        Map<String, Object> result = authService.register(req, userId);
-        UserDTO resultUser = (UserDTO) result.get("user");
+        AuthResponseDTO result = authService.register(req, userId);
+        UserDTO resultUser = result.getUser();
 
         // 断言
         assertThat(result).isNotNull();
-        assertThat(result.get("token")).isEqualTo("mock-token");
+        assertThat(result.getToken()).isEqualTo("mock-token");
         assertThat(resultUser.getName()).isEqualTo("张三");
         assertThat(user.getAuthStatus()).isEqualTo("pending");
         assertThat(user.getRoomId()).isEqualTo(room.getId());
@@ -376,10 +379,10 @@ class AuthServiceTest {
         when(jwtTokenProvider.generateToken(userId.toString(), "租客", 0)).thenReturn("mock-token");
 
         // 执行
-        Map<String, Object> result = authService.register(req, userId);
+        AuthResponseDTO result = authService.register(req, userId);
 
         // 断言：注册成功，且前端编码 tenant 已映射为数据库值"租客"参与查重
-        assertThat(result.get("token")).isEqualTo("mock-token");
+        assertThat(result.getToken()).isEqualTo("mock-token");
         assertThat(user.getUserType()).isEqualTo("租客");
         verify(userRepository).findByRoomIdAndUserType(room.getId(), "租客");
     }
@@ -474,10 +477,10 @@ class AuthServiceTest {
         when(jwtTokenProvider.generateToken(userId.toString(), "业主", 0)).thenReturn("mock-token");
 
         // 执行
-        Map<String, Object> result = authService.register(req, userId);
+        AuthResponseDTO result = authService.register(req, userId);
 
         // 断言：未被唯一性校验拦截
-        assertThat(result.get("token")).isEqualTo("mock-token");
+        assertThat(result.getToken()).isEqualTo("mock-token");
     }
 
     @Test
@@ -575,11 +578,11 @@ class AuthServiceTest {
         when(jwtTokenProvider.generateToken(userId.toString(), "业主", 0)).thenReturn("mock-token");
 
         // 执行
-        Map<String, Object> result = authService.register(req, userId);
+        AuthResponseDTO result = authService.register(req, userId);
 
         // 断言
         assertThat(result).isNotNull();
-        assertThat(result.get("token")).isEqualTo("mock-token");
+        assertThat(result.getToken()).isEqualTo("mock-token");
         assertThat(user.getRoomId()).isEqualTo(newRoom.getId());
         verify(buildingRepository).save(any(Building.class));
         verify(unitRepository).save(any(Unit.class));
@@ -598,11 +601,11 @@ class AuthServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
         // 执行
-        Map<String, Object> result = authService.getAuthStatus(userId);
+        AuthStatusDTO result = authService.getAuthStatus(userId);
 
         // 断言
-        assertThat(result).containsEntry("authStatus", "pending");
-        assertThat(result.get("rejectReason")).isNull();
+        assertThat(result.getAuthStatus()).isEqualTo("pending");
+        assertThat(result.getRejectReason()).isNull();
     }
 
     @Test
@@ -628,10 +631,10 @@ class AuthServiceTest {
         when(userRepository.save(any(User.class))).thenReturn(user);
 
         // 执行
-        Map<String, Object> result = authService.appeal(userId);
+        OperationResultDTO result = authService.appeal(userId);
 
         // 断言
-        assertThat(result.get("success")).isEqualTo(true);
+        assertThat(result.getSuccess()).isEqualTo(true);
         assertThat(user.getAuthStatus()).isEqualTo("pending");
         assertThat(user.getRejectReason()).isNull();
     }

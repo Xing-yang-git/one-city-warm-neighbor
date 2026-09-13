@@ -9,13 +9,9 @@ import type { AxiosResponse } from 'axios';
 // 通用类型
 // ============================================================
 
-/** 通用分页响应 */
-export interface PageDTO<T> {
+/** 通用列表响应（后端 ListDTO 包装，一次性返回全部数据） */
+export interface ListDTO<T> {
   content: T[];
-  totalElements: number;
-  totalPages: number;
-  currentPage: number;
-  size: number;
 }
 
 // ============================================================
@@ -24,8 +20,6 @@ export interface PageDTO<T> {
 
 export interface AuditListParams {
   status?: string;
-  page?: number;
-  size?: number;
 }
 
 export interface AuditCounts {
@@ -55,7 +49,7 @@ export interface AuditUserDTO {
 }
 
 export function getAudits(params: AuditListParams = {}): Promise<AxiosResponse> {
-  return get('/api/admin/audits', { status: params.status, page: params.page ?? 0, size: params.size ?? 200 });
+  return get('/api/admin/audits', { status: params.status });
 }
 
 export function getAuditCounts(): Promise<AxiosResponse> {
@@ -78,8 +72,6 @@ export interface ContentListParams {
   /** 单元号（数值筛选） */
   unit_no?: number;
   search?: string;
-  page: number;
-  size: number;
 }
 
 /** 对方信息（进行中 / 已完成时填充） */
@@ -182,8 +174,6 @@ export interface ModerationListParams {
   /** 单元号（数值筛选） */
   unit_no?: number;
   search?: string;
-  page: number;
-  size: number;
 }
 
 /** 审核列表条目 DTO */
@@ -337,8 +327,6 @@ export function publishHelp(body: PublishHelpBody): Promise<AxiosResponse> {
 // ============================================================
 
 export interface ResidentSearchParams {
-  page?: number;
-  size?: number;
   userType?: string;
   /** 楼栋号（数值筛选） */
   building_no?: number;
@@ -415,8 +403,6 @@ export function getDashboard(): Promise<AxiosResponse> {
 /** 互助记录列表查询参数 */
 export interface RecordsListParams {
   type?: string;
-  page?: number;
-  size?: number;
 }
 
 /** 互助记录条目（后端 getRecords 返回的单条记录） */
@@ -455,7 +441,7 @@ export interface RecordItemDTO {
 }
 
 export function getRecords(params: RecordsListParams = {}): Promise<AxiosResponse> {
-  return get('/api/admin/records', { type: params.type ?? 'all', page: params.page ?? 0, size: params.size ?? 200 });
+  return get('/api/admin/records', { type: params.type ?? 'all' });
 }
 
 // ============================================================
@@ -543,11 +529,6 @@ export function updatePassword(body: UpdatePasswordBody): Promise<AxiosResponse>
 // 操作日志
 // ============================================================
 
-export interface LogListParams {
-  page?: number;
-  size?: number;
-}
-
 export interface OperationLogDTO {
   id: number;
   adminName: string;
@@ -558,8 +539,8 @@ export interface OperationLogDTO {
   createdAt: string;
 }
 
-export function getLogs(params: LogListParams = {}): Promise<AxiosResponse> {
-  return get('/api/admin/logs', { page: params.page ?? 0, size: params.size ?? 20 });
+export function getLogs(): Promise<AxiosResponse> {
+  return get('/api/admin/logs');
 }
 
 // ============================================================
@@ -596,11 +577,6 @@ export interface ExportLogItem {
   fileName: string;
 }
 
-/** 导出日志查询参数 */
-export interface ExportLogParams {
-  page?: number;
-  size?: number;
-}
 
 /**
  * 执行数据导出，发送 POST 请求到后端生成多 Sheet Excel 文件。
@@ -641,8 +617,8 @@ export async function exportData(params: ExportParams): Promise<{ blob: Blob; fi
  * @param params - 分页参数
  * @returns AxiosResponse，data 为分页日志数据
  */
-export function getExportLogs(params: ExportLogParams = {}): Promise<AxiosResponse> {
-  return get('/api/admin/exports/logs', { page: params.page ?? 0, size: params.size ?? 10 });
+export function getExportLogs(): Promise<AxiosResponse> {
+  return get('/api/admin/exports/logs');
 }
 
 /**
@@ -737,12 +713,8 @@ export interface KnowledgeDocumentDTO {
   updatedAt: string;
 }
 
-/** 文档列表查询参数 */
+/** 文档列表查询参数（一次性返回全部，无分页） */
 export interface KnowledgeDocumentListParams {
-  /** 页码（从 0 开始） */
-  page?: number;
-  /** 每页条数 */
-  size?: number;
   /** 状态过滤：parsing/ready/failed */
   status?: string;
 }
@@ -796,11 +768,9 @@ export async function importKnowledgeDocuments(
   return { success, failed };
 }
 
-/** 文档列表（一次性获取全量） */
+/** 文档列表（一次性返回全部） */
 export function getKnowledgeDocuments(params: KnowledgeDocumentListParams = {}): Promise<AxiosResponse> {
   return get('/api/admin/knowledge/documents', {
-    page: params.page ?? 0,
-    size: params.size ?? 10,
     status: params.status
   });
 }
@@ -827,12 +797,8 @@ export const SENSITIVE_WORD_STATUS = {
   DISABLED: 'DISABLED',
 } as const;
 
-/** 敏感词列表查询参数 */
+/** 敏感词列表查询参数（一次性返回全部，无分页） */
 export interface SensitiveWordListParams {
-  /** 页码（从 0 开始） */
-  page?: number;
-  /** 每页条数 */
-  size?: number;
   /** 状态过滤：ENABLED/DISABLED，缺省查全部 */
   status?: string;
 }
@@ -859,13 +825,11 @@ export interface SensitiveWordBody {
   status?: string;
 }
 
-/** 敏感词分页列表 */
+/** 敏感词列表（一次性返回全部） */
 export function getSensitiveWords(
   params: SensitiveWordListParams = {},
 ): Promise<AxiosResponse> {
   return get('/api/admin/sensitive-words', {
-    page: params.page ?? 0,
-    size: params.size ?? 10,
     status: params.status,
   });
 }

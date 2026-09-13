@@ -84,8 +84,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             log.debug("JWT authenticated: userId={}, userType={}, role={}, uri={}",
                     userId, userType, role, uri);
 
+            // 以 LoginUser 为主体，替代把用户 ID 塞进 getName() 的做法（getName 语义是用户名）
+            final Long principalUserId;
+            try {
+                principalUserId = Long.valueOf(userId);
+            } catch (NumberFormatException e) {
+                // subject 非数字：无法解析用户 ID。不注入认证、按匿名处理（受保护端点会返回 401）。
+                // 若仍注入 LoginUser(null, userType)，下游 getUserId() 拿到 null 会流入 findById(null) 抛异常。
+                log.warn("JWT subject 非数字，无法解析 userId: {}，按未认证处理 uri={}", userId, uri);
+                filterChain.doFilter(request, response);
+                return;
+            }
             UsernamePasswordAuthenticationToken auth =
-                new UsernamePasswordAuthenticationToken(userId, null,
+                new UsernamePasswordAuthenticationToken(new LoginUser(principalUserId, userType), null,
                     List.of(new SimpleGrantedAuthority(role)));
             SecurityContextHolder.getContext().setAuthentication(auth);
         }

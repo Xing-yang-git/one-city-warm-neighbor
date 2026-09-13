@@ -2,8 +2,14 @@ package com.platform.controller;
 
 import com.platform.ai.PolishingClient;
 import com.platform.common.Result;
+import com.platform.model.dto.BuildingDTO;
+import com.platform.model.dto.ListDTO;
 import com.platform.model.dto.PolishRequest;
 import com.platform.model.dto.PolishResponse;
+import com.platform.model.dto.RoomDTO;
+import com.platform.model.dto.TenantDTO;
+import com.platform.model.dto.UnitDTO;
+import com.platform.model.dto.UploadResponseDTO;
 import com.platform.service.CommonService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
@@ -36,8 +42,8 @@ public class CommonController {
      * @return 小区列表
      */
     @GetMapping("/tenants")
-    public Result<?> getTenants() {
-        return Result.ok(commonService.getAllTenants());
+    public Result<ListDTO<TenantDTO>> getTenants() {
+        return Result.ok(new ListDTO<>(commonService.getAllTenants()));
     }
 
     /**
@@ -47,8 +53,8 @@ public class CommonController {
      * @return 楼栋列表
      */
     @GetMapping("/buildings")
-    public Result<?> getBuildings(@RequestParam Long tenantId) {
-        return Result.ok(commonService.getBuildingsByTenantId(tenantId));
+    public Result<ListDTO<BuildingDTO>> getBuildings(@RequestParam Long tenantId) {
+        return Result.ok(new ListDTO<>(commonService.getBuildingsByTenantId(tenantId)));
     }
 
     /**
@@ -58,8 +64,8 @@ public class CommonController {
      * @return 单元列表
      */
     @GetMapping("/units")
-    public Result<?> getUnits(@RequestParam Long buildingId) {
-        return Result.ok(commonService.getUnitsByBuildingId(buildingId));
+    public Result<ListDTO<UnitDTO>> getUnits(@RequestParam Long buildingId) {
+        return Result.ok(new ListDTO<>(commonService.getUnitsByBuildingId(buildingId)));
     }
 
     /**
@@ -69,8 +75,8 @@ public class CommonController {
      * @return 房间列表
      */
     @GetMapping("/rooms")
-    public Result<?> getRooms(@RequestParam Long unitId) {
-        return Result.ok(commonService.getRoomsByUnitId(unitId));
+    public Result<ListDTO<RoomDTO>> getRooms(@RequestParam Long unitId) {
+        return Result.ok(new ListDTO<>(commonService.getRoomsByUnitId(unitId)));
     }
 
     /**
@@ -80,9 +86,9 @@ public class CommonController {
      * @return 上传后的文件访问 URL
      */
     @PostMapping("/upload")
-    public Result<?> upload(@RequestParam("file") MultipartFile file) {
+    public Result<UploadResponseDTO> upload(@RequestParam("file") MultipartFile file) {
         String url = commonService.uploadFile(file);
-        return Result.ok(java.util.Map.of("url", url));
+        return Result.ok(new UploadResponseDTO(url));
     }
 
     /**
@@ -92,9 +98,9 @@ public class CommonController {
      * @return 上传后的文件访问 URL
      */
     @PostMapping("/upload-voice")
-    public Result<?> uploadVoice(@RequestParam("file") MultipartFile file) {
+    public Result<UploadResponseDTO> uploadVoice(@RequestParam("file") MultipartFile file) {
         String url = commonService.uploadVoice(file);
-        return Result.ok(java.util.Map.of("url", url));
+        return Result.ok(new UploadResponseDTO(url));
     }
 
     /**
@@ -107,7 +113,7 @@ public class CommonController {
      * @return AI 生成的文本
      */
     @PostMapping("/polish")
-    public Result<?> polish(@Valid @RequestBody PolishRequest request) {
+    public Result<PolishResponse> polish(@Valid @RequestBody PolishRequest request) {
         if ("feedback".equals(request.getMode())) {
             String feedback = polishingClient.generateFeedback(
                     request.getRole(),

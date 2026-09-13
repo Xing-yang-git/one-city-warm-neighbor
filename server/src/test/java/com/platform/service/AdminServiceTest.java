@@ -13,9 +13,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -355,20 +352,19 @@ class AdminServiceTest {
     // ==================== getAudits ====================
 
     @Test
-    @DisplayName("获取审核列表 - 按状态过滤返回分页数据")
+    @DisplayName("获取审核列表 - 按状态过滤返回审核用户")
     void should_returnAudits_when_filteredByStatus() {
         // 准备
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
-        Page<User> userPage = new PageImpl<>(List.of(user), PageRequest.of(0, 10), 1);
-        when(userRepository.findByTenantIdAndAuthStatus(eq(tenantId), eq("pending"), any(PageRequest.class)))
-                .thenReturn(userPage);
+        // 服务内会按创建时间对列表排序，需返回可变列表
+        when(userRepository.findByTenantIdAndAuthStatus(tenantId, "pending")).thenReturn(new ArrayList<>(List.of(user)));
 
         // 执行
-        PageDTO<UserDTO> result = adminService.getAudits(adminId, "pending", 0, 10);
+        List<UserDTO> result = adminService.getAudits(adminId, "pending");
 
         // 断言
-        assertThat(result.getContent()).hasSize(1);
-        assertThat(result.getTotalElements()).isEqualTo(1);
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getId()).isEqualTo(userId);
     }
 
     @Test
@@ -376,15 +372,14 @@ class AdminServiceTest {
     void should_returnAllNonRegistering_when_statusEmpty() {
         // 准备
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
-        Page<User> userPage = new PageImpl<>(List.of(user), PageRequest.of(0, 10), 1);
-        when(userRepository.findByTenantIdAndAuthStatusNot(eq(tenantId), eq(BizStatus.REGISTERING), any(PageRequest.class)))
-                .thenReturn(userPage);
+        // 服务内会按创建时间对列表排序，需返回可变列表
+        when(userRepository.findByTenantIdAndAuthStatusNot(tenantId, BizStatus.REGISTERING)).thenReturn(new ArrayList<>(List.of(user)));
 
         // 执行
-        PageDTO<UserDTO> result = adminService.getAudits(adminId, null, 0, 10);
+        List<UserDTO> result = adminService.getAudits(adminId, null);
 
         // 断言
-        assertThat(result.getContent()).hasSize(1);
+        assertThat(result).hasSize(1);
     }
 
     // ==================== getAuditCounts ====================
@@ -400,13 +395,13 @@ class AdminServiceTest {
         when(userRepository.countByTenantIdAndAuthStatusNot(tenantId, BizStatus.REGISTERING)).thenReturn(17L);
 
         // 执行
-        Map<String, Long> result = adminService.getAuditCounts(adminId);
+        AuditCountDTO result = adminService.getAuditCounts(adminId);
 
         // 断言
-        assertThat(result).containsEntry("pending", 5L);
-        assertThat(result).containsEntry("approved", 10L);
-        assertThat(result).containsEntry("rejected", 2L);
-        assertThat(result).containsEntry("all", 17L);
+        assertThat(result.getPending()).isEqualTo(5L);
+        assertThat(result.getApproved()).isEqualTo(10L);
+        assertThat(result.getRejected()).isEqualTo(2L);
+        assertThat(result.getAll()).isEqualTo(17L);
     }
 
     // ==================== auditUser ====================
@@ -489,14 +484,14 @@ class AdminServiceTest {
         when(helpRequestRepository.countByTenantIdAndStatus(tenantId, BizStatus.OFFLINE)).thenReturn(1L);
 
         // 执行
-        Map<String, Long> result = adminService.getContentCounts(adminId);
+        ContentCountDTO result = adminService.getContentCounts(adminId);
 
         // 断言
-        assertThat(result).containsEntry("showing", 15L);
-        assertThat(result).containsEntry("progressing", 5L);
-        assertThat(result).containsEntry("completed", 12L);
-        assertThat(result).containsEntry("violation", 2L);
-        assertThat(result).containsEntry("all", 34L);
+        assertThat(result.getShowing()).isEqualTo(15L);
+        assertThat(result.getProgressing()).isEqualTo(5L);
+        assertThat(result.getCompleted()).isEqualTo(12L);
+        assertThat(result.getViolation()).isEqualTo(2L);
+        assertThat(result.getAll()).isEqualTo(34L);
     }
 
     // ==================== getContentDetail ====================
@@ -810,11 +805,11 @@ class AdminServiceTest {
         when(operationLogRepository.save(any(OperationLog.class))).thenReturn(new OperationLog());
 
         // 执行
-        Map<String, Object> result = adminService.removeContent(adminId, itemId, req);
+        OperationResultDTO result = adminService.removeContent(adminId, itemId, req);
 
         // 断言
-        assertThat(result.get("success")).isEqualTo(true);
-        assertThat(result.get("message")).isEqualTo("内容已删除");
+        assertThat(result.getSuccess()).isEqualTo(true);
+        assertThat(result.getMessage()).isEqualTo("内容已删除");
         assertThat(idleItem.getStatus()).isEqualTo(BizStatus.OFFLINE);
         assertThat(idleItem.getDelistReason()).isEqualTo("违规内容");
         verify(operationLogRepository).save(any(OperationLog.class));
@@ -834,10 +829,10 @@ class AdminServiceTest {
         when(operationLogRepository.save(any(OperationLog.class))).thenReturn(new OperationLog());
 
         // 执行
-        Map<String, Object> result = adminService.removeContent(adminId, helpId, req);
+        OperationResultDTO result = adminService.removeContent(adminId, helpId, req);
 
         // 断言
-        assertThat(result.get("success")).isEqualTo(true);
+        assertThat(result.getSuccess()).isEqualTo(true);
         assertThat(helpRequest.getStatus()).isEqualTo(BizStatus.OFFLINE);
     }
 
@@ -983,11 +978,11 @@ class AdminServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
         // 执行
-        PageDTO<Map<String, Object>> result = adminService.getRecords(adminId, "borrow", 0, 10);
+        List<RecordItemDTO> result = adminService.getRecords(adminId, "borrow");
 
         // 断言
-        assertThat(result.getContent()).hasSize(1);
-        assertThat(result.getContent().get(0).get("type")).isEqualTo("borrow");
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getType()).isEqualTo("borrow");
     }
 
     @Test
@@ -997,7 +992,7 @@ class AdminServiceTest {
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
 
         // 执行 & 断言
-        assertThatThrownBy(() -> adminService.getRecords(adminId, "unknown", 0, 10))
+        assertThatThrownBy(() -> adminService.getRecords(adminId, "unknown"))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("不支持的类型，请使用 borrow、help 或 all");
     }
@@ -1024,15 +1019,12 @@ class AdminServiceTest {
         when(operationLogRepository.findAll(any(Sort.class))).thenReturn(List.of(log));
 
         // 执行
-        PageDTO<OperationLogDTO> result = adminService.getOperationLogs(adminId, 0, 10);
+        List<OperationLogDTO> result = adminService.getOperationLogs(adminId);
 
         // 断言
-        assertThat(result.getContent()).hasSize(1);
-        assertThat(result.getContent().get(0).getAction()).isEqualTo("approve_user");
-        assertThat(result.getContent().get(0).getAdminName()).isEqualTo("管理员");
-        // 分页计数必须是过滤后的实际条数，而非全库计数
-        assertThat(result.getTotalElements()).isEqualTo(1L);
-        assertThat(result.getTotalPages()).isEqualTo(1);
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getAction()).isEqualTo("approve_user");
+        assertThat(result.get(0).getAdminName()).isEqualTo("管理员");
     }
 
     // ==================== getBuildings ====================
@@ -1050,11 +1042,11 @@ class AdminServiceTest {
         when(buildingRepository.findByTenantId(tenantId)).thenReturn(List.of(building));
 
         // 执行
-        List<Map<String, Object>> result = adminService.getBuildings(adminId);
+        List<BuildingDTO> result = adminService.getBuildings(adminId);
 
         // 断言
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).get("buildingNo")).isEqualTo(3);
+        assertThat(result.get(0).getBuildingNo()).isEqualTo(3);
     }
 
     // ==================== exportData ====================

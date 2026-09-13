@@ -8,9 +8,7 @@ import com.platform.model.entity.SensitiveWord;
 import com.platform.repository.SensitiveWordRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +19,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 敏感词匹配服务 — 对话输入前置过滤的统一匹配入口（与「消息前置过滤器」的共享契约）。
@@ -207,20 +206,17 @@ public class SensitiveWordService {
     // ==================== 管理端 CRUD（super_admin，增删改后刷新缓存） ====================
 
     /**
-     * 敏感词分页列表（可按状态过滤）。
+     * 敏感词列表（可按状态过滤，一次性返回全部，按更新时间倒序）。
      *
      * @param status 状态过滤（ENABLED/DISABLED，空或 null 查全部）
-     * @param page   页码（0 基）
-     * @param size   每页条数
-     * @return 分页结果
+     * @return 全部敏感词 DTO 列表
      */
-    public Page<SensitiveWordDTO> list(String status, int page, int size) {
+    public List<SensitiveWordDTO> list(String status) {
         SensitiveWordStatus statusEnum = parseStatus(status);
-        Pageable pageable = PageRequest.of(page, size);
-        Page<SensitiveWord> result = statusEnum == null
-                ? sensitiveWordRepository.findAll(pageable)
-                : sensitiveWordRepository.findByStatus(statusEnum, pageable);
-        return result.map(this::toDTO);
+        List<SensitiveWord> result = statusEnum == null
+                ? sensitiveWordRepository.findAll(Sort.by(Sort.Direction.DESC, "updatedAt"))
+                : sensitiveWordRepository.findByStatusOrderByUpdatedAtDesc(statusEnum);
+        return result.stream().map(this::toDTO).collect(Collectors.toList());
     }
 
     /**

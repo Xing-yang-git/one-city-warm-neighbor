@@ -8,6 +8,7 @@ import com.platform.common.BizException;
 import com.platform.common.Result;
 import com.platform.model.dto.AgentChatRequest;
 import com.platform.model.dto.AgentStreamEvent;
+import com.platform.security.LoginUser;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -96,7 +97,7 @@ public class AgentController {
      */
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chat(@Valid @RequestBody AgentChatRequest req, Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         long requestStartMs = System.currentTimeMillis();
 
         // 限流：每分钟每用户配额，超限返回 SSE error 事件（友好文案提示，不开启对话流）
@@ -324,7 +325,7 @@ public class AgentController {
     public Result<?> history(@RequestParam(defaultValue = "0") int page,
                              @RequestParam(defaultValue = "20") int size,
                              Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         // size 钳制上限，防超大分页拖垮查询
         size = Math.min(size, 50);
         size = Math.max(size, 1);
@@ -347,7 +348,7 @@ public class AgentController {
      */
     @PostMapping("/history/{id}/resume")
     public Result<?> resume(@PathVariable Long id, Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         // 返回回填的最近消息，前端据此渲染切换后的对话内容
         List<AgentSession.AgentMessageItem> messages = archiveService.resume(userId, id);
         // 恢复历史是新会话上下文：重置上一条消息记录，避免继续对话第一条被误判为重复
@@ -364,7 +365,7 @@ public class AgentController {
      */
     @DeleteMapping("/history")
     public Result<?> deleteHistory(@RequestBody(required = false) Map<String, Object> body, Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         // 安全解析 ids：兼容 Number / 数字字符串，非数组/空 body 不抛异常
         List<Long> ids = new ArrayList<>();
         if (body == null) {
@@ -402,7 +403,7 @@ public class AgentController {
      */
     @PostMapping("/exit")
     public Result<?> exit(Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         archiveService.archiveRemaining(userId);
         memoryCompressionService.compressRetry(userId);
         // 退出会话即会话边界：重置上一条消息记录，避免下次新会话第一条被误判为重复

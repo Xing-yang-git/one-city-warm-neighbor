@@ -1,13 +1,17 @@
 package com.platform.controller;
 
 import com.platform.common.Result;
+import com.platform.model.dto.ApprovalCountDTO;
+import com.platform.model.dto.ListDTO;
+import com.platform.model.dto.MyPostItemDTO;
+import com.platform.model.dto.UserProfileDTO;
+import com.platform.security.LoginUser;
 import com.platform.service.UserActivityService;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
 
 /**
  * 用户活动/个人中心 REST API — 个人信息、我的发布、审批管理、进行中/已完成记录。
@@ -35,8 +39,8 @@ public class UserActivityController {
      * 一次调用返回用户信息、评分和统计数据。
      */
     @GetMapping("/profile")
-    public Result<?> profile(Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+    public Result<UserProfileDTO> profile(Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         return Result.ok(userActivityService.getProfile(userId));
     }
 
@@ -45,9 +49,9 @@ public class UserActivityController {
      * @param status 可选过滤条件："online" | "offline" | "completed"
      */
     @GetMapping("/posts")
-    public Result<?> myPosts(@RequestParam(required = false) String status, Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
-        return Result.ok(userActivityService.getMyPosts(userId, status));
+    public Result<ListDTO<MyPostItemDTO>> myPosts(@RequestParam(required = false) String status, Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
+        return Result.ok(new ListDTO<>(userActivityService.getMyPosts(userId, status)));
     }
 
     /**
@@ -55,9 +59,9 @@ public class UserActivityController {
      * @param type "borrow" | "lend" | "help"
      */
     @GetMapping("/approvals")
-    public Result<?> approvals(@RequestParam String type, Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
-        return Result.ok(userActivityService.getApprovals(userId, type));
+    public Result<ListDTO<MyPostItemDTO>> approvals(@RequestParam String type, Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
+        return Result.ok(new ListDTO<>(userActivityService.getApprovals(userId, type)));
     }
 
     /**
@@ -65,8 +69,8 @@ public class UserActivityController {
      * 返回 { borrow, lend, help, total }。
      */
     @GetMapping("/approvals/count")
-    public Result<?> approvalsCount(Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+    public Result<ApprovalCountDTO> approvalsCount(Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         return Result.ok(userActivityService.getApprovalCounts(userId));
     }
 
@@ -75,9 +79,9 @@ public class UserActivityController {
      * @param role "borrow" | "lend" | "helpReq" | "helpPro"
      */
     @GetMapping("/in-progress")
-    public Result<?> inProgress(@RequestParam String role, Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
-        return Result.ok(userActivityService.getInProgress(userId, role));
+    public Result<ListDTO<MyPostItemDTO>> inProgress(@RequestParam String role, Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
+        return Result.ok(new ListDTO<>(userActivityService.getInProgress(userId, role)));
     }
 
     /**
@@ -85,8 +89,8 @@ public class UserActivityController {
      * @param role "borrow" | "lend" | "helpReq" | "helpPro"
      */
     @GetMapping("/completed")
-    public Result<?> completed(@RequestParam String role, Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
-        return Result.ok(userActivityService.getCompleted(userId, role));
+    public Result<ListDTO<MyPostItemDTO>> completed(@RequestParam String role, Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
+        return Result.ok(new ListDTO<>(userActivityService.getCompleted(userId, role)));
     }
 }

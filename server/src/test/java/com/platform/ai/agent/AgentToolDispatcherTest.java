@@ -7,6 +7,7 @@ import com.platform.ai.search.KnowledgeHit;
 import com.platform.ai.search.KnowledgeRetrievalService;
 import com.platform.common.BizStatus;
 import com.platform.common.PostType;
+import com.platform.model.dto.ApprovalCountDTO;
 import com.platform.model.dto.BorrowResponseDTO;
 import com.platform.model.dto.HelpResponseDTO;
 import com.platform.model.dto.IdleItemDTO;
@@ -32,7 +33,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -388,7 +388,8 @@ class AgentToolDispatcherTest {
     @Test
     @DisplayName("my_todos - 返回待审批与进行中汇总")
     void should_myTodos_returnSummary() {
-        when(userActivityService.getApprovalCounts(USER_ID)).thenReturn(Map.of("borrow", 1, "lend", 1, "help", 1));
+        when(userActivityService.getApprovalCounts(USER_ID)).thenReturn(
+                ApprovalCountDTO.builder().borrow(1).lend(1).help(1).total(3).build());
         when(userActivityService.getInProgress(USER_ID, "borrow")).thenReturn(List.of(MyPostItemDTO.builder().title("电钻").build()));
         when(userActivityService.getInProgress(USER_ID, "lend")).thenReturn(List.of());
         when(userActivityService.getInProgress(USER_ID, "helpReq")).thenReturn(List.of(MyPostItemDTO.builder().title("搬家").build()));
@@ -405,7 +406,8 @@ class AgentToolDispatcherTest {
     @Test
     @DisplayName("my_todos - 无待办返回兜底")
     void should_myTodos_returnEmptyReply() {
-        when(userActivityService.getApprovalCounts(USER_ID)).thenReturn(Map.of());
+        when(userActivityService.getApprovalCounts(USER_ID)).thenReturn(
+                ApprovalCountDTO.builder().borrow(0).lend(0).help(0).total(0).build());
         when(userActivityService.getInProgress(USER_ID, "borrow")).thenReturn(List.of());
         when(userActivityService.getInProgress(USER_ID, "lend")).thenReturn(List.of());
         when(userActivityService.getInProgress(USER_ID, "helpReq")).thenReturn(List.of());

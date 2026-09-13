@@ -1,6 +1,7 @@
 package com.platform.service;
 
 import com.platform.model.dto.MyPostItemDTO;
+import com.platform.model.dto.UserProfileDTO;
 import com.platform.model.entity.BorrowRequest;
 import com.platform.model.entity.HelpApplication;
 import com.platform.model.entity.HelpRequest;
@@ -25,7 +26,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -100,16 +100,16 @@ class UserActivityServiceTest {
         when(helpRequestRepository.findByUserId(userId)).thenReturn(Collections.emptyList());
 
         // 执行
-        Map<String, Object> result = service.getProfile(userId);
+        UserProfileDTO result = service.getProfile(userId);
 
         // 断言
         assertThat(result).isNotNull();
-        assertThat(result.get("id")).isEqualTo(userId);
-        assertThat(result.get("name")).isEqualTo("测试用户");
-        assertThat(result.get("userType")).isEqualTo("owner");
-        assertThat(result.get("isAuth")).isEqualTo(true);
-        assertThat(result.get("score")).isEqualTo(4.5);
-        assertThat(result.get("ratingCount")).isEqualTo(3);
+        assertThat(result.getId()).isEqualTo(userId);
+        assertThat(result.getName()).isEqualTo("测试用户");
+        assertThat(result.getUserType()).isEqualTo("owner");
+        assertThat(result.getIsAuth()).isEqualTo(true);
+        assertThat(result.getScore()).isEqualTo(4.5);
+        assertThat(result.getRatingCount()).isEqualTo(3);
     }
 
     @Test
@@ -124,11 +124,11 @@ class UserActivityServiceTest {
         when(helpRequestRepository.findByUserId(userId)).thenReturn(Collections.emptyList());
 
         // 执行
-        Map<String, Object> result = service.getProfile(userId);
+        UserProfileDTO result = service.getProfile(userId);
 
         // 断言
-        assertThat(((Number) result.get("score")).doubleValue()).isEqualTo(5.0);
-        assertThat(result.get("borrowReturnRate")).isEqualTo(100.0);
+        assertThat(result.getScore()).isEqualTo(5.0);
+        assertThat(result.getBorrowReturnRate()).isEqualTo(100.0);
     }
 
     @Test

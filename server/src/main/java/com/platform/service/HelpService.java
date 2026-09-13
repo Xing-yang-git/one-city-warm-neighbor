@@ -1,6 +1,7 @@
 package com.platform.service;
 
 import com.platform.ai.moderation.ModerationService;
+import com.platform.common.BizException;
 import com.platform.common.BizStatus;
 import com.platform.common.ModerationStatus;
 import com.platform.common.UserFormatter;
@@ -69,7 +70,7 @@ public class HelpService {
 
     public HelpResponseDTO publish(Long userId, HelpRequestDTO req) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("用户不存在"));
+                .orElseThrow(() -> new BizException("用户不存在"));
 
         HelpRequest helpRequest = new HelpRequest();
         helpRequest.setUserId(userId);
@@ -138,7 +139,7 @@ public class HelpService {
 
     public HelpResponseDTO getDetail(Long helpId) {
         HelpRequest helpRequest = helpRequestRepository.findById(helpId)
-                .orElseThrow(() -> new RuntimeException("求助信息不存在"));
+                .orElseThrow(() -> new BizException("求助信息不存在"));
         return enrichWithUserStats(toDTO(helpRequest));
     }
 
@@ -173,10 +174,10 @@ public class HelpService {
 
     public HelpResponseDTO delist(Long userId, Long helpId) {
         HelpRequest helpRequest = helpRequestRepository.findById(helpId)
-                .orElseThrow(() -> new RuntimeException("求助信息不存在"));
+                .orElseThrow(() -> new BizException("求助信息不存在"));
 
         if (!helpRequest.getUserId().equals(userId)) {
-            throw new RuntimeException("无权操作该求助");
+            throw new BizException("无权操作该求助");
         }
 
         helpRequest.setStatus(BizStatus.DRAFT);
@@ -204,9 +205,9 @@ public class HelpService {
      */
     public HelpResponseDTO deleteItem(Long userId, Long helpId) {
         HelpRequest helpRequest = helpRequestRepository.findById(helpId)
-                .orElseThrow(() -> new RuntimeException("求助不存在"));
+                .orElseThrow(() -> new BizException("求助不存在"));
         if (!helpRequest.getUserId().equals(userId)) {
-            throw new RuntimeException("无权操作该求助");
+            throw new BizException("无权操作该求助");
         }
         helpRequest.setStatus(BizStatus.OFFLINE);
         helpRequest.setDelistReason("用户删除");
@@ -217,20 +218,20 @@ public class HelpService {
     public HelpResponseDTO apply(Long helperId, Long helpId, String note) {
         // 悲观写锁防并发：两个人同时申请同一求助时，后到达的事务需等待前者提交
         HelpRequest helpRequest = helpRequestRepository.findByIdWithLock(helpId)
-                .orElseThrow(() -> new RuntimeException("求助信息不存在"));
+                .orElseThrow(() -> new BizException("求助信息不存在"));
 
         if (!BizStatus.ONLINE.equals(helpRequest.getStatus())) {
-            throw new RuntimeException("该求助已被其他人抢先申请，请浏览其他求助");
+            throw new BizException("该求助已被其他人抢先申请，请浏览其他求助");
         }
 
         if (helpRequest.getUserId().equals(helperId)) {
-            throw new RuntimeException("不能申请自己的求助");
+            throw new BizException("不能申请自己的求助");
         }
 
         // 防重复：同一用户对同一求助已有 pending/approved 申请时拒绝
         if (helpApplicationRepository.existsByHelpIdAndHelperIdAndStatusIn(
                 helpId, helperId, List.of(BizStatus.PENDING, BizStatus.APPROVED))) {
-            throw new RuntimeException("您已申请过该求助，请勿重复提交");
+            throw new BizException("您已申请过该求助，请勿重复提交");
         }
 
         HelpApplication application = new HelpApplication();
@@ -262,17 +263,17 @@ public class HelpService {
 
     public HelpResponseDTO approveReject(Long ownerId, Long appId, ApproveRequest req) {
         HelpApplication application = helpApplicationRepository.findById(appId)
-                .orElseThrow(() -> new RuntimeException("帮助申请不存在"));
+                .orElseThrow(() -> new BizException("帮助申请不存在"));
 
         HelpRequest helpRequest = helpRequestRepository.findById(application.getHelpId())
-                .orElseThrow(() -> new RuntimeException("求助信息不存在"));
+                .orElseThrow(() -> new BizException("求助信息不存在"));
 
         if (!helpRequest.getUserId().equals(ownerId)) {
-            throw new RuntimeException("无权操作该申请");
+            throw new BizException("无权操作该申请");
         }
 
         if (!BizStatus.PENDING.equals(application.getStatus())) {
-            throw new RuntimeException("该申请已被处理，无法重复操作");
+            throw new BizException("该申请已被处理，无法重复操作");
         }
 
         application.setStatus(req.getApproved() ? BizStatus.APPROVED : BizStatus.REJECTED);
@@ -318,19 +319,19 @@ public class HelpService {
      */
     public HelpResponseDTO completeHelp(Long actorId, Long appId) {
         HelpApplication application = helpApplicationRepository.findById(appId)
-                .orElseThrow(() -> new RuntimeException("帮助申请不存在"));
+                .orElseThrow(() -> new BizException("帮助申请不存在"));
 
         HelpRequest helpRequest = helpRequestRepository.findById(application.getHelpId())
-                .orElseThrow(() -> new RuntimeException("求助信息不存在"));
+                .orElseThrow(() -> new BizException("求助信息不存在"));
 
         boolean isRequester = helpRequest.getUserId().equals(actorId);
         boolean isHelper = application.getHelperId().equals(actorId);
         if (!isRequester && !isHelper) {
-            throw new RuntimeException("无权操作该申请");
+            throw new BizException("无权操作该申请");
         }
 
         if (!BizStatus.APPROVED.equals(application.getStatus())) {
-            throw new RuntimeException("只能完成进行中的帮助申请");
+            throw new BizException("只能完成进行中的帮助申请");
         }
 
         application.setStatus(BizStatus.COMPLETED);
@@ -358,10 +359,10 @@ public class HelpService {
      */
     public HelpResponseDTO update(Long userId, Long helpId, HelpRequestDTO req) {
         HelpRequest helpRequest = helpRequestRepository.findById(helpId)
-                .orElseThrow(() -> new RuntimeException("求助信息不存在"));
+                .orElseThrow(() -> new BizException("求助信息不存在"));
 
         if (!helpRequest.getUserId().equals(userId)) {
-            throw new RuntimeException("无权操作该求助");
+            throw new BizException("无权操作该求助");
         }
 
         // 保存原始状态，用于判断是否需要重新审核

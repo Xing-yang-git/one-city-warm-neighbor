@@ -53,7 +53,7 @@ Page({
     try {
       const data = await api.get('/api/notifications');
       // API 返回 ORDER BY created_at DESC，最新通知已在最前面，无需 reverse
-      const list = Array.isArray(data) ? data : [];
+      const list = data?.content || (Array.isArray(data) ? data : []);
       const notifications = list.map(n => this._formatNotification(n));
       this.setData({ notifications, loading: false });
     } catch (e) {

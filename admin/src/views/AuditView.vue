@@ -620,7 +620,7 @@ async function loadData(): Promise<void> {
     else if (activeTab.value === "all") status = STATUS.APPROVED;
     else if (activeTab.value === "rejected") status = STATUS.REJECTED;
 
-    const res = await getAudits({ status, page: 0, size: 200 });
+    const res = await getAudits({ status });
     const page = res.data?.data;
     const list: AuditRow[] = (page?.content || []).map((u: AuditUserDTO) => {
       return {

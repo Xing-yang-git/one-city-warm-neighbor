@@ -1,8 +1,10 @@
 package com.platform.service;
 
+import com.platform.common.BizException;
 import com.platform.common.BizStatus;
 import com.platform.model.dto.RatingDTO;
 import com.platform.model.dto.RatingRequest;
+import com.platform.model.dto.UserRatingsDTO;
 import com.platform.model.entity.BorrowRequest;
 import com.platform.model.entity.HelpApplication;
 import com.platform.model.entity.HelpRequest;
@@ -61,7 +63,7 @@ public class RatingService {
         if (req.getHelpApplicationId() != null) {
             return submitHelpRating(fromUserId, req);
         }
-        throw new RuntimeException("请指定要评价的借入记录或帮助申请");
+        throw new BizException("请指定要评价的借入记录或帮助申请");
     }
 
     /**
@@ -85,10 +87,10 @@ public class RatingService {
      */
     private Map<String, Object> submitBorrowRating(Long fromUserId, RatingRequest req) {
         BorrowRequest borrowRequest = borrowRequestRepository.findById(req.getBorrowId())
-                .orElseThrow(() -> new RuntimeException("借入记录不存在"));
+                .orElseThrow(() -> new BizException("借入记录不存在"));
 
         if (!BizStatus.RETURNED.equals(borrowRequest.getStatus())) {
-            throw new RuntimeException("只能对已归还的借入记录进行评价");
+            throw new BizException("只能对已归还的借入记录进行评价");
         }
 
         IdleItem idleItem = idleItemRepository.findById(borrowRequest.getIdleId()).orElse(null);
@@ -99,15 +101,15 @@ public class RatingService {
         boolean isBorrower = borrowerId.equals(fromUserId);
         boolean isOwner = ownerId != null && ownerId.equals(fromUserId);
         if (!isBorrower && !isOwner) {
-            throw new RuntimeException("无权评价该借入记录");
+            throw new BizException("无权评价该借入记录");
         }
         Long toUserId = isBorrower ? ownerId : borrowerId;
         if (toUserId == null) {
-            throw new RuntimeException("对方用户信息缺失，无法评价");
+            throw new BizException("对方用户信息缺失，无法评价");
         }
 
         if (ratingRepository.findFirstByBorrowIdAndFromUserId(req.getBorrowId(), fromUserId).isPresent()) {
-            throw new RuntimeException("您已经评价过该借入记录");
+            throw new BizException("您已经评价过该借入记录");
         }
 
         Rating rating = new Rating();
@@ -127,10 +129,10 @@ public class RatingService {
      */
     private Map<String, Object> submitHelpRating(Long fromUserId, RatingRequest req) {
         HelpApplication application = helpApplicationRepository.findById(req.getHelpApplicationId())
-                .orElseThrow(() -> new RuntimeException("帮助申请不存在"));
+                .orElseThrow(() -> new BizException("帮助申请不存在"));
 
         if (!BizStatus.COMPLETED.equals(application.getStatus())) {
-            throw new RuntimeException("只能对已完成的帮助进行评价");
+            throw new BizException("只能对已完成的帮助进行评价");
         }
 
         HelpRequest helpRequest = helpRequestRepository.findById(application.getHelpId()).orElse(null);
@@ -141,15 +143,15 @@ public class RatingService {
         boolean isHelper = helperId.equals(fromUserId);
         boolean isRequester = requesterId != null && requesterId.equals(fromUserId);
         if (!isHelper && !isRequester) {
-            throw new RuntimeException("无权评价该帮助");
+            throw new BizException("无权评价该帮助");
         }
         Long toUserId = isHelper ? requesterId : helperId;
         if (toUserId == null) {
-            throw new RuntimeException("对方用户信息缺失，无法评价");
+            throw new BizException("对方用户信息缺失，无法评价");
         }
 
         if (ratingRepository.findFirstByHelpApplicationIdAndFromUserId(req.getHelpApplicationId(), fromUserId).isPresent()) {
-            throw new RuntimeException("您已经评价过该帮助");
+            throw new BizException("您已经评价过该帮助");
         }
 
         Rating rating = new Rating();
@@ -174,7 +176,7 @@ public class RatingService {
         return result;
     }
 
-    public Map<String, Object> getUserRatings(Long userId) {
+    public UserRatingsDTO getUserRatings(Long userId) {
         List<Rating> ratings = ratingRepository.findByToUserId(userId);
         List<RatingDTO> ratingDTOs = ratings.stream().map(this::toDTO).collect(Collectors.toList());
 
@@ -183,11 +185,11 @@ public class RatingService {
                 .average()
                 .orElse(5.0);
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("ratings", ratingDTOs);
-        result.put("averageScore", Math.round(averageScore * 10.0) / 10.0);
-        result.put("totalRatings", (long) ratings.size());
-        return result;
+        return UserRatingsDTO.builder()
+                .ratings(ratingDTOs)
+                .averageScore(Math.round(averageScore * 10.0) / 10.0)
+                .totalRatings((long) ratings.size())
+                .build();
     }
 
     private RatingDTO toDTO(Rating rating) {

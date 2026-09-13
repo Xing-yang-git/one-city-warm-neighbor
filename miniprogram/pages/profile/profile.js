@@ -109,8 +109,8 @@ Page({
         api.get('/api/users/completed', { role: 'lend' })
       ]);
       const allIdle = [
-        ...(Array.isArray(borrowList) ? borrowList : []),
-        ...(Array.isArray(lendList) ? lendList : [])
+        ...(borrowList?.content || (Array.isArray(borrowList) ? borrowList : [])),
+        ...(lendList?.content || (Array.isArray(lendList) ? lendList : []))
       ];
       // 按 completedAt 倒序排列
       allIdle.sort((a, b) => {
@@ -142,8 +142,8 @@ Page({
         api.get('/api/users/completed', { role: 'helpPro' })
       ]);
       const allHelp = [
-        ...(Array.isArray(helpReqList) ? helpReqList : []),
-        ...(Array.isArray(helpProList) ? helpProList : [])
+        ...(helpReqList?.content || (Array.isArray(helpReqList) ? helpReqList : [])),
+        ...(helpProList?.content || (Array.isArray(helpProList) ? helpProList : []))
       ];
       // 按 completedAt 倒序排列
       allHelp.sort((a, b) => {

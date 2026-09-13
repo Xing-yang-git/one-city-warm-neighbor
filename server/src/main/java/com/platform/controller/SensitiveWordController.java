@@ -1,11 +1,12 @@
 package com.platform.controller;
 
 import com.platform.common.Result;
+import com.platform.model.dto.ListDTO;
 import com.platform.model.dto.SensitiveWordDTO;
+import com.platform.security.LoginUser;
 import com.platform.service.AdminService;
 import com.platform.service.SensitiveWordService;
 import jakarta.validation.Valid;
-import org.springframework.data.domain.Page;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,9 +17,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * 敏感词管理 REST API（仅 super_admin）— 对话输入前置过滤词库的增删改查。
@@ -46,28 +44,18 @@ public class SensitiveWordController {
     }
 
     /**
-     * 敏感词分页列表（可按状态过滤）。
+     * 敏感词列表（可按状态过滤，一次性返回全部）。
      *
-     * @param page   页码（0 基）
-     * @param size   每页条数
      * @param status 状态过滤（ENABLED/DISABLED，可空表示全部）
      * @param auth   当前认证管理员
-     * @return 分页结果（content/totalElements/totalPages/currentPage/size）
+     * @return 全部敏感词 DTO 列表
      */
     @GetMapping
-    public Result<?> list(@RequestParam(defaultValue = "0") int page,
-                          @RequestParam(defaultValue = "10") int size,
-                          @RequestParam(required = false) String status,
-                          Authentication auth) {
-        Long adminId = Long.valueOf(auth.getName());
+    public Result<ListDTO<SensitiveWordDTO>> list(@RequestParam(required = false) String status,
+                                                  Authentication auth) {
+        Long adminId = ((LoginUser) auth.getPrincipal()).getUserId();
         adminService.requireSuperAdmin(adminId);
-        Page<SensitiveWordDTO> result = sensitiveWordService.list(status, page, size);
-        return Result.ok(Map.of(
-                "content", result.getContent().stream().collect(Collectors.toList()),
-                "totalElements", result.getTotalElements(),
-                "totalPages", result.getTotalPages(),
-                "currentPage", result.getNumber(),
-                "size", result.getSize()));
+        return Result.ok(new ListDTO<>(sensitiveWordService.list(status)));
     }
 
     /**
@@ -78,8 +66,8 @@ public class SensitiveWordController {
      * @return 新建敏感词 DTO
      */
     @PostMapping
-    public Result<?> create(@Valid @RequestBody SensitiveWordDTO req, Authentication auth) {
-        Long adminId = Long.valueOf(auth.getName());
+    public Result<SensitiveWordDTO> create(@Valid @RequestBody SensitiveWordDTO req, Authentication auth) {
+        Long adminId = ((LoginUser) auth.getPrincipal()).getUserId();
         adminService.requireSuperAdmin(adminId);
         return Result.ok(sensitiveWordService.create(req));
     }
@@ -93,8 +81,8 @@ public class SensitiveWordController {
      * @return 更新后的敏感词 DTO
      */
     @PutMapping("/{id}")
-    public Result<?> update(@PathVariable Long id, @Valid @RequestBody SensitiveWordDTO req, Authentication auth) {
-        Long adminId = Long.valueOf(auth.getName());
+    public Result<SensitiveWordDTO> update(@PathVariable Long id, @Valid @RequestBody SensitiveWordDTO req, Authentication auth) {
+        Long adminId = ((LoginUser) auth.getPrincipal()).getUserId();
         adminService.requireSuperAdmin(adminId);
         return Result.ok(sensitiveWordService.update(id, req));
     }
@@ -107,8 +95,8 @@ public class SensitiveWordController {
      * @return 操作结果
      */
     @DeleteMapping("/{id}")
-    public Result<?> delete(@PathVariable Long id, Authentication auth) {
-        Long adminId = Long.valueOf(auth.getName());
+    public Result<Void> delete(@PathVariable Long id, Authentication auth) {
+        Long adminId = ((LoginUser) auth.getPrincipal()).getUserId();
         adminService.requireSuperAdmin(adminId);
         sensitiveWordService.delete(id);
         return Result.ok();

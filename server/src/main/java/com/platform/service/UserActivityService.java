@@ -1,9 +1,12 @@
 package com.platform.service;
 
+import com.platform.common.BizException;
 import com.platform.common.BizStatus;
 import com.platform.common.PostType;
 import com.platform.common.UserFormatter;
+import com.platform.model.dto.ApprovalCountDTO;
 import com.platform.model.dto.MyPostItemDTO;
+import com.platform.model.dto.UserProfileDTO;
 import com.platform.model.entity.BorrowRequest;
 import com.platform.model.entity.HelpApplication;
 import com.platform.model.entity.HelpRequest;
@@ -71,38 +74,35 @@ public class UserActivityService {
     /**
      * 获取当前用户的个人资料及统计数据，用于"我的" tab。
      */
-    public java.util.Map<String, Object> getProfile(Long userId) {
+    public UserProfileDTO getProfile(Long userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("用户不存在"));
-
-        java.util.Map<String, Object> profile = new java.util.HashMap<>();
-
-        // 基本信息
-        profile.put("id", user.getId());
-        profile.put("name", user.getName());
-        profile.put("userType", user.getUserType());
-        profile.put("userTypeText", UserFormatter.getUserTypeLabel(user.getUserType()));
-        profile.put("roomInfo", UserFormatter.formatRoomWithType(user));
-        profile.put("isAuth", BizStatus.APPROVED.equals(user.getAuthStatus()));
+                .orElseThrow(() -> new BizException("用户不存在"));
 
         // 评分
         Double avgScore = ratingRepository.getAverageScore(userId);
-        profile.put("score", avgScore != null ? Math.round(avgScore * 10.0) / 10.0 : 5.0);
         long ratingCount = ratingRepository.countByToUserId(userId);
-        profile.put("ratingCount", (int) ratingCount);
 
         // 统计数据 — 口径：交易已完成且被对方评价才计数（详见 interactionStats）。
         // WANTED 帖里发布者才是借入方，直接用 borrowerId 会把方向算反，统计内部已按真实角色分流。
         InteractionStats stats = interactionStats(userId);
-        profile.put("lendCount", stats.lendCount());
-        profile.put("borrowCount", stats.borrowCount());
-        // 尚无已归还的互借记录时默认 100%（新用户无扣分依据）
-        profile.put("borrowReturnRate", stats.returnedCount() > 0
-                ? Math.round((double) stats.onTimeCount() / stats.returnedCount() * 1000.0) / 10.0 : 100.0);
-        profile.put("helpReqCount", stats.helpReqCount());
-        profile.put("helpProCount", stats.helpProCount());
 
-        return profile;
+        return UserProfileDTO.builder()
+                .id(user.getId())
+                .name(user.getName())
+                .userType(user.getUserType())
+                .userTypeText(UserFormatter.getUserTypeLabel(user.getUserType()))
+                .roomInfo(UserFormatter.formatRoomWithType(user))
+                .isAuth(BizStatus.APPROVED.equals(user.getAuthStatus()))
+                .score(avgScore != null ? Math.round(avgScore * 10.0) / 10.0 : 5.0)
+                .ratingCount((int) ratingCount)
+                .lendCount(stats.lendCount())
+                .borrowCount(stats.borrowCount())
+                // 尚无已归还的互借记录时默认 100%（新用户无扣分依据）
+                .borrowReturnRate(stats.returnedCount() > 0
+                        ? Math.round((double) stats.onTimeCount() / stats.returnedCount() * 1000.0) / 10.0 : 100.0)
+                .helpReqCount(stats.helpReqCount())
+                .helpProCount(stats.helpProCount())
+                .build();
     }
 
     // ============================================================
@@ -234,7 +234,7 @@ public class UserActivityService {
      * 只做计数不做 DTO 组装，避免 getApprovals 的用户统计等重查询开销。
      * 类型语义与 getApprovals 一致：borrow=确认借入（WANTED 帖）、lend=审批借出（LEND 帖）。
      */
-    public java.util.Map<String, Integer> getApprovalCounts(Long userId) {
+    public ApprovalCountDTO getApprovalCounts(Long userId) {
         int borrow = 0;
         int lend = 0;
         for (BorrowRequest br : borrowRequestRepository.findByOwnerIdAndStatus(userId, BizStatus.PENDING)) {
@@ -252,12 +252,12 @@ public class UserActivityService {
             help += helpApplicationRepository.findByHelpIdAndStatus(hr.getId(), BizStatus.PENDING).size();
         }
 
-        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
-        counts.put("borrow", borrow);
-        counts.put("lend", lend);
-        counts.put("help", help);
-        counts.put("total", borrow + lend + help);
-        return counts;
+        return ApprovalCountDTO.builder()
+                .borrow(borrow)
+                .lend(lend)
+                .help(help)
+                .total(borrow + lend + help)
+                .build();
     }
 
     // ============================================================
@@ -277,7 +277,7 @@ public class UserActivityService {
             case "borrow", "lend" -> collectBorrowInProgress(userId, role);
             case "helpReq" -> collectHelpReqInProgress(userId);
             case "helpPro" -> collectHelpProInProgress(userId);
-            default -> throw new RuntimeException("无效的角色类型: " + role);
+            default -> throw new BizException("无效的角色类型: " + role);
         };
 
         result.sort(Comparator.comparing(MyPostItemDTO::getCreatedAt,
@@ -391,7 +391,7 @@ public class UserActivityService {
             case "borrow", "lend" -> collectBorrowCompleted(userId, role);
             case "helpReq" -> collectHelpReqCompleted(userId);
             case "helpPro" -> collectHelpProCompleted(userId);
-            default -> throw new RuntimeException("无效的角色类型: " + role);
+            default -> throw new BizException("无效的角色类型: " + role);
         };
 
         result.sort(Comparator.comparing(MyPostItemDTO::getCompletedAt,

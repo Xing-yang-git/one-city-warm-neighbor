@@ -1,13 +1,16 @@
 package com.platform.controller;
 
+import com.platform.common.BizException;
 import com.platform.common.KnowledgeFileType;
 import com.platform.common.Result;
 import com.platform.common.UserType;
+import com.platform.model.dto.IdResponseDTO;
 import com.platform.model.dto.KnowledgeDocumentDTO;
+import com.platform.model.dto.ListDTO;
 import com.platform.model.entity.User;
 import com.platform.repository.UserRepository;
+import com.platform.security.LoginUser;
 import com.platform.service.KnowledgeDocumentService;
-import org.springframework.data.domain.Page;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,9 +21,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * 知识库源文档管理 REST API（B端管理员）— 上传/列表/删除/重试。
@@ -63,7 +64,7 @@ public class KnowledgeDocumentController {
      * @return 新建文档摘要
      */
     @PostMapping("/import")
-    public Result<?> importDocument(@RequestParam("file") MultipartFile file,
+    public Result<KnowledgeDocumentDTO> importDocument(@RequestParam("file") MultipartFile file,
                                     @RequestParam String category,
                                     @RequestParam(required = false) String tags,
                                     @RequestParam(required = false) String source,
@@ -75,7 +76,7 @@ public class KnowledgeDocumentController {
         if (DISABLED_UPLOAD_TYPES.contains(fileType)) {
             return Result.error(400, "该文件类型暂不支持，请上传 md / pdf / docx 文件");
         }
-        Long adminId = Long.valueOf(auth.getName());
+        Long adminId = ((LoginUser) auth.getPrincipal()).getUserId();
         Long resolvedTenant = resolveTenantId(adminId);
         if (resolvedTenant == null) {
             // super_admin 平台级：须在请求中指定目标小区
@@ -93,28 +94,18 @@ public class KnowledgeDocumentController {
     }
 
     /**
-     * 文档列表（分页，可按状态过滤）。
+     * 文档列表（tenantId/status 可空过滤，一次性返回全部）。
      *
-     * @param page   页码（0 基）
-     * @param size   每页条数
      * @param status 状态过滤（parsing/ready/failed，可空）
      * @param auth   当前认证管理员
-     * @return 分页文档列表
+     * @return 全部文档 DTO 列表
      */
     @GetMapping
-    public Result<?> list(@RequestParam(defaultValue = "0") int page,
-                          @RequestParam(defaultValue = "10") int size,
-                          @RequestParam(required = false) String status,
-                          Authentication auth) {
-        Long adminId = Long.valueOf(auth.getName());
+    public Result<ListDTO<KnowledgeDocumentDTO>> list(@RequestParam(required = false) String status,
+                                                      Authentication auth) {
+        Long adminId = ((LoginUser) auth.getPrincipal()).getUserId();
         Long tenantId = resolveTenantId(adminId);
-        Page<KnowledgeDocumentDTO> result = documentService.list(tenantId, status, page, size);
-        return Result.ok(Map.of(
-                "content", result.getContent().stream().collect(Collectors.toList()),
-                "totalElements", result.getTotalElements(),
-                "totalPages", result.getTotalPages(),
-                "currentPage", result.getNumber(),
-                "size", result.getSize()));
+        return Result.ok(new ListDTO<>(documentService.list(tenantId, status)));
     }
 
     /**
@@ -125,11 +116,11 @@ public class KnowledgeDocumentController {
      * @return 操作结果
      */
     @DeleteMapping("/{id}")
-    public Result<?> delete(@PathVariable Long id, Authentication auth) {
-        Long adminId = Long.valueOf(auth.getName());
+    public Result<IdResponseDTO> delete(@PathVariable Long id, Authentication auth) {
+        Long adminId = ((LoginUser) auth.getPrincipal()).getUserId();
         try {
             documentService.delete(id, resolveTenantId(adminId));
-            return Result.ok(Map.of("id", id));
+            return Result.ok(IdResponseDTO.builder().id(id).build());
         } catch (RuntimeException e) {
             return Result.error(400, e.getMessage());
         }
@@ -143,11 +134,11 @@ public class KnowledgeDocumentController {
      * @return 操作结果
      */
     @PostMapping("/{id}/retry")
-    public Result<?> retry(@PathVariable Long id, Authentication auth) {
-        Long adminId = Long.valueOf(auth.getName());
+    public Result<IdResponseDTO> retry(@PathVariable Long id, Authentication auth) {
+        Long adminId = ((LoginUser) auth.getPrincipal()).getUserId();
         try {
             documentService.retry(id, resolveTenantId(adminId));
-            return Result.ok(Map.of("id", id));
+            return Result.ok(IdResponseDTO.builder().id(id).build());
         } catch (RuntimeException e) {
             return Result.error(400, e.getMessage());
         }
@@ -160,13 +151,13 @@ public class KnowledgeDocumentController {
      * @return super_admin 返回 null（平台级视角），普通 admin 返回自身 tenantId
      */
     private Long resolveTenantId(Long adminId) {
-        User admin = userRepository.findById(adminId).orElseThrow(() -> new RuntimeException("管理员不存在"));
+        User admin = userRepository.findById(adminId).orElseThrow(() -> new BizException("管理员不存在"));
         if (UserType.SUPER_ADMIN.equals(admin.getUserType())) {
             return null;
         }
         Long tenantId = admin.getTenantId();
         if (tenantId == null) {
-            throw new RuntimeException("管理员未关联小区");
+            throw new BizException("管理员未关联小区");
         }
         return tenantId;
     }

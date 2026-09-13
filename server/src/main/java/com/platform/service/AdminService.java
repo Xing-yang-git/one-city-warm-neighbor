@@ -2,6 +2,7 @@ package com.platform.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.platform.common.BizException;
 import com.platform.common.BizStatus;
 import com.platform.common.DamageType;
 import com.platform.common.ModerationStatus;
@@ -15,6 +16,13 @@ import com.platform.model.dto.AuditRequest;
 import com.platform.model.dto.ContentItemDTO;
 import com.platform.model.dto.ContentOfflineRequest;
 import com.platform.model.dto.DashboardDTO;
+import com.platform.model.dto.AdminDTO;
+import com.platform.model.dto.AuditCountDTO;
+import com.platform.model.dto.BuildingDTO;
+import com.platform.model.dto.CommunityBuildingDTO;
+import com.platform.model.dto.CommunityDTO;
+import com.platform.model.dto.CommunityUnitDTO;
+import com.platform.model.dto.ContentCountDTO;
 import com.platform.model.dto.ExportLogDTO;
 import com.platform.model.dto.ExportRequest;
 import com.platform.model.dto.HelpRequestDTO;
@@ -22,8 +30,11 @@ import com.platform.model.dto.HelpResponseDTO;
 import com.platform.model.dto.IdleItemDTO;
 import com.platform.model.dto.IdleItemRequest;
 import com.platform.model.dto.OperationLogDTO;
-import com.platform.model.dto.PageDTO;
+import com.platform.model.dto.OperationResultDTO;
+import com.platform.model.dto.ProfileResponseDTO;
+import com.platform.model.dto.RecordItemDTO;
 import com.platform.model.dto.ResidentDTO;
+import com.platform.model.dto.TenantDTO;
 import com.platform.model.dto.UserDTO;
 import com.platform.model.entity.BorrowRequest;
 import com.platform.model.entity.Building;
@@ -54,8 +65,6 @@ import com.platform.websocket.ChatWebSocketHandler;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.ExcelWriter;
 import com.alibaba.excel.write.metadata.WriteSheet;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -519,39 +528,42 @@ public class AdminService {
 
     // ==================== 审核管理 ====================
 
-    /**
-     * 按认证状态筛选获取审核列表。
-     * @param status  "pending" / "approved" / "rejected" / null（全部非 registering 状态）
-     * @param page    页码（从 0 开始）
-     * @param size    每页条数
-     */
     private static final List<String> ADMIN_USER_TYPES = Arrays.asList(UserType.ADMIN, UserType.SENIOR_ADMIN, UserType.SUPER_ADMIN);
 
-    public PageDTO<UserDTO> getAudits(Long adminId, String status, int page, int size) {
+    /**
+     * 按认证状态筛选获取审核列表，一次性返回全部数据（按创建时间倒序）。
+     *
+     * @param adminId 当前管理员 ID
+     * @param status  "pending" / "approved" / "rejected" / null（全部非 registering 状态）
+     * @return 全部审核用户 DTO 列表
+     */
+    public List<UserDTO> getAudits(Long adminId, String status) {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
-        PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<User> userPage;
+        List<User> users;
 
         if (status != null && !status.isEmpty()) {
             if (BizStatus.APPROVED.equals(status)) {
                 // "全部住户"页签：仅显示真实住户，排除管理员账号
-                userPage = tenantId != null
-                        ? userRepository.findByTenantIdAndAuthStatusAndUserTypeNotIn(tenantId, BizStatus.APPROVED, ADMIN_USER_TYPES, pageRequest)
-                        : userRepository.findByAuthStatusAndUserTypeNotIn(BizStatus.APPROVED, ADMIN_USER_TYPES, pageRequest);
+                users = tenantId != null
+                        ? userRepository.findByTenantIdAndAuthStatusAndUserTypeNotIn(tenantId, BizStatus.APPROVED, ADMIN_USER_TYPES)
+                        : userRepository.findByAuthStatusAndUserTypeNotIn(BizStatus.APPROVED, ADMIN_USER_TYPES);
             } else {
-                userPage = tenantId != null
-                        ? userRepository.findByTenantIdAndAuthStatus(tenantId, status, pageRequest)
-                        : userRepository.findByAuthStatus(status, pageRequest);
+                users = tenantId != null
+                        ? userRepository.findByTenantIdAndAuthStatus(tenantId, status)
+                        : userRepository.findByAuthStatus(status);
             }
         } else {
             // "all"页签：排除仍处于 "registering" 状态（尚未完成注册）的用户
-            userPage = tenantId != null
-                    ? userRepository.findByTenantIdAndAuthStatusNot(tenantId, BizStatus.REGISTERING, pageRequest)
-                    : userRepository.findByAuthStatusNot(BizStatus.REGISTERING, pageRequest);
+            users = tenantId != null
+                    ? userRepository.findByTenantIdAndAuthStatusNot(tenantId, BizStatus.REGISTERING)
+                    : userRepository.findByAuthStatusNot(BizStatus.REGISTERING);
         }
 
-        List<UserDTO> dtos = userPage.getContent().stream()
+        // 保持与分页版一致的按创建时间倒序（无分页查询不保证顺序）
+        users.sort(Comparator.comparing(User::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
+
+        List<UserDTO> dtos = users.stream()
                 .map(this::toUserDTO)
                 .collect(Collectors.toList());
 
@@ -567,41 +579,39 @@ public class AdminService {
             dtos.forEach(dto -> dto.setAuditorName(auditorMap.getOrDefault(dto.getId(), "")));
         }
 
-        return PageDTO.<UserDTO>builder()
-                .content(dtos)
-                .totalElements(userPage.getTotalElements())
-                .totalPages(userPage.getTotalPages())
-                .currentPage(page)
-                .size(size)
-                .build();
+        return dtos;
     }
 
     /**
      * 获取各审核页签的数量统计。
      */
-    public Map<String, Long> getAuditCounts(Long adminId) {
+    public AuditCountDTO getAuditCounts(Long adminId) {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
-        Map<String, Long> counts = new HashMap<>();
-        counts.put(BizStatus.PENDING, tenantId != null
+        long pending = tenantId != null
                 ? userRepository.countByTenantIdAndAuthStatus(tenantId, BizStatus.PENDING)
-                : userRepository.countByAuthStatus(BizStatus.PENDING));
-        counts.put(BizStatus.APPROVED, tenantId != null
+                : userRepository.countByAuthStatus(BizStatus.PENDING);
+        long approved = tenantId != null
                 ? userRepository.countByTenantIdAndAuthStatusAndUserTypeNotIn(tenantId, BizStatus.APPROVED, ADMIN_USER_TYPES)
-                : userRepository.countByAuthStatusAndUserTypeNotIn(BizStatus.APPROVED, ADMIN_USER_TYPES));
-        counts.put(BizStatus.REJECTED, tenantId != null
+                : userRepository.countByAuthStatusAndUserTypeNotIn(BizStatus.APPROVED, ADMIN_USER_TYPES);
+        long rejected = tenantId != null
                 ? userRepository.countByTenantIdAndAuthStatus(tenantId, BizStatus.REJECTED)
-                : userRepository.countByAuthStatus(BizStatus.REJECTED));
-        counts.put("all", tenantId != null
+                : userRepository.countByAuthStatus(BizStatus.REJECTED);
+        long all = tenantId != null
                 ? userRepository.countByTenantIdAndAuthStatusNot(tenantId, BizStatus.REGISTERING)
-                : userRepository.countByAuthStatusNot(BizStatus.REGISTERING));
-        return counts;
+                : userRepository.countByAuthStatusNot(BizStatus.REGISTERING);
+        return AuditCountDTO.builder()
+                .pending(pending)
+                .approved(approved)
+                .rejected(rejected)
+                .all(all)
+                .build();
     }
 
     public Map<String, Object> auditUser(Long adminId, Long userId, AuditRequest req) {
         requireNotSuperAdmin(findAdmin(adminId));
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("用户不存在"));
+                .orElseThrow(() -> new BizException("用户不存在"));
 
         user.setAuthStatus(req.getApproved() ? BizStatus.APPROVED : BizStatus.REJECTED);
         if (req.getApproved()) {
@@ -642,18 +652,7 @@ public class AdminService {
     // ==================== 内容管理 ====================
 
     /**
-     * 按状态页签、类型、楼栋和搜索关键词筛选，获取分页内容列表。
-     *
-     * @param statusTab "showing"|"progressing"|"completed"|"violation"|"all"
-     * @param type      "idle"|"help"|null（两者都查）
-     * @param building  如 "3栋" | null
-     * @param search    关键词 | null
-     * @param page      页码（从 0 开始）
-     * @param size      每页条数
-     * @return 分页内容列表
-     */
-    /**
-     * 获取内容列表，支持按状态页签、类型、楼栋、单元、关键词筛选，按 createdAt 降序分页。
+     * 获取内容列表，支持按状态页签、类型、楼栋、单元、关键词筛选，一次性返回全部数据。
      *
      * @param adminId           管理员 ID
      * @param statusTab         状态页签（normal/offline/yellow 等）
@@ -663,21 +662,18 @@ public class AdminService {
      * @param search            关键词
      * @param moderationStatus  审核状态
      * @param moderatedBy       审核员
-     * @param page              页码（从 0 开始）
-     * @param size              每页条数
-     * @return 分页内容列表
+     * @return 全部内容列表（按 createdAt 降序）
      */
-    public PageDTO<ContentItemDTO> getContentList(Long adminId, String statusTab, String type, Integer buildingNo,
-                                                   Integer unitNo, String search,
-                                                   String moderationStatus, String moderatedBy,
-                                                   int page, int size) {
+    public List<ContentItemDTO> getContentList(Long adminId, String statusTab, String type, Integer buildingNo,
+                                               Integer unitNo, String search,
+                                               String moderationStatus, String moderatedBy) {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
 
-        // 解析楼栋筛选条件（无匹配用户时直接返回空页）
+        // 解析楼栋筛选条件（无匹配用户时直接返回空列表）
         List<Long> buildingUserIds = resolveBuildingFilter(buildingNo, unitNo);
         if (buildingUserIds != null && buildingUserIds.isEmpty()) {
-            return buildEmptyPage(page, size);
+            return List.of();
         }
 
         // 将状态页签映射为数据库状态值列表
@@ -703,7 +699,7 @@ public class AdminService {
                 if (tb == null) return -1;
                 return tb.compareTo(ta);
             });
-            return paginateInMemory(allItems, page, size);
+            return allItems;
         }
 
         // 待审批 tab 特殊处理：数据来源为 borrow_requests / help_applications（pending 状态），
@@ -717,7 +713,7 @@ public class AdminService {
                 allItems.addAll(fetchPendingHelpItems(tenantId, buildingUserIds, search));
             }
             sortContentByCreatedAtDesc(allItems);
-            return paginateInMemory(allItems, page, size);
+            return allItems;
         }
 
         List<String> idleStatuses = mapStatusTabToIdleStatuses(effectiveTab);
@@ -743,9 +739,9 @@ public class AdminService {
                     .collect(Collectors.toList());
         }
 
-        // 排序并分页
+        // 排序后返回全量
         sortContentByCreatedAtDesc(filtered);
-        return paginateInMemory(filtered, page, size);
+        return filtered;
     }
 
     /**
@@ -758,19 +754,6 @@ public class AdminService {
             return null;
         }
         return resolveBuildingUserIds(buildingNo, unitNo);
-    }
-
-    /**
-     * 构建空分页结果。
-     */
-    private <T> PageDTO<T> buildEmptyPage(int page, int size) {
-        return PageDTO.<T>builder()
-                .content(new ArrayList<>())
-                .totalElements(0)
-                .totalPages(0)
-                .currentPage(page)
-                .size(size)
-                .build();
     }
 
     /**
@@ -799,20 +782,20 @@ public class AdminService {
         Long tenantId = getAdminTenantId(adminId);
         if ("idle".equals(type)) {
             IdleItem item = idleItemRepository.findById(id)
-                    .orElseThrow(() -> new RuntimeException("物品不存在"));
+                    .orElseThrow(() -> new BizException("物品不存在"));
             if (!tenantMatches(tenantId, item.getTenantId())) {
-                throw new RuntimeException("无权查看该物品");
+                throw new BizException("无权查看该物品");
             }
             return toContentItemDTO(item);
         } else if ("help".equals(type)) {
             HelpRequest item = helpRequestRepository.findById(id)
-                    .orElseThrow(() -> new RuntimeException("求助不存在"));
+                    .orElseThrow(() -> new BizException("求助不存在"));
             if (!tenantMatches(tenantId, item.getTenantId())) {
-                throw new RuntimeException("无权查看该求助");
+                throw new BizException("无权查看该求助");
             }
             return toContentItemDTO(item);
         } else {
-            throw new RuntimeException("不支持的类型，请使用 idle 或 help");
+            throw new BizException("不支持的类型，请使用 idle 或 help");
         }
     }
 
@@ -821,10 +804,9 @@ public class AdminService {
      *
      * @return 页签名到数量的映射
      */
-    public Map<String, Long> getContentCounts(Long adminId) {
+    public ContentCountDTO getContentCounts(Long adminId) {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
-        Map<String, Long> counts = new HashMap<>();
 
         long idleShowing = tenantId != null
                 ? idleItemRepository.countByTenantIdAndStatus(tenantId, BizStatus.ONLINE)
@@ -832,7 +814,6 @@ public class AdminService {
         long helpShowing = tenantId != null
                 ? helpRequestRepository.countByTenantIdAndStatus(tenantId, BizStatus.ONLINE)
                 : helpRequestRepository.countByStatus(BizStatus.ONLINE);
-        counts.put("showing", idleShowing + helpShowing);
 
         long borrowPending = tenantId != null
                 ? borrowRequestRepository.countByStatusAndTenantId(BizStatus.PENDING, tenantId)
@@ -840,7 +821,6 @@ public class AdminService {
         long helpAppPending = tenantId != null
                 ? helpApplicationRepository.countByStatusAndTenantId(BizStatus.PENDING, tenantId)
                 : helpApplicationRepository.countByStatus(BizStatus.PENDING);
-        counts.put("pending", borrowPending + helpAppPending);
 
         long idleProgressing = tenantId != null
                 ? idleItemRepository.countByTenantIdAndStatus(tenantId, BizStatus.ACTIVE)
@@ -848,7 +828,6 @@ public class AdminService {
         long helpProgressing = tenantId != null
                 ? helpRequestRepository.countByTenantIdAndStatus(tenantId, BizStatus.ACTIVE)
                 : helpRequestRepository.countByStatus(BizStatus.ACTIVE);
-        counts.put("progressing", idleProgressing + helpProgressing);
 
         long idleCompleted = tenantId != null
                 ? idleItemRepository.countByTenantIdAndStatus(tenantId, BizStatus.COMPLETED)
@@ -856,7 +835,6 @@ public class AdminService {
         long helpCompleted = tenantId != null
                 ? helpRequestRepository.countByTenantIdAndStatus(tenantId, BizStatus.COMPLETED)
                 : helpRequestRepository.countByStatus(BizStatus.COMPLETED);
-        counts.put("completed", idleCompleted + helpCompleted);
 
         long idleViolation = tenantId != null
                 ? idleItemRepository.countByTenantIdAndStatus(tenantId, BizStatus.OFFLINE)
@@ -864,13 +842,18 @@ public class AdminService {
         long helpViolation = tenantId != null
                 ? helpRequestRepository.countByTenantIdAndStatus(tenantId, BizStatus.OFFLINE)
                 : helpRequestRepository.countByStatus(BizStatus.OFFLINE);
-        counts.put("violation", idleViolation + helpViolation);
 
         long idleAll = idleShowing + idleProgressing + idleCompleted + idleViolation;
         long helpAll = helpShowing + helpProgressing + helpCompleted + helpViolation;
-        counts.put("all", idleAll + helpAll + borrowPending + helpAppPending);
 
-        return counts;
+        return ContentCountDTO.builder()
+                .showing(idleShowing + helpShowing)
+                .pending(borrowPending + helpAppPending)
+                .progressing(idleProgressing + helpProgressing)
+                .completed(idleCompleted + helpCompleted)
+                .violation(idleViolation + helpViolation)
+                .all(idleAll + helpAll + borrowPending + helpAppPending)
+                .build();
     }
 
     /**
@@ -884,20 +867,20 @@ public class AdminService {
     /**
      * 下架（删除）内容并记录违规信息。
      */
-    public Map<String, Object> removeContent(Long adminId, Long contentId, ContentOfflineRequest req) {
+    public OperationResultDTO removeContent(Long adminId, Long contentId, ContentOfflineRequest req) {
         requireNotSuperAdmin(findAdmin(adminId));
         String delistReason = buildDelistReason(req);
 
         switch (req.getTargetType()) {
             case "idle" -> removeIdleContent(contentId, adminId, delistReason, req.isFromModeration(), req.getUpdatedAt());
             case "help" -> removeHelpContent(contentId, adminId, delistReason, req.isFromModeration(), req.getUpdatedAt());
-            default -> throw new RuntimeException("不支持的目标类型");
+            default -> throw new BizException("不支持的目标类型");
         }
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("success", true);
-        result.put("message", "内容已删除");
-        return result;
+        return OperationResultDTO.builder()
+                .success(true)
+                .message("内容已删除")
+                .build();
     }
 
     /**
@@ -909,11 +892,11 @@ public class AdminService {
         switch (type) {
             case "idle" -> {
                 IdleItem item = idleItemRepository.findById(contentId)
-                        .orElseThrow(() -> new RuntimeException("物品不存在"));
+                        .orElseThrow(() -> new BizException("物品不存在"));
                 checkVersionConflict(item.getUpdatedAt(), updatedAt);
                 if (ModerationStatus.RED.equals(item.getModerationStatus()) ||
                     (ModerationStatus.REVIEWED.equals(item.getModerationStatus()) && BizStatus.OFFLINE.equals(item.getStatus()))) {
-                    throw new RuntimeException("该内容已被驳回，无法重新上线");
+                    throw new BizException("该内容已被驳回，无法重新上线");
                 }
                 item.setStatus(BizStatus.ONLINE);
                 item.setDelistReason(null);
@@ -927,11 +910,11 @@ public class AdminService {
             }
             case "help" -> {
                 HelpRequest hr = helpRequestRepository.findById(contentId)
-                        .orElseThrow(() -> new RuntimeException("求助不存在"));
+                        .orElseThrow(() -> new BizException("求助不存在"));
                 checkVersionConflict(hr.getUpdatedAt(), updatedAt);
                 if (ModerationStatus.RED.equals(hr.getModerationStatus()) ||
                     (ModerationStatus.REVIEWED.equals(hr.getModerationStatus()) && BizStatus.OFFLINE.equals(hr.getStatus()))) {
-                    throw new RuntimeException("该内容已被驳回，无法重新上线");
+                    throw new BizException("该内容已被驳回，无法重新上线");
                 }
                 hr.setStatus(BizStatus.ONLINE);
                 hr.setDelistReason(null);
@@ -943,7 +926,7 @@ public class AdminService {
                         "您发布的「" + hr.getTitle() + "」经审核已通过，现已上线",
                         hr.getId());
             }
-            default -> throw new RuntimeException("不支持的类型");
+            default -> throw new BizException("不支持的类型");
         }
     }
 
@@ -985,7 +968,7 @@ public class AdminService {
      */
     private void removeIdleContent(Long contentId, Long adminId, String delistReason, boolean fromModeration, String updatedAt) {
         IdleItem item = idleItemRepository.findById(contentId)
-                .orElseThrow(() -> new RuntimeException("物品不存在"));
+                .orElseThrow(() -> new BizException("物品不存在"));
         checkVersionConflict(item.getUpdatedAt(), updatedAt);
         item.setStatus(BizStatus.OFFLINE);
         item.setDelistReason(delistReason);
@@ -1034,7 +1017,7 @@ public class AdminService {
      */
     private void removeHelpContent(Long contentId, Long adminId, String delistReason, boolean fromModeration, String updatedAt) {
         HelpRequest item = helpRequestRepository.findById(contentId)
-                .orElseThrow(() -> new RuntimeException("求助信息不存在"));
+                .orElseThrow(() -> new BizException("求助信息不存在"));
         checkVersionConflict(item.getUpdatedAt(), updatedAt);
         item.setStatus(BizStatus.OFFLINE);
         item.setDelistReason(delistReason);
@@ -1196,29 +1179,29 @@ public class AdminService {
     /**
      * 获取交易记录（已归还的借用 / 已完成的帮助），按 createdAt 降序分页。
      */
-    public PageDTO<Map<String, Object>> getRecords(Long adminId, String type, int page, int size) {
+    public List<RecordItemDTO> getRecords(Long adminId, String type) {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
-        List<Map<String, Object>> allRecords = switch (type) {
+        List<RecordItemDTO> allRecords = switch (type) {
             case "borrow" -> loadBorrowRecords(tenantId);
             case "help" -> loadHelpRecords(tenantId);
             case "all" -> {
-                List<Map<String, Object>> merged = new ArrayList<>();
+                List<RecordItemDTO> merged = new ArrayList<>();
                 merged.addAll(loadBorrowRecords(tenantId));
                 merged.addAll(loadHelpRecords(tenantId));
                 yield merged;
             }
-            default -> throw new RuntimeException("不支持的类型，请使用 borrow、help 或 all");
+            default -> throw new BizException("不支持的类型，请使用 borrow、help 或 all");
         };
 
         sortByCreatedAtDesc(allRecords);
-        return paginateInMemory(allRecords, page, size);
+        return allRecords;
     }
 
     /**
      * 加载该租户下已归还的借用记录（含评分、时长、物品状况等详情）。
      */
-    private List<Map<String, Object>> loadBorrowRecords(Long tenantId) {
+    private List<RecordItemDTO> loadBorrowRecords(Long tenantId) {
         List<BorrowRequest> borrows = borrowRequestRepository.findByStatus(BizStatus.RETURNED).stream()
                 .filter(br -> {
                     IdleItem idle = idleItemRepository.findById(br.getIdleId()).orElse(null);
@@ -1232,7 +1215,7 @@ public class AdminService {
                 : ratingRepository.findByBorrowIdIn(borrowIds).stream()
                         .collect(Collectors.groupingBy(Rating::getBorrowId));
 
-        List<Map<String, Object>> records = new ArrayList<>();
+        List<RecordItemDTO> records = new ArrayList<>();
         for (BorrowRequest br : borrows) {
             IdleItem idleItem = idleItemRepository.findById(br.getIdleId()).orElse(null);
             User borrower = userRepository.findById(br.getBorrowerId()).orElse(null);
@@ -1249,58 +1232,54 @@ public class AdminService {
             // 借入方收到的评价 = toUserId == borrowerId
             Rating borrowerRating = ratings.stream().filter(r -> r.getToUserId().equals(br.getBorrowerId())).findFirst().orElse(null);
 
-            Map<String, Object> map = new HashMap<>();
-            map.put("id", br.getId());
-            map.put("type", "borrow");
-            map.put("title", idleItem != null ? idleItem.getTitle() : "未知物品");
-            map.put("publisher", UserFormatter.formatPersonName(owner));
-            map.put("peer", UserFormatter.formatPersonName(borrower));
-            map.put("content", idleItem != null ? idleItem.getTitle() : "未知物品");
-            map.put("room", UserFormatter.formatRoom(owner));
-            map.put("timeStart", fmt(br.getCreatedAt()));
-            map.put("timeEnd", br.getReturnedAt() != null ? fmt(br.getReturnedAt()) : null);
-            map.put("createdAt", fmt(br.getCreatedAt()));
-            map.put("status", br.getStatus());
-
+            RecordItemDTO.RecordItemDTOBuilder b = RecordItemDTO.builder()
+                    .id(br.getId())
+                    .type("borrow")
+                    .title(idleItem != null ? idleItem.getTitle() : "未知物品")
+                    .publisher(UserFormatter.formatPersonName(owner))
+                    .peer(UserFormatter.formatPersonName(borrower))
+                    .content(idleItem != null ? idleItem.getTitle() : "未知物品")
+                    .room(UserFormatter.formatRoom(owner))
+                    .timeStart(fmt(br.getCreatedAt()))
+                    .timeEnd(br.getReturnedAt() != null ? fmt(br.getReturnedAt()) : null)
+                    .createdAt(fmt(br.getCreatedAt()))
+                    .status(br.getStatus())
+                    // 物品状况
+                    .condBefore(condLabel(idleItem != null ? idleItem.getCondition() : null))
+                    .condAfter(damageLabel(br.getDamageType(), br.getDamageNote()))
+                    .returnStatus(returnLabel(br.getReturnStatus()))
+                    .lendDuration(buildDuration(br))
+                    .damageType(br.getDamageType())
+                    // 评分（感想是评分人自己的感受，不是被评人的）：
+                    // ownerRating    = 借入方→借出方的评价，feedback 是借入方的感想
+                    // borrowerRating = 借出方→借入方的评价，feedback 是借出方的感想
+                    .pubRatingScore(ownerRating != null ? ownerRating.getScore() : null)
+                    .pubComment(borrowerRating != null ? borrowerRating.getFeedback() : null)
+                    .peerRatingScore(borrowerRating != null ? borrowerRating.getScore() : null)
+                    .peerComment(ownerRating != null ? ownerRating.getFeedback() : null);
             // 时间线：发布时间、申请时间、同意时间、归还·评价×2
-            buildBorrowTimeline(map, idleItem, br, ratings, ownerId);
-
-            // 物品状况
-            map.put("condBefore", condLabel(idleItem != null ? idleItem.getCondition() : null));
-            map.put("condAfter", damageLabel(br.getDamageType(), br.getDamageNote()));
-            map.put("returnStatus", returnLabel(br.getReturnStatus()));
-
-            map.put("lendDuration", buildDuration(br));
-            map.put("damageType", br.getDamageType());
-
-            // 评分（感想是评分人自己的感受，不是被评人的）：
-            // ownerRating    = 借入方→借出方的评价，feedback 是借入方的感想
-            // borrowerRating = 借出方→借入方的评价，feedback 是借出方的感想
-            map.put("pubRatingScore", ownerRating != null ? ownerRating.getScore() : null);
-            map.put("pubComment", borrowerRating != null ? borrowerRating.getFeedback() : null);
-            map.put("peerRatingScore", borrowerRating != null ? borrowerRating.getScore() : null);
-            map.put("peerComment", ownerRating != null ? ownerRating.getFeedback() : null);
-            records.add(map);
+            buildBorrowTimeline(b, idleItem, br, ratings, ownerId);
+            records.add(b.build());
         }
         return records;
     }
 
     /** 构建借用记录的 5 节点时间线 */
-    private void buildBorrowTimeline(Map<String, Object> map, IdleItem idleItem, BorrowRequest br,
+    private void buildBorrowTimeline(RecordItemDTO.RecordItemDTOBuilder b, IdleItem idleItem, BorrowRequest br,
                                       List<Rating> sortedRatings, Long ownerId) {
-        map.put("publishedAt", fmt(idleItem != null ? idleItem.getCreatedAt() : null));
-        map.put("applyAt", fmt(br.getCreatedAt()));
-        map.put("approveAt", fmt(br.getApprovedAt()));
+        b.publishedAt(fmt(idleItem != null ? idleItem.getCreatedAt() : null));
+        b.applyAt(fmt(br.getCreatedAt()));
+        b.approveAt(fmt(br.getApprovedAt()));
 
         if (!sortedRatings.isEmpty()) {
             Rating first = sortedRatings.get(0);
-            map.put("rating1Label", first.getFromUserId().equals(br.getBorrowerId()) ? "借入方评价" : "借出方评价");
-            map.put("rating1Time", fmt(first.getCreatedAt()));
+            b.rating1Label(first.getFromUserId().equals(br.getBorrowerId()) ? "借入方评价" : "借出方评价");
+            b.rating1Time(fmt(first.getCreatedAt()));
         }
         if (sortedRatings.size() >= 2) {
             Rating second = sortedRatings.get(1);
-            map.put("rating2Label", second.getFromUserId().equals(br.getBorrowerId()) ? "借入方评价" : "借出方评价");
-            map.put("rating2Time", fmt(second.getCreatedAt()));
+            b.rating2Label(second.getFromUserId().equals(br.getBorrowerId()) ? "借入方评价" : "借出方评价");
+            b.rating2Time(fmt(second.getCreatedAt()));
         }
     }
 
@@ -1310,22 +1289,22 @@ public class AdminService {
     }
 
     /** 构建帮助记录的 5 节点时间线 */
-    private void buildHelpTimeline(Map<String, Object> map, HelpRequest helpRequest,
+    private void buildHelpTimeline(RecordItemDTO.RecordItemDTOBuilder b, HelpRequest helpRequest,
                                     HelpApplication app, List<Rating> sortedRatings) {
-        map.put("publishedAt", fmt(helpRequest != null ? helpRequest.getCreatedAt() : null));
-        map.put("applyAt", fmt(app.getCreatedAt()));
+        b.publishedAt(fmt(helpRequest != null ? helpRequest.getCreatedAt() : null));
+        b.applyAt(fmt(app.getCreatedAt()));
         // 帮助申请无独立审批时间字段，用更新时间近似（penging→accepted 时会刷新）
-        map.put("approveAt", fmt(app.getUpdatedAt()));
+        b.approveAt(fmt(app.getUpdatedAt()));
 
         if (!sortedRatings.isEmpty()) {
             Rating first = sortedRatings.get(0);
-            map.put("rating1Label", first.getFromUserId().equals(app.getHelperId()) ? "相助方评价" : "求助方评价");
-            map.put("rating1Time", fmt(first.getCreatedAt()));
+            b.rating1Label(first.getFromUserId().equals(app.getHelperId()) ? "相助方评价" : "求助方评价");
+            b.rating1Time(fmt(first.getCreatedAt()));
         }
         if (sortedRatings.size() >= 2) {
             Rating second = sortedRatings.get(1);
-            map.put("rating2Label", second.getFromUserId().equals(app.getHelperId()) ? "相助方评价" : "求助方评价");
-            map.put("rating2Time", fmt(second.getCreatedAt()));
+            b.rating2Label(second.getFromUserId().equals(app.getHelperId()) ? "相助方评价" : "求助方评价");
+            b.rating2Time(fmt(second.getCreatedAt()));
         }
     }
 
@@ -1395,7 +1374,7 @@ public class AdminService {
     /**
      * 加载该租户下已完成的帮助记录（含评分、时间线等详情）。
      */
-    private List<Map<String, Object>> loadHelpRecords(Long tenantId) {
+    private List<RecordItemDTO> loadHelpRecords(Long tenantId) {
         List<HelpApplication> applications = helpApplicationRepository.findByStatus(BizStatus.COMPLETED).stream()
                 .filter(app -> {
                     HelpRequest hr = helpRequestRepository.findById(app.getHelpId()).orElse(null);
@@ -1409,7 +1388,7 @@ public class AdminService {
                 : ratingRepository.findByHelpApplicationIdIn(appIds).stream()
                         .collect(Collectors.groupingBy(Rating::getHelpApplicationId));
 
-        List<Map<String, Object>> records = new ArrayList<>();
+        List<RecordItemDTO> records = new ArrayList<>();
         for (HelpApplication app : applications) {
             HelpRequest helpRequest = helpRequestRepository.findById(app.getHelpId()).orElse(null);
             User helper = userRepository.findById(app.getHelperId()).orElse(null);
@@ -1423,31 +1402,29 @@ public class AdminService {
             Rating requesterRating = ratings.stream().filter(r -> r.getToUserId().equals(requesterId)).findFirst().orElse(null);
             Rating helperRating = ratings.stream().filter(r -> r.getToUserId().equals(app.getHelperId())).findFirst().orElse(null);
 
-            Map<String, Object> map = new HashMap<>();
-            map.put("id", app.getId());
-            map.put("type", "help");
-            map.put("title", helpRequest != null ? helpRequest.getTitle() : "未知求助");
-            map.put("publisher", UserFormatter.formatPersonName(requester));
-            map.put("peer", UserFormatter.formatPersonName(helper));
-            map.put("content", helpRequest != null ? helpRequest.getTitle() : "未知求助");
-            map.put("room", UserFormatter.formatRoom(requester));
-            map.put("timeStart", fmt(app.getCreatedAt()));
-            map.put("timeEnd", app.getCompletedAt() != null
-                    ? fmt(app.getCompletedAt()) : fmt(app.getUpdatedAt()));
-            map.put("createdAt", fmt(app.getCreatedAt()));
-            map.put("status", app.getStatus());
-
+            RecordItemDTO.RecordItemDTOBuilder b = RecordItemDTO.builder()
+                    .id(app.getId())
+                    .type("help")
+                    .title(helpRequest != null ? helpRequest.getTitle() : "未知求助")
+                    .publisher(UserFormatter.formatPersonName(requester))
+                    .peer(UserFormatter.formatPersonName(helper))
+                    .content(helpRequest != null ? helpRequest.getTitle() : "未知求助")
+                    .room(UserFormatter.formatRoom(requester))
+                    .timeStart(fmt(app.getCreatedAt()))
+                    .timeEnd(app.getCompletedAt() != null
+                            ? fmt(app.getCompletedAt()) : fmt(app.getUpdatedAt()))
+                    .createdAt(fmt(app.getCreatedAt()))
+                    .status(app.getStatus())
+                    // 评分（感想是评分人自己的感受，不是被评人的）：
+                    // requesterRating = 相助方→求助方的评价，feedback 是相助方的感想
+                    // helperRating     = 求助方→相助方的评价，feedback 是求助方的感想
+                    .pubRatingScore(requesterRating != null ? requesterRating.getScore() : null)
+                    .pubComment(helperRating != null ? helperRating.getFeedback() : null)
+                    .peerRatingScore(helperRating != null ? helperRating.getScore() : null)
+                    .peerComment(requesterRating != null ? requesterRating.getFeedback() : null);
             // 时间线：发布时间、申请时间、同意时间、结束·评价×2
-            buildHelpTimeline(map, helpRequest, app, ratings);
-
-            // 评分（感想是评分人自己的感受，不是被评人的）：
-            // requesterRating = 相助方→求助方的评价，feedback 是相助方的感想
-            // helperRating     = 求助方→相助方的评价，feedback 是求助方的感想
-            map.put("pubRatingScore", requesterRating != null ? requesterRating.getScore() : null);
-            map.put("pubComment", helperRating != null ? helperRating.getFeedback() : null);
-            map.put("peerRatingScore", helperRating != null ? helperRating.getScore() : null);
-            map.put("peerComment", requesterRating != null ? requesterRating.getFeedback() : null);
-            records.add(map);
+            buildHelpTimeline(b, helpRequest, app, ratings);
+            records.add(b.build());
         }
         return records;
     }
@@ -1456,10 +1433,10 @@ public class AdminService {
      * 按 createdAt 降序排列记录列表（null 值排最后）。
      * createdAt 已格式化为 "yyyy-MM-dd HH:mm" 字符串，可直接字典序比较。
      */
-    private void sortByCreatedAtDesc(List<Map<String, Object>> records) {
+    private void sortByCreatedAtDesc(List<RecordItemDTO> records) {
         records.sort((a, b) -> {
-            String ta = (String) a.get("createdAt");
-            String tb = (String) b.get("createdAt");
+            String ta = a.getCreatedAt();
+            String tb = b.getCreatedAt();
             if (ta == null && tb == null) return 0;
             if (ta == null) return 1;
             if (tb == null) return -1;
@@ -1467,29 +1444,16 @@ public class AdminService {
         });
     }
 
-    /**
-     * 对列表进行内存分页并包装为 PageDTO。
-     */
-    private <T> PageDTO<T> paginateInMemory(List<T> allItems, int page, int size) {
-        int totalElements = allItems.size();
-        int totalPages = (int) Math.ceil((double) totalElements / size);
-        int fromIndex = page * size;
-        int toIndex = Math.min(fromIndex + size, totalElements);
-        List<T> pageContent = fromIndex < totalElements
-                ? new ArrayList<>(allItems.subList(fromIndex, toIndex))
-                : new ArrayList<>();
-        return PageDTO.<T>builder()
-                .content(pageContent)
-                .totalElements((long) totalElements)
-                .totalPages(totalPages)
-                .currentPage(page)
-                .size(size)
-                .build();
-    }
 
     // ==================== 操作日志 ====================
 
-    public PageDTO<OperationLogDTO> getOperationLogs(Long adminId, int page, int size) {
+    /**
+     * 查询操作日志（按时间倒序，返回当前管理员租户下的全部，一次性返回不分页）。
+     *
+     * @param adminId 当前管理员 ID（需高级管理员权限）
+     * @return 该租户下全部操作日志 DTO 列表
+     */
+    public List<OperationLogDTO> getOperationLogs(Long adminId) {
         User admin = findAdmin(adminId);
         requireSeniorAdmin(admin);
         Long tenantId = getAdminTenantId(adminId);
@@ -1498,30 +1462,16 @@ public class AdminService {
                 .filter(u -> tenantMatches(tenantId, u.getTenantId()))
                 .map(User::getId)
                 .collect(Collectors.toList());
-        // 先按租户过滤全量日志、再内存分页——若先分页后过滤，计数会包含其他租户
-        // 导致分页虚高，且整页被过滤掉时数据"跨页丢失"（与 getRecords 分页模式一致）
+        // 从全量日志中按本租户用户过滤（不再分页），返回该租户全部操作日志
         List<OperationLog> filteredLogs = operationLogRepository
                 .findAll(Sort.by(Sort.Direction.DESC, "createdAt")).stream()
                 .filter(log -> tenantUserIds.contains(log.getAdminId()))
                 .collect(Collectors.toList());
 
-        int totalElements = filteredLogs.size();
-        int totalPages = (int) Math.ceil((double) totalElements / size);
-        int fromIndex = page * size;
-        int toIndex = Math.min(fromIndex + size, totalElements);
-        List<OperationLogDTO> dtos = (fromIndex < totalElements
-                ? filteredLogs.subList(fromIndex, toIndex)
-                : new ArrayList<OperationLog>()).stream()
+        // 一次性返回全部操作日志
+        return filteredLogs.stream()
                 .map(this::toOperationLogDTO)
                 .collect(Collectors.toList());
-
-        return PageDTO.<OperationLogDTO>builder()
-                .content(dtos)
-                .totalElements((long) totalElements)
-                .totalPages(totalPages)
-                .currentPage(page)
-                .size(size)
-                .build();
     }
 
     // ==================== 操作日志导出 ====================
@@ -2385,14 +2335,12 @@ public class AdminService {
     }
 
     /**
-     * 查询导出日志（按时间倒序，内存分页）。
+     * 查询导出日志（按时间倒序，一次性返回全部）。
      *
      * @param adminId 当前管理员ID
-     * @param page    页码（从 0 开始）
-     * @param size    每页条数
-     * @return 分页的 ExportLogDTO 列表
+     * @return 全部导出日志 DTO 列表
      */
-    public PageDTO<ExportLogDTO> getExportLogs(Long adminId, int page, int size) {
+    public List<ExportLogDTO> getExportLogs(Long adminId) {
         User caller = findAdmin(adminId);
         requireSeniorAdmin(caller);
         Long tenantId = getAdminTenantId(adminId);
@@ -2447,18 +2395,8 @@ public class AdminService {
                     .build());
         }
 
-        // 内存分页，与 getOperationLogs 模式一致
-        int total = dtos.size();
-        int from = page * size;
-        int to = Math.min(from + size, total);
-        List<ExportLogDTO> pageContent = from < total ? dtos.subList(from, to) : List.of();
-        return PageDTO.<ExportLogDTO>builder()
-                .content(pageContent)
-                .totalElements((long) total)
-                .totalPages((int) Math.ceil((double) total / size))
-                .currentPage(page)
-                .size(size)
-                .build();
+        // 一次性返回全部导出日志
+        return dtos;
     }
 
     // ──────────────────────────────────────────────
@@ -2593,15 +2531,12 @@ public class AdminService {
     /**
      * 获取管理员所属小区的全部楼栋名称。
      */
-    public List<Map<String, Object>> getBuildings(Long adminId) {
+    public List<BuildingDTO> getBuildings(Long adminId) {
         Long tenantId = getAdminTenantId(adminId);
         List<Building> buildings = (tenantId != null ? buildingRepository.findByTenantId(tenantId) : buildingRepository.findAll());
-        return buildings.stream().map(b -> {
-            Map<String, Object> map = new HashMap<>();
-            map.put("id", b.getId());
-            map.put("buildingNo", b.getBuildingNo());
-            return map;
-        }).collect(Collectors.toList());
+        return buildings.stream()
+                .map(BuildingDTO::from)
+                .collect(Collectors.toList());
     }
 
     // ==================== 小区数据 ====================
@@ -2613,75 +2548,67 @@ public class AdminService {
     /**
      * 获取所有小区列表，供 super_admin 创建管理员时选择目标小区。
      */
-    public List<Map<String, Object>> getAllTenants() {
+    public List<TenantDTO> getAllTenants() {
         return tenantRepository.findAll().stream()
-                .map(t -> {
-                    Map<String, Object> map = new HashMap<>();
-                    map.put("id", t.getId());
-                    map.put("name", t.getName());
-                    return map;
-                })
+                .map(TenantDTO::from)
                 .collect(Collectors.toList());
     }
 
-    public Map<String, Object> getCommunityData(Long adminId) {
+    public CommunityDTO getCommunityData(Long adminId) {
         Long tenantId = getAdminTenantId(adminId);
 
         Tenant tenant = tenantRepository.findById(tenantId)
-                .orElseThrow(() -> new RuntimeException("小区不存在"));
+                .orElseThrow(() -> new BizException("小区不存在"));
 
         List<Building> buildings = (tenantId != null ? buildingRepository.findByTenantId(tenantId) : buildingRepository.findAll());
         // 按楼栋号排序（数值直接排，不再从字符串抽数字）
         buildings.sort(Comparator.comparingInt(Building::getBuildingNo));
 
-        List<Map<String, Object>> buildingList = new ArrayList<>();
+        List<CommunityBuildingDTO> buildingList = new ArrayList<>();
         for (Building building : buildings) {
-            Map<String, Object> bMap = new HashMap<>();
-            bMap.put("id", building.getId());
-            bMap.put("buildingNo", building.getBuildingNo());
-
             List<Unit> units = unitRepository.findByBuildingId(building.getId());
             units.sort(Comparator.comparingInt(Unit::getUnitNo));
-
-            List<Map<String, Object>> unitList = new ArrayList<>();
-            for (Unit unit : units) {
-                Map<String, Object> uMap = new HashMap<>();
-                uMap.put("id", unit.getId());
-                uMap.put("unitNo", unit.getUnitNo());
-                unitList.add(uMap);
-            }
-            bMap.put("units", unitList);
-            buildingList.add(bMap);
+            List<CommunityUnitDTO> unitList = units.stream()
+                    .map(u -> CommunityUnitDTO.builder()
+                            .id(u.getId())
+                            .unitNo(u.getUnitNo())
+                            .build())
+                    .collect(Collectors.toList());
+            buildingList.add(CommunityBuildingDTO.builder()
+                    .id(building.getId())
+                    .buildingNo(building.getBuildingNo())
+                    .units(unitList)
+                    .build());
         }
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("tenantName", tenant.getName());
-        result.put("buildings", buildingList);
-        return result;
+        return CommunityDTO.builder()
+                .tenantName(tenant.getName())
+                .buildings(buildingList)
+                .build();
     }
 
     // ==================== 个人资料与密码 ====================
 
-    public Map<String, Object> updateProfile(Long adminId, String name) {
+    public ProfileResponseDTO updateProfile(Long adminId, String name) {
         User admin = findAdmin(adminId);
         if (name != null && !name.trim().isEmpty()) {
             admin.setName(name.trim());
             userRepository.save(admin);
         }
-        Map<String, Object> result = new HashMap<>();
-        result.put("name", admin.getName());
-        result.put("userType", admin.getUserType());
-        return result;
+        return ProfileResponseDTO.builder()
+                .name(admin.getName())
+                .userType(admin.getUserType())
+                .build();
     }
 
     public void updatePassword(Long adminId, String oldPassword, String newPassword) {
         User admin = findAdmin(adminId);
         if (admin.getPasswordHash() == null
                 || !passwordEncoder.matches(oldPassword, admin.getPasswordHash())) {
-            throw new RuntimeException("当前密码错误");
+            throw new BizException("当前密码错误");
         }
         if (newPassword == null || newPassword.length() < 6) {
-            throw new RuntimeException("新密码长度不能少于6位");
+            throw new BizException("新密码长度不能少于6位");
         }
         admin.setPasswordHash(passwordEncoder.encode(newPassword));
         userRepository.save(admin);
@@ -2692,7 +2619,7 @@ public class AdminService {
     /**
      * 列出同小区下的全部管理员用户。仅 super_admin 可调用。
      */
-    public List<Map<String, Object>> getAdmins(Long adminId) {
+    public List<AdminDTO> getAdmins(Long adminId) {
         User admin = findAdmin(adminId);
         requireSeniorAdmin(admin);
         Long tenantId = getAdminTenantId(adminId);
@@ -2710,20 +2637,18 @@ public class AdminService {
 
         return admins.stream()
                 .sorted(Comparator.comparing(User::getCreatedAt))
-                .map(u -> {
-                    Map<String, Object> map = new HashMap<>();
-                    map.put("id", u.getId());
-                    map.put("name", u.getName());
-                    map.put("userType", u.getUserType());
-                    map.put("userTypeLabel",
-                            UserType.SUPER_ADMIN.equals(u.getUserType()) ? "超级管理员" :
-                            UserType.SENIOR_ADMIN.equals(u.getUserType()) ? "高级管理员" : "普通管理员");
-                    map.put("tenantName", u.getTenantId() != null
-                            ? tenantNameMap.getOrDefault(u.getTenantId(), "—") : "全部小区");
-                    map.put("phone", maskPhone(u.getPhone()));
-                    map.put("createdAt", u.getCreatedAt());
-                    return map;
-                })
+                .map(u -> AdminDTO.builder()
+                        .id(u.getId())
+                        .name(u.getName())
+                        .userType(u.getUserType())
+                        .userTypeLabel(
+                                UserType.SUPER_ADMIN.equals(u.getUserType()) ? "超级管理员" :
+                                UserType.SENIOR_ADMIN.equals(u.getUserType()) ? "高级管理员" : "普通管理员")
+                        .tenantName(u.getTenantId() != null
+                                ? tenantNameMap.getOrDefault(u.getTenantId(), "—") : "全部小区")
+                        .phone(maskPhone(u.getPhone()))
+                        .createdAt(u.getCreatedAt())
+                        .build())
                 .collect(Collectors.toList());
     }
 
@@ -2731,32 +2656,32 @@ public class AdminService {
      * 创建子管理员账号。仅 super_admin 可调用。
      */
     @Transactional
-    public Map<String, Object> createAdmin(Long adminId, String name, String phone, String password,
-                                             Long targetTenantId, String userType) {
+    public AdminDTO createAdmin(Long adminId, String name, String phone, String password,
+                                Long targetTenantId, String userType) {
         User creator = findAdmin(adminId);
         requireSuperAdmin(creator);
 
         if (targetTenantId == null) {
-            throw new RuntimeException("请选择目标小区");
+            throw new BizException("请选择目标小区");
         }
         // 默认普通管理员，仅 super_admin 可创建 senior_admin
         String resolvedType = (userType != null && !userType.isEmpty()) ? userType : UserType.ADMIN;
         if (!UserType.ADMIN.equals(resolvedType) && !UserType.SENIOR_ADMIN.equals(resolvedType)) {
-            throw new RuntimeException("无效的管理员类型");
+            throw new BizException("无效的管理员类型");
         }
         if (name == null || name.trim().isEmpty()) {
-            throw new RuntimeException("姓名不能为空");
+            throw new BizException("姓名不能为空");
         }
         if (phone == null || phone.trim().isEmpty()) {
-            throw new RuntimeException("手机号不能为空");
+            throw new BizException("手机号不能为空");
         }
         if (password == null || password.length() < 6) {
-            throw new RuntimeException("密码长度不能少于6位");
+            throw new BizException("密码长度不能少于6位");
         }
 
         // 校验手机号在小区内唯一
         userRepository.findByPhoneAndTenantId(phone.trim(), targetTenantId)
-                .ifPresent(u -> { throw new RuntimeException("该手机号已存在"); });
+                .ifPresent(u -> { throw new BizException("该手机号已存在"); });
 
         String username = phone.trim();
         User newAdmin = User.builder()
@@ -2780,13 +2705,13 @@ public class AdminService {
         log.setCreatedAt(LocalDateTime.now());
         operationLogRepository.save(log);
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("id", newAdmin.getId());
-        result.put("name", newAdmin.getName());
-        result.put("userType", newAdmin.getUserType());
-        result.put("phone", maskPhone(newAdmin.getPhone()));
-        result.put("createdAt", newAdmin.getCreatedAt());
-        return result;
+        return AdminDTO.builder()
+                .id(newAdmin.getId())
+                .name(newAdmin.getName())
+                .userType(newAdmin.getUserType())
+                .phone(maskPhone(newAdmin.getPhone()))
+                .createdAt(newAdmin.getCreatedAt())
+                .build();
     }
 
     /**
@@ -2798,17 +2723,17 @@ public class AdminService {
         requireSuperAdmin(admin);
 
         if (adminId.equals(targetId)) {
-            throw new RuntimeException("不能删除自己");
+            throw new BizException("不能删除自己");
         }
 
         User target = findAdmin(targetId);
         Long tenantId = getAdminTenantId(adminId);
         if (!tenantMatches(tenantId, target.getTenantId())) {
-            throw new RuntimeException("该管理员不属于当前小区");
+            throw new BizException("该管理员不属于当前小区");
         }
 
         if (UserType.SUPER_ADMIN.equals(target.getUserType())) {
-            throw new RuntimeException("不能删除超级管理员");
+            throw new BizException("不能删除超级管理员");
         }
 
         userRepository.delete(target);
@@ -2841,7 +2766,7 @@ public class AdminService {
 
     private User findAdmin(Long adminId) {
         return userRepository.findById(adminId)
-                .orElseThrow(() -> new RuntimeException("管理员不存在"));
+                .orElseThrow(() -> new BizException("管理员不存在"));
     }
 
     /**
@@ -2871,7 +2796,7 @@ public class AdminService {
         }
         Long tenantId = admin.getTenantId();
         if (tenantId == null) {
-            throw new RuntimeException("管理员未关联小区");
+            throw new BizException("管理员未关联小区");
         }
         return tenantId;
     }
@@ -2886,7 +2811,7 @@ public class AdminService {
 
     private void requireSuperAdmin(User admin) {
         if (!UserType.SUPER_ADMIN.equals(admin.getUserType())) {
-            throw new RuntimeException("权限不足，仅超级管理员可操作");
+            throw new BizException("权限不足，仅超级管理员可操作");
         }
     }
 
@@ -2897,7 +2822,7 @@ public class AdminService {
     private void requireSeniorAdmin(User admin) {
         if (!UserType.SUPER_ADMIN.equals(admin.getUserType())
                 && !UserType.SENIOR_ADMIN.equals(admin.getUserType())) {
-            throw new RuntimeException("权限不足，仅高级管理员及以上可操作");
+            throw new BizException("权限不足，仅高级管理员及以上可操作");
         }
     }
 
@@ -2907,27 +2832,25 @@ public class AdminService {
      */
     private void requireNotSuperAdmin(User admin) {
         if (UserType.SUPER_ADMIN.equals(admin.getUserType())) {
-            throw new RuntimeException("超级管理员无权查看业务数据，仅可管理系统设置");
+            throw new BizException("超级管理员无权查看业务数据，仅可管理系统设置");
         }
     }
 
     // ==================== 私有辅助方法：格式化 ====================
 
     /**
-     * 按条件搜索住户。
+     * 按条件搜索住户，一次性返回全部匹配住户（按创建时间倒序）。
      *
+     * @param adminId   当前管理员 ID
      * @param buildingNo 楼栋号筛选（数值精确匹配）
      * @param unitNo     单元号筛选（数值精确匹配）
      * @param room     房间号筛选（模糊匹配）
      * @param userType "业主" | "租客" | null
      * @param keyword  姓名或手机号关键词
-     * @param page     页码（从 0 开始）
-     * @param size     每页条数
-     * @return 分页住户 DTO 列表
+     * @return 全部匹配住户 DTO 列表
      */
-    public PageDTO<ResidentDTO> searchResidents(Long adminId, Integer buildingNo, Integer unitNo, String room,
-                                                 String userType, String keyword,
-                                                 int page, int size) {
+    public List<ResidentDTO> searchResidents(Long adminId, Integer buildingNo, Integer unitNo, String room,
+                                             String userType, String keyword) {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
         // 将前端英文编码转换为数据库中的中文值
@@ -2936,10 +2859,9 @@ public class AdminService {
             case "tenant" -> "租客";
             default       -> userType;
         };
-        PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<User> userPage = userRepository.findResidents(tenantId, buildingNo, unitNo, room, dbUserType, keyword, pageRequest);
+        List<User> users = userRepository.findResidentsAll(tenantId, buildingNo, unitNo, room, dbUserType, keyword);
 
-        List<ResidentDTO> dtos = userPage.getContent().stream()
+        return users.stream()
                 .map(u -> ResidentDTO.builder()
                         .id(u.getId())
                         .name(maskName(u.getName()))
@@ -2948,14 +2870,6 @@ public class AdminService {
                         .phone(maskPhone(u.getPhone()))
                         .build())
                 .collect(Collectors.toList());
-
-        return PageDTO.<ResidentDTO>builder()
-                .content(dtos)
-                .totalElements(userPage.getTotalElements())
-                .totalPages(userPage.getTotalPages())
-                .currentPage(page)
-                .size(size)
-                .build();
     }
 
     // ==================== 私有辅助方法：DTO 转换 ====================

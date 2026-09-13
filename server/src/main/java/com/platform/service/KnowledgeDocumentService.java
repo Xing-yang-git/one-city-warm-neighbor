@@ -1,6 +1,7 @@
 package com.platform.service;
 
 import com.platform.ai.document.FileTypeDetector;
+import com.platform.common.BizException;
 import com.platform.common.DocumentStatus;
 import com.platform.common.KnowledgeCategory;
 import com.platform.common.KnowledgeFileType;
@@ -11,8 +12,6 @@ import com.platform.repository.KnowledgeItemRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -24,7 +23,9 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * 知识库源文档管理 — 上传（魔数校验/大小限制/重复拦截）、列表、删除（清库全量）、重试。
@@ -162,18 +163,16 @@ public class KnowledgeDocumentService {
     }
 
     /**
-     * 文档列表（分页，tenantId/status 可空过滤）。
+     * 文档列表（tenantId/status 可空过滤，一次性返回全部）。
      *
      * @param tenantId 小区 ID（super_admin 为 null 查全部）
      * @param status   状态过滤（可空）
-     * @param page     页码（0 基）
-     * @param size     每页条数
-     * @return 分页 DTO
+     * @return 全部文档 DTO 列表
      */
-    public Page<KnowledgeDocumentDTO> list(Long tenantId, String status, int page, int size) {
-        return documentRepository
-                .search(tenantId, status, PageRequest.of(page, size))
-                .map(this::toDTO);
+    public List<KnowledgeDocumentDTO> list(Long tenantId, String status) {
+        return documentRepository.searchAll(tenantId, status).stream()
+                .map(this::toDTO)
+                .collect(Collectors.toList());
     }
 
     /**
@@ -224,9 +223,9 @@ public class KnowledgeDocumentService {
     /** 校验文档归属（super_admin tenantId=null 时不限小区） */
     private KnowledgeDocument requireOwned(Long docId, Long tenantId) {
         KnowledgeDocument doc = documentRepository.findById(docId)
-                .orElseThrow(() -> new RuntimeException("文档不存在"));
+                .orElseThrow(() -> new BizException("文档不存在"));
         if (tenantId != null && !tenantId.equals(doc.getTenantId())) {
-            throw new RuntimeException("无权操作其他小区的文档");
+            throw new BizException("无权操作其他小区的文档");
         }
         return doc;
     }

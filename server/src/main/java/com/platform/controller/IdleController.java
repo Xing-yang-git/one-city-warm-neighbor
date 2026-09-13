@@ -2,7 +2,11 @@ package com.platform.controller;
 
 import com.platform.common.PostType;
 import com.platform.common.Result;
+import com.platform.model.dto.IdleItemDTO;
 import com.platform.model.dto.IdleItemRequest;
+import com.platform.model.dto.ListDTO;
+import com.platform.model.dto.PageDTO;
+import com.platform.security.LoginUser;
 import com.platform.service.IdleService;
 import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
@@ -43,7 +47,7 @@ public class IdleController {
      * @return 创建成功的闲置物品摘要
      */
     @PostMapping
-    public Result<?> publish(@Valid @RequestBody IdleItemRequest req, Authentication auth) {
+    public Result<IdleItemDTO> publish(@Valid @RequestBody IdleItemRequest req, Authentication auth) {
         Long userId = resolveUserId(auth, req.getUserId());
         return Result.ok(idleService.publish(userId, req));
     }
@@ -60,7 +64,7 @@ public class IdleController {
                 return requestUserId;
             }
         }
-        return Long.valueOf(auth.getName());
+        return ((LoginUser) auth.getPrincipal()).getUserId();
     }
 
     /**
@@ -73,11 +77,12 @@ public class IdleController {
      * @return 分页物品列表
      */
     @GetMapping("/home")
-    public Result<?> homeList(@RequestParam(defaultValue = PostType.LEND) String postType,
+    public Result<PageDTO<IdleItemDTO>> homeList(@RequestParam(defaultValue = PostType.LEND) String postType,
                                @RequestParam(defaultValue = "0") int page,
                                @RequestParam(defaultValue = "10") int size,
                                Authentication auth) {
-        Long userId = auth != null ? Long.valueOf(auth.getName()) : null;
+        Long userId = auth != null && auth.getPrincipal() instanceof LoginUser loginUser
+                ? loginUser.getUserId() : null;
         return Result.ok(idleService.getHomeList(postType, userId, page, size));
     }
 
@@ -89,10 +94,10 @@ public class IdleController {
      * @return 物品详情（含发布者信息、是否已收藏等）
      */
     @GetMapping("/{id}")
-    public Result<?> detail(@PathVariable Long id, Authentication auth) {
+    public Result<IdleItemDTO> detail(@PathVariable Long id, Authentication auth) {
         Long currentUserId = null;
-        if (auth != null && auth.getName() != null && auth.getName().matches("\\d+")) {
-            currentUserId = Long.valueOf(auth.getName());
+        if (auth != null && auth.getPrincipal() instanceof LoginUser loginUser) {
+            currentUserId = loginUser.getUserId();
         }
         return Result.ok(idleService.getDetail(id, currentUserId));
     }
@@ -109,13 +114,14 @@ public class IdleController {
      * @return 搜索结果分页
      */
     @GetMapping("/search")
-    public Result<?> search(@RequestParam String keyword,
+    public Result<PageDTO<IdleItemDTO>> search(@RequestParam String keyword,
                              @RequestParam(defaultValue = PostType.LEND) String postType,
                              @RequestParam(defaultValue = "0") int page,
                              @RequestParam(defaultValue = "10") int size,
                              @RequestParam(defaultValue = "") String mode,
                              Authentication auth) {
-        Long userId = auth != null ? Long.valueOf(auth.getName()) : null;
+        Long userId = auth != null && auth.getPrincipal() instanceof LoginUser loginUser
+                ? loginUser.getUserId() : null;
         return Result.ok(idleService.search(userId, keyword, postType, page, size, mode));
     }
 
@@ -127,10 +133,10 @@ public class IdleController {
      * @return 用户发布的物品列表
      */
     @GetMapping("/my")
-    public Result<?> myPosts(@RequestParam(defaultValue = PostType.LEND) String postType,
-                              Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
-        return Result.ok(idleService.getMyPosts(userId, postType));
+    public Result<ListDTO<IdleItemDTO>> myPosts(@RequestParam(defaultValue = PostType.LEND) String postType,
+                                                Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
+        return Result.ok(new ListDTO<>(idleService.getMyPosts(userId, postType)));
     }
 
     /**
@@ -141,8 +147,8 @@ public class IdleController {
      * @return 空响应
      */
     @PutMapping("/{id}/delist")
-    public Result<?> delist(@PathVariable Long id, Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+    public Result<Void> delist(@PathVariable Long id, Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         idleService.delist(userId, id);
         return Result.ok();
     }
@@ -155,8 +161,8 @@ public class IdleController {
      * @return 空响应
      */
     @DeleteMapping("/{id}")
-    public Result<?> delete(@PathVariable Long id, Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+    public Result<Void> delete(@PathVariable Long id, Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         idleService.deleteItem(userId, id);
         return Result.ok();
     }
@@ -170,9 +176,9 @@ public class IdleController {
      * @return 更新后的物品信息
      */
     @PutMapping("/{id}")
-    public Result<?> update(@PathVariable Long id, @Valid @RequestBody IdleItemRequest req,
+    public Result<IdleItemDTO> update(@PathVariable Long id, @Valid @RequestBody IdleItemRequest req,
                             Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         return Result.ok(idleService.update(userId, id, req));
     }
 }

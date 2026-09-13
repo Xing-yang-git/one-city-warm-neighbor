@@ -3,7 +3,10 @@ package com.platform.controller;
 import com.platform.common.Result;
 import com.platform.model.dto.ApproveRequest;
 import com.platform.model.dto.BorrowRequestDTO;
+import com.platform.model.dto.BorrowResponseDTO;
+import com.platform.model.dto.ListDTO;
 import com.platform.model.dto.ReturnRequest;
+import com.platform.security.LoginUser;
 import com.platform.service.BorrowService;
 import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
@@ -33,7 +36,7 @@ public class BorrowController {
      * @return 借用详情（含物品信息、双方用户信息、状态流转时间线）
      */
     @GetMapping("/{id}")
-    public Result<?> getDetail(@PathVariable Long id) {
+    public Result<BorrowResponseDTO> getDetail(@PathVariable Long id) {
         return Result.ok(borrowService.getDetail(id));
     }
 
@@ -45,8 +48,8 @@ public class BorrowController {
      * @return 创建的借用记录
      */
     @PostMapping
-    public Result<?> apply(@Valid @RequestBody BorrowRequestDTO req, Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+    public Result<BorrowResponseDTO> apply(@Valid @RequestBody BorrowRequestDTO req, Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         return Result.ok(borrowService.apply(userId, req));
     }
 
@@ -59,9 +62,9 @@ public class BorrowController {
      * @return 空响应
      */
     @PutMapping("/{id}/approve")
-    public Result<?> approveReject(@PathVariable Long id, @Valid @RequestBody ApproveRequest req,
+    public Result<Void> approveReject(@PathVariable Long id, @Valid @RequestBody ApproveRequest req,
                                    Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         borrowService.approveReject(userId, id, req);
         return Result.ok();
     }
@@ -73,9 +76,9 @@ public class BorrowController {
      * @return 借用申请列表
      */
     @GetMapping("/applications/my")
-    public Result<?> myApplications(Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
-        return Result.ok(borrowService.getMyApplications(userId));
+    public Result<ListDTO<BorrowResponseDTO>> myApplications(Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
+        return Result.ok(new ListDTO<>(borrowService.getMyApplications(userId)));
     }
 
     /**
@@ -85,9 +88,9 @@ public class BorrowController {
      * @return 待审批借用列表
      */
     @GetMapping("/approvals/pending")
-    public Result<?> pendingApprovals(Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
-        return Result.ok(borrowService.getPendingApprovals(userId));
+    public Result<ListDTO<BorrowResponseDTO>> pendingApprovals(Authentication auth) {
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
+        return Result.ok(new ListDTO<>(borrowService.getPendingApprovals(userId)));
     }
 
     /**
@@ -99,9 +102,9 @@ public class BorrowController {
      * @return 空响应
      */
     @PutMapping("/{id}/return")
-    public Result<?> confirmReturn(@PathVariable Long id, @Valid @RequestBody ReturnRequest req,
+    public Result<Void> confirmReturn(@PathVariable Long id, @Valid @RequestBody ReturnRequest req,
                                    Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         borrowService.confirmReturn(userId, id, req);
         return Result.ok();
     }
@@ -117,9 +120,9 @@ public class BorrowController {
      * @return 空响应
      */
     @PutMapping("/{id}/damage")
-    public Result<?> updateDamage(@PathVariable Long id, @RequestBody java.util.Map<String, String> body,
+    public Result<Void> updateDamage(@PathVariable Long id, @RequestBody java.util.Map<String, String> body,
                                    Authentication auth) {
-        Long userId = Long.valueOf(auth.getName());
+        Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
         borrowService.updateDamage(userId, id, body.get("damageType"));
         return Result.ok();
     }

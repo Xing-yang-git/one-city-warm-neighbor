@@ -75,7 +75,8 @@ class JwtAuthenticationFilterTest {
         // 断言
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         assertThat(auth).isNotNull();
-        assertThat(auth.getPrincipal()).isEqualTo("1");
+        assertThat(auth.getPrincipal()).isInstanceOf(LoginUser.class);
+        assertThat(((LoginUser) auth.getPrincipal()).getUserId()).isEqualTo(1L);
         assertThat(auth.getAuthorities()).extracting("authority").containsExactly("ROLE_USER");
         verify(filterChain).doFilter(request, response);
     }
@@ -231,7 +232,8 @@ class JwtAuthenticationFilterTest {
         // 断言：auth 端点下过期 token 依然注入认证
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         assertThat(auth).isNotNull();
-        assertThat(auth.getPrincipal()).isEqualTo("1");
+        assertThat(auth.getPrincipal()).isInstanceOf(LoginUser.class);
+        assertThat(((LoginUser) auth.getPrincipal()).getUserId()).isEqualTo(1L);
         verify(filterChain).doFilter(request, response);
     }
 

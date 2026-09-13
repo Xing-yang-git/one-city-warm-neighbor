@@ -372,7 +372,7 @@ const loading = ref(false);
 async function fetchRecords(): Promise<void> {
   loading.value = true;
   try {
-    const res = await getRecords({ type: "all", page: 0, size: 500 });
+    const res = await getRecords({ type: "all" });
     const pageData = res.data?.data;
     if (pageData?.content) {
       tableData.value = pageData.content as RecordItemDTO[];
