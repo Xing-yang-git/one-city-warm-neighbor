@@ -187,7 +187,7 @@ export DEEPSEEK_API_KEY="your-deepseek-api-key"
 
 ```bash
 cd server
-mvn test    # service 层 8 个测试类
+mvn test    # 全量单元测试（50 个测试类）
 ```
 
 ### 3. B端管理后台 (Vue 3)
