@@ -1,7 +1,6 @@
 package com.platform.ai.agent;
 
 import com.platform.common.AppTimeZone;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.Cursor;
@@ -16,6 +15,10 @@ import java.time.LocalDateTime;
  * Agent 会话归档调度器 — 每 5 分钟扫描 Redis 热会话，空闲超时（archive-idle-minutes）即归档。
  *
  * <p>用 SCAN 游标遍历（避免 KEYS 阻塞 Redis）；Redis 不可用时跳过本轮（热会话仍保留到 TTL）。</p>
+ *
+ * <p>互斥由 {@link AgentSessionGuard} 提供：本类不直接持锁，判空闲（{@link #isIdle}）只是<b>无锁预过滤</b>，
+ * 用于跳过绝大多数无关 key、避免无谓加锁；权威判定与归档在 {@link ArchiveService#archiveIfIdle} 的锁内完成。
+ * 遍历多用户时逐个进出循环体，从不同时持有两把用户锁（{@link AgentSessionGuard} 类注释中的硬约束）。</p>
  */
 @Slf4j
 @Component
@@ -23,20 +26,21 @@ public class ArchiveScheduler {
 
     private final StringRedisTemplate redisTemplate;
     private final ArchiveService archiveService;
-    private final ObjectMapper objectMapper;
+    private final SessionService sessionService;
 
     /** 空闲归档阈值（分钟） */
     @Value("${ai.agent.archive-idle-minutes:15}")
     private int idleMinutes;
 
+    /** 热会话 key 前缀（与 SessionService.SESSION_PREFIX 约定一致，供 SCAN 匹配与反解析 userId） */
     private static final String SESSION_PREFIX = "agent:session:";
 
     public ArchiveScheduler(StringRedisTemplate redisTemplate,
                             ArchiveService archiveService,
-                            ObjectMapper objectMapper) {
+                            SessionService sessionService) {
         this.redisTemplate = redisTemplate;
         this.archiveService = archiveService;
-        this.objectMapper = objectMapper;
+        this.sessionService = sessionService;
     }
 
     /**
@@ -56,8 +60,8 @@ public class ArchiveScheduler {
                     if (userId == null) {
                         continue;
                     }
-                    if (isIdle(userId)) {
-                        archiveService.archiveRemaining(userId);
+                    // 计数以锁内权威判定为准：无锁预过滤通过但锁内已非空闲时不计数，避免统计虚高
+                    if (isIdle(userId) && archiveService.archiveIfIdle(userId, idleMinutes)) {
                         archived++;
                     }
                 } catch (Exception e) {
@@ -73,24 +77,21 @@ public class ArchiveScheduler {
     }
 
     /**
-     * 判断热会话是否空闲超时。
+     * 空闲预过滤（无锁，仅供跳过无关 key）。
+     *
+     * <p>复用 {@link SessionService#getSession} 读取，避免在本类重复一份 AgentSession 反序列化逻辑
+     * 随实体演进漂移；判定结果不作为归档依据——真正的判定在 {@link ArchiveService#archiveIfIdle} 锁内重做。</p>
      *
      * @param userId 住户用户 ID
-     * @return true = 空闲超时需归档
+     * @return true = 疑似空闲超时，值得尝试归档
      */
     private boolean isIdle(Long userId) {
-        try {
-            String json = redisTemplate.opsForValue().get(SESSION_PREFIX + userId);
-            if (json == null) {
-                return false;
-            }
-            AgentSession session = objectMapper.readValue(json, AgentSession.class);
-            return session.getLastActive() != null
-                    && session.getLastActive().isBefore(LocalDateTime.now(AppTimeZone.APP_ZONE).minusMinutes(idleMinutes));
-        } catch (Exception e) {
-            log.warn("读取热会话失败: userId={}, {}", userId, e.getMessage());
-            return false;
-        }
+        AgentSession session = sessionService.getSession(userId);
+        return session != null
+                && session.getMessages() != null
+                && !session.getMessages().isEmpty()
+                && session.getLastActive() != null
+                && session.getLastActive().isBefore(LocalDateTime.now(AppTimeZone.APP_ZONE).minusMinutes(idleMinutes));
     }
 
     /**

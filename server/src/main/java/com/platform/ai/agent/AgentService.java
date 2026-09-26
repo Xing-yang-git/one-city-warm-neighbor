@@ -69,6 +69,7 @@ public class AgentService {
     private final ObjectMapper objectMapper;
     private final SensitiveWordService sensitiveWordService;
     private final MemoryRetrievalService memoryRetrievalService;
+    private final AgentSessionGuard sessionGuard;
 
     /** 归档轮次阈值（达到该轮数即触发归档；1 次用户提问+agent 回复=1 轮，内部 ×2 换算消息数，
      *  与 max-turns×2 截断封顶一致，防阈值 > 截断上限永不触发） */
@@ -113,7 +114,8 @@ public class AgentService {
                         ObjectMapper objectMapper,
                         MessagePreFilter preFilter,
                         SensitiveWordService sensitiveWordService,
-                        MemoryRetrievalService memoryRetrievalService) {
+                        MemoryRetrievalService memoryRetrievalService,
+                        AgentSessionGuard sessionGuard) {
         this.promptBuilder = promptBuilder;
         this.promptRepository = promptRepository;
         this.toolDispatcher = toolDispatcher;
@@ -127,6 +129,62 @@ public class AgentService {
         this.preFilter = preFilter;
         this.sensitiveWordService = sensitiveWordService;
         this.memoryRetrievalService = memoryRetrievalService;
+        this.sessionGuard = sessionGuard;
+    }
+
+    /**
+     * 在当前用户的热会话互斥下写入一问一答（user + assistant）并触发阈值归档。
+     *
+     * <p>两次 append 必须处于同一临界区：若中途被另一请求插队，会得到 u1、u2、a1 的顺序，
+     * 即「连续两条用户消息」脏数据。{@code archiveIfNeeded} 一并纳入同一个临界区，
+     * 顺带消除它「先读消息数判阈值、再调归档」两次读之间的 TOCTOU 窗口。</p>
+     *
+     * @param userId         当前用户 ID
+     * @param userMessage    用户消息
+     * @param assistantReply 助手回复（写入历史的原文）
+     * @param sourcesJson    引用来源 JSON（可为 null）
+     * @param actionsJson    动作卡片 JSON（可为 null）
+     */
+    private void appendTurn(Long userId, String userMessage, String assistantReply,
+                            String sourcesJson, String actionsJson) {
+        sessionGuard.executeExclusive(userId, () -> {
+            sessionService.append(userId, AgentMessageRole.USER, userMessage, null, null);
+            sessionService.append(userId, AgentMessageRole.ASSISTANT, assistantReply, sourcesJson, actionsJson);
+            archiveIfNeeded(userId);
+        });
+    }
+
+    /**
+     * 在当前用户的热会话互斥下写入一条问候问答（user + assistant），<b>不触发归档</b>。
+     *
+     * <p>与普通问答分开：问候走本地文案快速通道，目标是不依赖任何外部服务的秒回；
+     * 若在此路径同步触发归档（PG 写入），会给一条原本不会失败的链路引入新的失败点。
+     * 与 {@link #appendTurn} 的唯一差别即在不调用 archiveIfNeeded，两条问候路径（阻塞版/流式版）均走本方法以保持一致。</p>
+     *
+     * @param userId       当前用户 ID
+     * @param userMessage  用户消息
+     * @param greetingReply 问候回复文案
+     */
+    private void appendGreetingTurn(Long userId, String userMessage, String greetingReply) {
+        sessionGuard.executeExclusive(userId, () -> {
+            sessionService.append(userId, AgentMessageRole.USER, userMessage, null, null);
+            sessionService.append(userId, AgentMessageRole.ASSISTANT, greetingReply, null, null);
+        });
+    }
+
+    /**
+     * 在当前用户的热会话互斥下执行会话结束语义：归档剩余全部消息 + 清空热会话。
+     *
+     * <p>两句必须处于同一临界区：{@code clearSession} 是整体覆盖写，若中间被 append 插队，
+     * 那条消息既不在归档表也不在热会话里，永久丢失。</p>
+     *
+     * @param userId 当前用户 ID
+     */
+    private void archiveAndClear(Long userId) {
+        sessionGuard.executeExclusive(userId, () -> {
+            archiveService.archiveRemaining(userId);
+            sessionService.clearSession(userId);
+        });
     }
 
     /**
@@ -150,8 +208,7 @@ public class AgentService {
         if (greetingReply != null) {
             // 问候命中也更新「上一条消息」：否则「今天星期几 → 你好 → 今天星期几」会被误判为连续重复
             preFilter.recordMessage(userId, message);
-            sessionService.append(userId, AgentMessageRole.USER, message, null, null);
-            sessionService.append(userId, AgentMessageRole.ASSISTANT, greetingReply, null, null);
+            appendGreetingTurn(userId, message, greetingReply);
             return new AgentChatResult(greetingReply, List.of(), List.of());
         }
 
@@ -160,8 +217,7 @@ public class AgentService {
         if (filter.blockReply() != null) {
             if (filter.clearSession()) {
                 // 清空即归档：先归档剩余全部消息（纯 DB 搬运，会话结束语义），再清空热会话
-                archiveService.archiveRemaining(userId);
-                sessionService.clearSession(userId);
+                archiveAndClear(userId);
                 // 清空会话是会话边界：重置上一条消息记录，避免新会话第一条与历史会话最后一条重复误判
                 preFilter.resetUser(userId);
             }
@@ -198,10 +254,7 @@ public class AgentService {
 
             // 写入热会话（user + assistant），并触发消息数阈值归档
             List<AgentAction> actions = action != null ? List.of(action) : List.of();
-            sessionService.append(userId, AgentMessageRole.USER, message, null, null);
-            sessionService.append(userId, AgentMessageRole.ASSISTANT, guarded,
-                    writeJsonOrNull(sources), writeJsonOrNull(actions));
-            archiveIfNeeded(userId);
+            appendTurn(userId, message, guarded, writeJsonOrNull(sources), writeJsonOrNull(actions));
 
             return new AgentChatResult(display, sources, actions);
         } finally {
@@ -222,6 +275,7 @@ public class AgentService {
      * @return 对话流（问候为 {@code isGreeting()}、拦截为 {@code isBlocked()} 快捷回复，普通为模型内容流）
      */
     public AgentChatStream chatStream(Long userId, String message) {
+        // 获取当前系统时间戳
         long setupStartMs = System.currentTimeMillis();
         // 新会话入口检测：热会话为空即新对话（首次/清空/退出/空闲归档后），重置上一条消息记录，
         // 避免新会话第一条与历史会话最后一条被规则 6 误判为重复（覆盖所有会话结束路径，含空闲归档）
@@ -234,8 +288,8 @@ public class AgentService {
         if (greetingReply != null) {
             // 问候命中也更新「上一条消息」：否则「今天星期几 → 你好 → 今天星期几」会被误判为连续重复
             preFilter.recordMessage(userId, message);
-            sessionService.append(userId, AgentMessageRole.USER, message, null, null);
-            sessionService.append(userId, AgentMessageRole.ASSISTANT, greetingReply, null, null);
+            // 问候也写入热会话，须与普通问答走同一临界区（否则与并发请求交错产生连续同角色消息）
+            appendGreetingTurn(userId, message, greetingReply);
             return AgentChatStream.greeting(greetingReply);
         }
 
@@ -244,8 +298,7 @@ public class AgentService {
         if (filter.blockReply() != null) {
             if (filter.clearSession()) {
                 // 清空即归档：先归档剩余全部消息（纯 DB 搬运，会话结束语义），再清空热会话
-                archiveService.archiveRemaining(userId);
-                sessionService.clearSession(userId);
+                archiveAndClear(userId);
                 // 清空会话是会话边界：重置上一条消息记录，避免新会话第一条与历史会话最后一条重复误判
                 preFilter.resetUser(userId);
             }
@@ -309,10 +362,7 @@ public class AgentService {
     public void completeStream(Long userId, String userMessage, String assistantReply,
                                List<KnowledgeHit> hits, AgentAction action, String requestId) {
         List<AgentAction> actions = action != null ? List.of(action) : List.of();
-        sessionService.append(userId, AgentMessageRole.USER, userMessage, null, null);
-        sessionService.append(userId, AgentMessageRole.ASSISTANT, assistantReply,
-                writeJsonOrNull(hits), writeJsonOrNull(actions));
-        archiveIfNeeded(userId);
+        appendTurn(userId, userMessage, assistantReply, writeJsonOrNull(hits), writeJsonOrNull(actions));
         // 路由决策日志：本次请求是否调用了知识工具（以命中缓存是否有结果为判断依据）
         log.info("Agent 路由决策: userId={}, 本次调用了知识工具={}", userId, hits != null && !hits.isEmpty());
         // 请求级工具状态清理（计数 + 命中缓存）

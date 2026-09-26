@@ -50,6 +50,7 @@ public class ArchiveService {
     private final UserRepository userRepository;
     private final AgentMemorySegmentRepository memorySegmentRepository;
     private final MemoryCompressionService memoryCompressionService;
+    private final AgentSessionGuard guard;
 
     /** 恢复会话时回填的最近轮数 */
     @Value("${ai.agent.max-turns:10}")
@@ -73,19 +74,22 @@ public class ArchiveService {
      * @param userRepository            用户仓储（取 tenantId）
      * @param memorySegmentRepository   记忆压缩段仓储（会话软删联动清理）
      * @param memoryCompressionService  记忆压缩服务（归档后异步触发压缩）
+     * @param guard                     热会话进程内互斥锁（归档的读-改-写须与 append 串行）
      */
     public ArchiveService(SessionService sessionService,
                           AgentConversationRepository conversationRepository,
                           AgentMessageRepository messageRepository,
                           UserRepository userRepository,
                           AgentMemorySegmentRepository memorySegmentRepository,
-                          MemoryCompressionService memoryCompressionService) {
+                          MemoryCompressionService memoryCompressionService,
+                          AgentSessionGuard guard) {
         this.sessionService = sessionService;
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.userRepository = userRepository;
         this.memorySegmentRepository = memorySegmentRepository;
         this.memoryCompressionService = memoryCompressionService;
+        this.guard = guard;
     }
 
     /**
@@ -115,24 +119,29 @@ public class ArchiveService {
      */
     @Transactional
     public Long archiveWindow(Long userId, int windowSize) {
-        AgentSession session = sessionService.getSession(userId);
-        if (session == null || session.getMessages().isEmpty()) {
-            return null;
-        }
-        int prefix = session.getArchivedPrefixCount();
-        int unarchived = session.getMessages().size() - prefix;
-        if (unarchived <= 0) {
-            // 热会话内全是已归档回填消息（无新增）：不重复归档建行
-            return null;
-        }
-        int count = Math.min(Math.max(windowSize, 1), unarchived);
-        // 只归档新增部分的最旧 count 条；已归档回填前缀不重复落库
-        List<AgentSession.AgentMessageItem> window = new ArrayList<>(session.getMessages().subList(prefix, prefix + count));
-        // 保留部分 = 已归档回填前缀 + 剩余新增（前缀保留作会话继续的上下文，计数不变）
-        List<AgentSession.AgentMessageItem> keep = new ArrayList<>(session.getMessages().subList(0, prefix));
-        keep.addAll(session.getMessages().subList(prefix + count, session.getMessages().size()));
-        session.setArchivedPrefixCount(prefix);
-        return doArchive(userId, session, window, keep);
+        // 锁必须连续覆盖「读 Redis → 最后一次写 Redis」整段（含中间的 PG 写入）：
+        // 若只锁住首尾两次 Redis 访问，并发 append 会插进 PG 段，随后用陈旧快照算出的 keep 覆盖，
+        // 新消息被静默丢弃——那只是把两次错误写串行化，两次都错
+        return guard.runExclusive(userId, () -> {
+            AgentSession session = sessionService.getSession(userId);
+            if (session == null || session.getMessages().isEmpty()) {
+                return null;
+            }
+            int prefix = session.getArchivedPrefixCount();
+            int unarchived = session.getMessages().size() - prefix;
+            if (unarchived <= 0) {
+                // 热会话内全是已归档回填消息（无新增）：不重复归档建行
+                return null;
+            }
+            int count = Math.min(Math.max(windowSize, 1), unarchived);
+            // 只归档新增部分的最旧 count 条；已归档回填前缀不重复落库
+            List<AgentSession.AgentMessageItem> window = new ArrayList<>(session.getMessages().subList(prefix, prefix + count));
+            // 保留部分 = 已归档回填前缀 + 剩余新增（前缀保留作会话继续的上下文，计数不变）
+            List<AgentSession.AgentMessageItem> keep = new ArrayList<>(session.getMessages().subList(0, prefix));
+            keep.addAll(session.getMessages().subList(prefix + count, session.getMessages().size()));
+            session.setArchivedPrefixCount(prefix);
+            return doArchive(userId, session, window, keep);
+        });
     }
 
     /**
@@ -146,30 +155,56 @@ public class ArchiveService {
      */
     @Transactional
     public Long archiveRemaining(Long userId) {
-        AgentSession session = sessionService.getSession(userId);
-        if (session == null || session.getMessages().isEmpty()) {
-            return null;
-        }
-        int prefix = session.getArchivedPrefixCount();
-        int unarchived = session.getMessages().size() - prefix;
-        if (unarchived <= 0) {
-            // 热会话内仅剩已归档回填消息（上次 resume 的回填，无新增）：不重复归档建行，
-            // 按会话结束语义清理热会话（回填消息已在 PG，清理不丢数据）
-            session.setMessages(new ArrayList<>());
-            session.setConversationId(null);
+        // 同 archiveWindow：锁覆盖「读 → PG → 写」整段，避免并发 append 的消息被陈旧 keep 覆盖
+        return guard.runExclusive(userId, () -> {
+            AgentSession session = sessionService.getSession(userId);
+            if (session == null || session.getMessages().isEmpty()) {
+                return null;
+            }
+            int prefix = session.getArchivedPrefixCount();
+            int unarchived = session.getMessages().size() - prefix;
+            if (unarchived <= 0) {
+                // 热会话内仅剩已归档回填消息（上次 resume 的回填，无新增）：不重复归档建行，
+                // 按会话结束语义清理热会话（回填消息已在 PG，清理不丢数据）
+                session.setMessages(new ArrayList<>());
+                session.setConversationId(null);
+                session.setArchivedPrefixCount(0);
+                sessionService.saveSession(userId, session);
+                return null;
+            }
+            // 只归档新增部分；已归档回填前缀不重复落库
+            List<AgentSession.AgentMessageItem> all = new ArrayList<>(session.getMessages().subList(prefix, session.getMessages().size()));
             session.setArchivedPrefixCount(0);
+            Long archived = doArchive(userId, session, all, List.of());
+            // 会话结束语义：归档全部消息后清空会话级 conversationId——
+            // 否则退出/清空后开启的新会话沿用旧 id，归档时多个会话被合并到同一 conversation_id（历史被合并、条数虚高）
+            session.setConversationId(null);
             sessionService.saveSession(userId, session);
-            return null;
-        }
-        // 只归档新增部分；已归档回填前缀不重复落库
-        List<AgentSession.AgentMessageItem> all = new ArrayList<>(session.getMessages().subList(prefix, session.getMessages().size()));
-        session.setArchivedPrefixCount(0);
-        Long archived = doArchive(userId, session, all, List.of());
-        // 会话结束语义：归档全部消息后清空会话级 conversationId——
-        // 否则退出/清空后开启的新会话沿用旧 id，归档时多个会话被合并到同一 conversation_id（历史被合并、条数虚高）
-        session.setConversationId(null);
-        sessionService.saveSession(userId, session);
-        return archived;
+            return archived;
+        });
+    }
+
+    /**
+     * 空闲归档（归档调度器专用）— 在用户级互斥内完成「判空闲 + 归档」，消除两者之间的 TOCTOU。
+     *
+     * <p>调度器若在锁外判空闲再调归档，判定与归档之间用户可能已回来发消息，
+     * 导致一个正在进行的会话被按会话结束语义误归档。权威判定必须落在锁内。</p>
+     *
+     * @param userId      住户用户 ID
+     * @param idleMinutes 空闲阈值（分钟）
+     * @return true = 本次确实归档建行；false = 锁内判定为非空闲/无内容，未归档
+     */
+    @Transactional
+    public boolean archiveIfIdle(Long userId, int idleMinutes) {
+        return guard.runExclusive(userId, () -> {
+            AgentSession session = sessionService.getSession(userId);
+            if (session == null || session.getMessages().isEmpty() || session.getLastActive() == null
+                    || !session.getLastActive().isBefore(LocalDateTime.now(AppTimeZone.APP_ZONE).minusMinutes(idleMinutes))) {
+                // 锁内权威判定：非空闲或无内容则不归档
+                return false;
+            }
+            return archiveRemaining(userId) != null;
+        });
     }
 
     /**
@@ -375,38 +410,42 @@ public class ArchiveService {
         if (deleted) {
             throw new BizException("会话已删除");
         }
-        // 目标有效后再归档当前未归档热会话（会话结束语义），避免被下方 new AgentSession() 覆盖导致消息丢失
-        archiveRemaining(userId);
-
         // 会话级 id 以归档行实际 conversation_id 为准（历史 NULL 数据视作自身 id），
         // 兼容前端误传非首行 id 的旧缓存场景，恢复后继续对话仍沿用同一会话
         Long sessionId = rows.get(0).getConversationId() != null
                 ? rows.get(0).getConversationId()
                 : rows.get(0).getId();
 
-        // 读该会话所有归档行消息，合并后按 id 升序，回填最近 resumeTurns×2 条
-        List<AgentMessage> allMessages = new ArrayList<>();
-        for (AgentConversation row : rows) {
-            allMessages.addAll(messageRepository.findByConversationIdOrderByIdAsc(row.getId()));
-        }
-        allMessages.sort(Comparator.comparing(AgentMessage::getId));
-        List<AgentSession.AgentMessageItem> items = allMessages.stream()
-                .map(m -> new AgentSession.AgentMessageItem(m.getRole(), m.getContent(), m.getSources(), m.getActions(),
-                        m.getCreatedAt()))
-                .collect(Collectors.toList());
-        int start = Math.max(0, items.size() - resumeTurns * 2);
-        List<AgentSession.AgentMessageItem> recent = new ArrayList<>(items.subList(start, items.size()));
+        // 归档当前热会话 → 整体覆盖写回填内容，整段须与其他会话写入互斥：
+        // 若中间插进并发 append，该消息既不在归档表也被覆盖掉，永久丢失
+        return guard.runExclusive(userId, () -> {
+            // 目标有效后再归档当前未归档热会话（会话结束语义），避免被下方 new AgentSession() 覆盖导致消息丢失
+            archiveRemaining(userId);
 
-        AgentSession session = new AgentSession();
-        session.setConversationId(sessionId);
-        session.setMessages(recent);
-        // 回填消息全部来自归档表（已在 PG），标记为已归档回填前缀——后续归档只存新增部分，避免重复落库
-        session.setArchivedPrefixCount(recent.size());
-        session.setLastActive(LocalDateTime.now(AppTimeZone.APP_ZONE));
-        sessionService.saveSession(userId, session);
-        log.info("Agent 会话恢复: userId={}, conversationId={}, 回填 {} 条", userId, sessionId, recent.size());
-        // 返回该会话全部归档消息供前端完整展示对话内容（热会话/LLM 上下文仍只保留最近 recent 轮）
-        return items;
+            // 读该会话所有归档行消息，合并后按 id 升序，回填最近 resumeTurns×2 条
+            List<AgentMessage> allMessages = new ArrayList<>();
+            for (AgentConversation row : rows) {
+                allMessages.addAll(messageRepository.findByConversationIdOrderByIdAsc(row.getId()));
+            }
+            allMessages.sort(Comparator.comparing(AgentMessage::getId));
+            List<AgentSession.AgentMessageItem> items = allMessages.stream()
+                    .map(m -> new AgentSession.AgentMessageItem(m.getRole(), m.getContent(), m.getSources(), m.getActions(),
+                            m.getCreatedAt()))
+                    .collect(Collectors.toList());
+            int start = Math.max(0, items.size() - resumeTurns * 2);
+            List<AgentSession.AgentMessageItem> recent = new ArrayList<>(items.subList(start, items.size()));
+
+            AgentSession session = new AgentSession();
+            session.setConversationId(sessionId);
+            session.setMessages(recent);
+            // 回填消息全部来自归档表（已在 PG），标记为已归档回填前缀——后续归档只存新增部分，避免重复落库
+            session.setArchivedPrefixCount(recent.size());
+            session.setLastActive(LocalDateTime.now(AppTimeZone.APP_ZONE));
+            sessionService.saveSession(userId, session);
+            log.info("Agent 会话恢复: userId={}, conversationId={}, 回填 {} 条", userId, sessionId, recent.size());
+            // 返回该会话全部归档消息供前端完整展示对话内容（热会话/LLM 上下文仍只保留最近 recent 轮）
+            return items;
+        });
     }
 
     /**

@@ -17,6 +17,10 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,12 +49,15 @@ class SessionServiceTest {
             .registerModule(new JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
+    /** 真实锁实例而非 Mock：Mock 的 runExclusive 默认返回 null，会让 append 方法体根本不执行、断言诡异地通过 */
+    private final AgentSessionGuard guard = new AgentSessionGuard();
+
     private SessionService sessionService;
 
     @BeforeEach
     void setUp() {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        sessionService = new SessionService(redisTemplate, objectMapper);
+        sessionService = new SessionService(redisTemplate, objectMapper, guard);
         ReflectionTestUtils.setField(sessionService, "sessionTtlHours", 24);
         ReflectionTestUtils.setField(sessionService, "maxTurns", 10);
         ReflectionTestUtils.setField(sessionService, "maxHistoryChars", 6000);
@@ -262,5 +269,60 @@ class SessionServiceTest {
         sessionService.clearSession(1L);
 
         verify(valueOperations).set(eq("agent:session:1"), anyString(), eq(Duration.ofHours(24)));
+    }
+
+    // ==================== 并发 ====================
+
+    @Test
+    @DisplayName("并发追加 - 多线程同时 append 不丢消息")
+    void should_notLoseMessages_when_concurrentAppend() throws Exception {
+        // Arrange：调大 maxTurns（100 轮 = 200 条）为断言留足余量——20 条本不触发截断，
+        // 显式放大可防后续夹具调整（如 maxHistoryChars 变小）导致断言假失败
+        ReflectionTestUtils.setField(sessionService, "maxTurns", 100);
+        AtomicReference<AgentSession> store = new AtomicReference<>();
+        // 模拟的读与写必须共用同一把 synchronized 锁：否则 mock 自身即为竞态点，测试不稳定
+        when(valueOperations.get(anyString())).thenAnswer(inv -> {
+            synchronized (store) {
+                AgentSession s = store.get();
+                return s == null ? null : objectMapper.writeValueAsString(s);
+            }
+        });
+        doAnswer(inv -> {
+            synchronized (store) {
+                store.set(objectMapper.readValue((String) inv.getArgument(1), AgentSession.class));
+            }
+            return null;
+        }).when(valueOperations).set(anyString(), anyString(), any(Duration.class));
+
+        int threadCount = 20;
+        long userId = 1L;
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(threadCount);
+        ExecutorService pool = Executors.newFixedThreadPool(threadCount);
+        try {
+            for (int i = 0; i < threadCount; i++) {
+                final int idx = i;
+                pool.submit(() -> {
+                    try {
+                        start.await();
+                        sessionService.append(userId, AgentMessageRole.USER, "m" + idx, null, null);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        done.countDown();
+                    }
+                });
+            }
+
+            // Act：同时放行全部线程
+            start.countDown();
+            assertThat(done.await(15, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            pool.shutdownNow();
+        }
+
+        // Assert：无丢更新时 20 条全部落库（改造前因读-改-写竞态会丢消息，size < 20）
+        AgentSession result = sessionService.getSession(userId);
+        assertThat(result.getMessages()).hasSize(threadCount);
     }
 }

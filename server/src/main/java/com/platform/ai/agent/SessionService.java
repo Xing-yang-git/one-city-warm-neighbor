@@ -1,5 +1,6 @@
 package com.platform.ai.agent;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.platform.common.AppTimeZone;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +25,7 @@ public class SessionService {
 
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+    private final AgentSessionGuard guard;
 
     /** 会话 TTL（小时） */
     @Value("${ai.agent.session-ttl-hours:24}")
@@ -39,9 +41,12 @@ public class SessionService {
 
     private static final String SESSION_PREFIX = "agent:session:";
 
-    public SessionService(StringRedisTemplate redisTemplate, ObjectMapper objectMapper) {
+    public SessionService(StringRedisTemplate redisTemplate,
+                          ObjectMapper objectMapper,
+                          AgentSessionGuard guard) {
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
+        this.guard = guard;
     }
 
     /**
@@ -53,11 +58,18 @@ public class SessionService {
     public AgentSession getSession(Long userId) {
         try {
             String json = redisTemplate.opsForValue().get(SESSION_PREFIX + userId);
-            if (json == null) {
+            if (json == null || json.isBlank()) {
                 return null;
             }
             return objectMapper.readValue(json, AgentSession.class);
+        } catch (JsonProcessingException e) {
+            log.warn("AgentSession会话JSON反序列化异常 userId={}", userId, e);
+            return null;
         } catch (Exception e) {
+            // 必须兜底 Exception，不能只 catch io.lettuce.core.RedisException：Spring Data Redis 会将
+            // Lettuce 的 RedisConnectionException 包装成 RedisConnectionFailureException 抛出，
+            // 原始 RedisException 只作为 cause 存在——只 catch RedisException 接不住真实断连，
+            // 异常会抛穿整条对话链路，与「Redis 不可用降级为无会话、不阻断主链路」的约定相悖
             log.warn("Redis 会话读取失败（降级无会话）: userId={}, {}", userId, e.getMessage());
             return null;
         }
@@ -99,7 +111,8 @@ public class SessionService {
      * @param userId 住户用户 ID
      */
     public void clearSession(Long userId) {
-        saveSession(userId, new AgentSession());
+        // 全量覆盖写：必须与 append/归档互斥，否则并发 append 用旧快照写回会把已清空的消息「复活」
+        guard.executeExclusive(userId, () -> saveSession(userId, new AgentSession()));
     }
 
     /**
@@ -113,16 +126,45 @@ public class SessionService {
      * @return 追加后的会话（Redis 写入失败时内部降级，恒返回非 null）
      */
     public AgentSession append(Long userId, String role, String content, String sources, String actions) {
-        AgentSession session = getSession(userId);
-        if (session == null) {
-            session = new AgentSession();
+        return guard.runExclusive(userId, () -> {
+            AgentSession session = getSession(userId);
+            if (session == null) {
+                session = new AgentSession();
+            }
+            LocalDateTime now = LocalDateTime.now(AppTimeZone.APP_ZONE);
+            session.getMessages().add(new AgentSession.AgentMessageItem(role, content, sources, actions, now));
+            session.setLastActive(now);
+            // 截断依赖本次读出的同一份快照并原地改写 archivedPrefixCount，必须在锁内计算
+            // （严禁把 truncate 提前到 runExclusive 之外：陈旧快照会把前缀计数算小，导致已归档回填消息被重复归档）
+            AgentSession truncated = truncate(session);
+            saveSession(userId, truncated);
+            warnIfConsecutiveRole(userId, role, truncated);
+            return truncated;
+        });
+    }
+
+    /**
+     * 连续同角色自检：新增消息与紧邻的前一条角色相同时记 WARN。
+     *
+     * <p>user 连续 = 热会话出现脏数据（正常一问一答应严格交替）；assistant 连续 = 同一问题被回答两次。
+     * 注意存在合法误报源：LLM 调用失败时 assistant 未写入，下一条用户消息会正常构成 user-user，
+     * 故日志文案带「疑似」，仅供定位线索，不作判定依据。</p>
+     *
+     * @param userId    住户用户 ID
+     * @param role      本次新增消息的角色
+     * @param session   写入后的会话快照
+     */
+    private void warnIfConsecutiveRole(Long userId, String role, AgentSession session) {
+        List<AgentSession.AgentMessageItem> messages = session.getMessages();
+        int size = messages.size();
+        if (size < 2) {
+            return;
         }
-        LocalDateTime now = LocalDateTime.now(AppTimeZone.APP_ZONE);
-        session.getMessages().add(new AgentSession.AgentMessageItem(role, content, sources, actions, now));
-        session.setLastActive(now);
-        AgentSession truncated = truncate(session);
-        saveSession(userId, truncated);
-        return truncated;
+        String previousRole = messages.get(size - 2).role();
+        if (role != null && role.equals(previousRole)) {
+            log.warn("Agent 热会话出现连续同角色消息（疑似并发丢更新）: userId={}, role={}, 总条数={}",
+                    userId, role, size);
+        }
     }
 
     /**
@@ -140,9 +182,10 @@ public class SessionService {
         int dropped = 0;
         if (messages.size() > maxCount) {
             dropped = messages.size() - maxCount;
+            // 丢掉前面 `dropped` 条消息，保留从下标 `dropped` 到末尾的全部消息
             messages = new ArrayList<>(messages.subList(dropped, messages.size()));
         }
-        // 字符裁剪（至少保留 keepMin 条，避免丢失最近上下文）
+        // 字符裁剪（至少保留 keepMin 条，避免丢失最近上下文）,统计整个消息列表所有消息内容的字符总长度
         int totalChars = messages.stream().mapToInt(m -> len(m.content())).sum();
         int keepMin = 6;
         while (totalChars > maxHistoryChars && messages.size() > keepMin) {

@@ -58,7 +58,13 @@ public class RateLimitService {
         try {
             return redisTryAcquire(userId);
         } catch (Exception e) {
-            log.warn("Redis 限流不可用，降级内存计数: {}", e.getMessage());
+            /**
+             * 修改日志打印，避免误导：
+             * `e.getMessage()` 获取的是**Redis 抛出的异常信息**（例如连接拒绝、读取超时），跟 “降级内存计数” 这几个字没有任何关系。
+             * SLF4J 规范：**把 exception 对象放到最后参数**，不要用`e.getMessage()`
+             * 把异常对象 e 作为最后参数，日志自动带上完整堆栈。
+             */
+            log.warn("Redis 限流不可用，降级内存计数", e);
             return memoryTryAcquire(userId);
         }
     }
@@ -72,7 +78,9 @@ public class RateLimitService {
     private boolean redisTryAcquire(String userId) {
         // 分钟维度
         String minuteKey = "agent:rl:" + userId + ":m:" + LocalDateTime.now(AppTimeZone.APP_ZONE).format(MINUTE_FMT);
+        // 使用 Redis INCR 计数
         Long minuteCount = redisTemplate.opsForValue().increment(minuteKey);
+        // TTL 65 秒（防止跨分钟计数丢失）
         redisTemplate.expire(minuteKey, Duration.ofSeconds(65));
         if (minuteCount != null && minuteCount > perMinute) {
             log.warn("Agent 对话分钟限流触发: userId={}, count={}", userId, minuteCount);
@@ -81,7 +89,9 @@ public class RateLimitService {
 
         // 天维度
         String dayKey = "agent:rl:" + userId + ":d:" + LocalDateTime.now(AppTimeZone.APP_ZONE).format(DAY_FMT);
+        // 使用 Redis INCR 计数
         Long dayCount = redisTemplate.opsForValue().increment(dayKey);
+        // TTL 1 天（防止跨日计数丢失）
         redisTemplate.expire(dayKey, Duration.ofDays(1));
         if (dayCount != null && dayCount > perDay) {
             log.warn("Agent 对话天限流触发: userId={}, count={}", userId, dayCount);
@@ -94,36 +104,50 @@ public class RateLimitService {
      * 内存窗口计数限流（Redis 降级兜底，含每日配额保护）。
      *
      * @param userId 用户 ID
-     * @return true = 允许
+     * @return true = 允许；false = 被限流拦截
      */
     private boolean memoryTryAcquire(String userId) {
-        // 分钟窗口
+        // ========== 1、分钟维度：内存滑动窗口限流 ==========
+        // 获取当前时间戳（毫秒）
         long now = System.currentTimeMillis();
+        // minuteWindows:
+        // ConcurrentHashMap<String,Deque<Long>>，获取存该用户请求时间戳队列，没有则创建一个新的队列
         Deque<Long> window = minuteWindows.computeIfAbsent(userId, k -> new ArrayDeque<>());
+        // 对该用户的队列加锁，多线程并发操作同一个用户队列防止并发错乱
         synchronized (window) {
+            // 清理队列：把队列头部早于【当前时间-60000ms（1分钟）】的过期时间戳全部弹出
             while (!window.isEmpty() && window.peekFirst() < now - 60_000L) {
                 window.pollFirst();
             }
+            // 当前窗口内请求数达到阈值，分钟限流触发
             if (window.size() >= perMinute) {
                 log.warn("Agent 对话内存限流触发（分钟）: userId={}", userId);
                 return false;
             }
+            // 将本次请求时间戳加入队尾
             window.addLast(now);
         }
-        // 每日配额（跨日重置）
+
+        // ========== 2、每日配额限流 内存实现 ==========
+        // 获取今天日期字符串，例如 20260916
         String today = LocalDateTime.now(AppTimeZone.APP_ZONE).format(DAY_FMT);
+        // dayCounts: ConcurrentHashMap<String, Map<String,Integer>>
+        // 外层key：userId；内层map key：日期字符串，value：当日请求次数
         Map<String, Integer> perUserDay = dayCounts.computeIfAbsent(userId, k -> new ConcurrentHashMap<>());
         synchronized (perUserDay) {
             Integer count = perUserDay.get(today);
             if (count == null) {
-                perUserDay.clear();   // 跨日清空旧计数
+                // 拿不到今日计数 → 说明跨到新的一天
+                perUserDay.clear(); // 清空昨天及更早所有旧计数
                 perUserDay.put(today, 1);
                 return true;
             }
+            // 判断是否达到每日上限
             if (count >= perDay) {
                 log.warn("Agent 对话内存限流触发（每日）: userId={}, count={}", userId, count);
                 return false;
             }
+            // 计数+1
             perUserDay.put(today, count + 1);
             return true;
         }

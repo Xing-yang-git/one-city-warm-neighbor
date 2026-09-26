@@ -98,7 +98,8 @@ class AgentServiceTest {
         promptRepository = new PromptRepository();
         agentService = new AgentService(promptBuilder, promptRepository, toolDispatcher, intentRouter,
                 sessionService, archiveService, deepseekChatModel, userRepository, tenantRepository,
-                new ObjectMapper(), preFilter, sensitiveWordService, memoryRetrievalService);
+                new ObjectMapper(), preFilter, sensitiveWordService, memoryRetrievalService,
+                new AgentSessionGuard());
         // 前置过滤器默认放行（清洗后消息 = 原消息），问候类测试不触达过滤器，故用 lenient 避免误报
         lenient().when(preFilter.process(any(), anyString()))
                 .thenAnswer(inv -> new MessagePreFilter.PreFilterResult(inv.getArgument(1), null, false, null));

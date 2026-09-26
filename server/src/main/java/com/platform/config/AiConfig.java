@@ -260,12 +260,12 @@ public class AiConfig {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         // 阻塞式 LLM 调用单次可能占线程数秒~数十秒（有超时兜底），核心/上限调到 4/8，
         // 避免 2 个慢请求就排满队列、后续请求被 CallerRuns 卡住 Tomcat 线程
-        executor.setCorePoolSize(4);
-        executor.setMaxPoolSize(8);
-        executor.setQueueCapacity(50);
-        executor.setThreadNamePrefix("agent-sse-");
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
-        executor.initialize();
+        executor.setCorePoolSize(4);// 核心线程数 4，保证并发 SSE 推送
+        executor.setMaxPoolSize(8);// 最大线程数 8，避免大批量请求打满线程池
+        executor.setQueueCapacity(50);// 有界队列 50，避免无限排队占内存
+        executor.setThreadNamePrefix("agent-sse-");// 线程名前缀，便于排查
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());// CallerRuns 拒绝策略，满时由调用线程兜底执行
+        executor.initialize();// 初始化线程池
         return executor;
     }
 

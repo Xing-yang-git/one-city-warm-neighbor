@@ -55,7 +55,7 @@ public class MessagePreFilter {
     private final Set<String> clearSessionCommands;
 
     /** 重复判定时间窗口（毫秒）：同一条消息在窗口内再次出现才判重复；超窗视为重新提问放行 */
-    private static final long DUPLICATE_WINDOW_MS = 30_000;
+    private static final long DUPLICATE_WINDOW_MS = 3_000;
 
     /** 各用户上一条放行的消息（key = userId，供连续重复判定；含时间戳支持窗口判定） */
     final Map<Long, LastMessage> lastMessages = new ConcurrentHashMap<>();

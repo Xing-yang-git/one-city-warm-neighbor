@@ -34,9 +34,22 @@ public class AgentSession {
     /** 最近活跃时间（append 时更新，供空闲归档调度判断） */
     private LocalDateTime lastActive;
 
-    /** 会话消息单条（createTime 为消息产生时间，供记忆时间优先级/冲突处理判断先后）。
-     *  当前为时间链路的数据载体：Redis 热会话留存 + resume 回填保留；LLM 实际消费的时间标注
-     *  来自记忆段 created_at 的相对时间标签（MemoryRetrievalService），本字段是后续渲染/检索的铺垫。 */
+    /**
+     * 会话消息单条 — Redis 热会话与归档回填共用的消息载体。
+     *
+     * <p>createTime 当前是时间链路的数据载体：Redis 热会话留存 + resume 回填保留；LLM 实际消费的时间
+     * 标注来自记忆段 created_at 的相对时间标签（MemoryRetrievalService），本字段是后续渲染/检索的铺垫。</p>
+     *
+     * @param role       消息角色：user(住户提问) / assistant(AI 回复) / tool(工具调用结果)，
+     *                   唯一合法取值见 {@link com.platform.common.AgentMessageRole}
+     * @param content    消息正文。assistant 为剔除意图 JSON 后的原文（<b>未做敏感词掩码</b>，
+     *                   掩码只作用于展示文本，历史保留原文以免污染后续上下文判断）
+     * @param sources    引用来源的 JSON 数组字符串，由 KnowledgeHit 列表序列化而来，
+     *                   仅供前端渲染「参考来源」；非 assistant 消息或本次无命中时为 null
+     * @param actions    动作卡片的 JSON 数组字符串，由 AgentAction 列表序列化而来，
+     *                   仅供前端渲染待确认卡片；非 assistant 消息或本次无动作时为 null
+     * @param createTime 消息产生时间（应用时区）；旧 Redis 序列化数据 / 测试构造可为 null
+     */
     public record AgentMessageItem(String role, String content, String sources, String actions,
                                    LocalDateTime createTime) {
 

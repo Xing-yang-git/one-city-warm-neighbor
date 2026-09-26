@@ -2,6 +2,7 @@ package com.platform.ai.agent;
 
 import com.platform.common.AgentConversationStatus;
 import com.platform.common.AgentMessageRole;
+import com.platform.common.AppTimeZone;
 import com.platform.common.BizException;
 import com.platform.model.entity.AgentConversation;
 import com.platform.model.entity.AgentMemorySegment;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -65,6 +67,10 @@ class ArchiveServiceTest {
     private AgentMemorySegmentRepository memorySegmentRepository;
     @Mock
     private MemoryCompressionService memoryCompressionService;
+
+    /** 真实锁实例（@Spy 以便被 @InjectMocks 注入）：Mock 的 runExclusive 默认返回 null，会让归档方法体根本不执行 */
+    @Spy
+    private AgentSessionGuard guard = new AgentSessionGuard();
 
     @InjectMocks
     private ArchiveService archiveService;
@@ -369,6 +375,46 @@ class ArchiveServiceTest {
         assertThat(saved.getMessages()).isEmpty();
         assertThat(saved.getConversationId()).isNull();
         assertThat(saved.getArchivedPrefixCount()).isZero();
+    }
+
+    // ==================== 空闲归档（archiveIfIdle：锁内「判空闲 + 归档」） ====================
+
+    @Test
+    @DisplayName("空闲归档 - lastActive 超阈值时归档建行并返回 true")
+    void should_archiveIfIdle_when_idleOverThreshold() {
+        // Arrange：15 分钟阈值下 30 分钟未活动（远超阈值），且热会话有内容
+        AgentSession session = sessionWithMessages(2);
+        session.setLastActive(LocalDateTime.now(AppTimeZone.APP_ZONE).minusMinutes(30));
+        when(sessionService.getSession(1L)).thenReturn(session);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(User.builder().id(1L).tenantId(10L).build()));
+        stubSaveAssigningIds(70L);
+
+        // Act
+        boolean archived = archiveService.archiveIfIdle(1L, 15);
+
+        // Assert：确实建了归档行（返回值是调度器计数的唯一依据）
+        assertThat(archived).isTrue();
+        ArgumentCaptor<AgentConversation> captor = ArgumentCaptor.forClass(AgentConversation.class);
+        verify(conversationRepository, atLeastOnce()).save(captor.capture());
+        assertThat(captor.getAllValues().get(0).getMessageCount()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("空闲归档 - lastActive 未超阈值时不归档且不落任何库（锁内权威判定）")
+    void should_skip_when_notIdle() {
+        // Arrange：15 分钟阈值下仅 3 分钟未活动，属仍在进行的会话
+        AgentSession session = sessionWithMessages(2);
+        session.setLastActive(LocalDateTime.now(AppTimeZone.APP_ZONE).minusMinutes(3));
+        when(sessionService.getSession(1L)).thenReturn(session);
+
+        // Act
+        boolean archived = archiveService.archiveIfIdle(1L, 15);
+
+        // Assert：既不能建行，也不能清空热会话（否则正在对话的用户会丢上下文）
+        assertThat(archived).isFalse();
+        verify(conversationRepository, never()).save(any(AgentConversation.class));
+        verify(messageRepository, never()).saveAll(anyList());
+        verify(sessionService, never()).saveSession(anyLong(), any(AgentSession.class));
     }
 
     // ==================== 列表（按会话级 conversation_id 分组） ====================
