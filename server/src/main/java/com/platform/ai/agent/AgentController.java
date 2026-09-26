@@ -12,6 +12,7 @@ import com.platform.security.LoginUser;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -72,6 +73,7 @@ public class AgentController {
                            ArchiveService archiveService,
                            ObjectMapper objectMapper,
                            RateLimitService rateLimitService,
+                           @Qualifier("agentExecutor")
                            ThreadPoolTaskExecutor agentExecutor,
                            IntentRouter intentRouter,
                            AgentToolDispatcher toolDispatcher,
@@ -98,6 +100,7 @@ public class AgentController {
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chat(@Valid @RequestBody AgentChatRequest req, Authentication auth) {
         Long userId = ((LoginUser) auth.getPrincipal()).getUserId();
+        // 记录请求开始时刻，用于统计接口耗时
         long requestStartMs = System.currentTimeMillis();
 
         // 限流：每分钟每用户配额，超限返回 SSE error 事件（友好文案提示，不开启对话流）
@@ -109,17 +112,22 @@ public class AgentController {
             } catch (IOException e) {
                 log.debug("限流响应发送失败: userId={}", userId);
             }
+            // 立即完成 SSE 流，避免客户端长时间挂起
             reject.complete();
             return reject;
         }
 
+        // SSE 长连接（真流式，逐分块推送）：300 秒为兜底上限，正常路径由 doOnComplete 发 end 后主动 complete
         SseEmitter emitter = new SseEmitter(300_000L);
-        // 客户端断开 / 超时：确保 emitter 完成，避免后续 send 抛异常污染日志
+        // 客户端断开 / 超时：确保 emitter 完成。否则超时后仍在跑的内容流每次 send 都会抛异常，
+        // 从 doOnNext 逃逸到 Reactor 的 onErrorDropped，污染日志
         emitter.onTimeout(emitter::complete);
+        // 连接完成时，记录日志（可用于统计 SSE 连接时长）
         emitter.onCompletion(() -> log.debug("Agent SSE 流结束: userId={}", userId));
 
         agentExecutor.execute(() -> {
             try {
+                // 发送 SSE 事件
                 safeSend(emitter, "start", Map.of("message", req.getMessage()));
 
                 // 流式编排：问候秒回；普通对话走 Spring AI 真流式（工具在流内自动执行）
@@ -279,7 +287,12 @@ public class AgentController {
     }
 
     /**
-     * 发送 SSE 事件（连接已断开时静默忽略，避免污染日志）。
+     * 发送 SSE 事件（连接已断开或 emitter 已完成时静默忽略，避免污染日志）。
+     *
+     * <p>必须捕获 {@link Exception} 而非仅 IOException：客户端断开走 IOException，但 emitter
+     * 超时被 {@code onTimeout} 置为完成后，spring-webmvc 的 {@code ResponseBodyEmitter.send()}
+     * 抛的是 IllegalStateException（Assert.state 的「已 completed」校验）。漏接会从 doOnNext 逃逸，
+     * 触发 Reactor 的 onErrorDropped 噪音日志。</p>
      *
      * @param emitter SSE 发射器
      * @param name    事件名
@@ -288,8 +301,8 @@ public class AgentController {
     private void safeSend(SseEmitter emitter, String name, Object data) {
         try {
             emitter.send(SseEmitter.event().name(name).data(toJson(name, data)));
-        } catch (IOException e) {
-            log.debug("SSE 发送失败（连接可能已断开）: name={}", name);
+        } catch (Exception e) {
+            log.debug("SSE 发送失败（连接可能已断开或 emitter 已结束）: name={}, {}", name, e.toString());
         }
     }
 
