@@ -80,7 +80,7 @@ git-save 的三道门禁（详细流程见 [.claude/agents/git-save.md](.claude/
 2. **Gate 2 — Commit hash**：`reviewed-commit` 必须等于当前 HEAD，否则报告过期
 3. **Gate 3 — Scope 覆盖**：通行证 scope 必须覆盖本次提交涉及的全部平台
 
-**白名单例外**（经用户确认可跳过审查）：`*.md`/`*.txt` 文档、安全配置（`.gitignore`、`tsconfig.*`、`vite.config.*`）、`.claude/**`、纯样式格式化。**不在白名单**：`application.yml`、`.env`、`schema.sql`、`pom.xml`、`package.json` 及一切逻辑文件。
+**白名单例外**（经用户确认可跳过审查）：`*.md`/`*.txt` 文档、安全配置（`.gitignore`、`tsconfig.*`、`vite.config.*`）、`application.yml`（配置项，2026-09-26 起纳入；该文件承载阈值、超时、限流等运行期行为参数，提交者需自行核对改动影响，不再由审查门禁兜底）、`.claude/**`、纯样式格式化。**不在白名单**：`.env`、`schema.sql`、`pom.xml`、`package.json` 及一切逻辑文件。
 
 **一次性通行证**：提交成功后 git-save 删除通行证文件，下次提交需重新审查——防止一份陈旧报告覆盖多次提交。
 
