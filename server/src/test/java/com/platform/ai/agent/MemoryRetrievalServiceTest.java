@@ -57,6 +57,30 @@ class MemoryRetrievalServiceTest {
         return new float[1024];
     }
 
+    /**
+     * 构造一条检索命中投影（压缩段 id + 余弦距离）。
+     *
+     * <p>{@code MemorySimilarityHit} 是 interface 投影（原生查询不支持 class-based 投影），
+     * 无法直接 new，故测试内用最简匿名实现充当夹具。</p>
+     *
+     * @param id       压缩段 ID
+     * @param distance 余弦距离
+     * @return 命中投影实例
+     */
+    private static AgentMemorySegmentRepository.MemorySimilarityHit hit(long id, double distance) {
+        return new AgentMemorySegmentRepository.MemorySimilarityHit() {
+            @Override
+            public Long getId() {
+                return id;
+            }
+
+            @Override
+            public double getDistance() {
+                return distance;
+            }
+        };
+    }
+
     @Test
     @DisplayName("无段跳过 - 用户无任何压缩段时直接返回「无」，不触发向量化与检索")
     void should_skipEmbedding_when_noSegments() {
@@ -126,7 +150,7 @@ class MemoryRetrievalServiceTest {
         when(zhipuEmbedding.embed("你好")).thenReturn(vector());
         // 距离 0.9 超过阈值 0.55 → 过滤；距离 0.3 命中（保持距离升序）
         when(memorySegmentRepository.findIdsBySimilarity(eq(1L), anyString(), eq(3)))
-                .thenReturn(List.<Object[]>of(new Object[]{2L, 0.9}, new Object[]{1L, 0.3}));
+                .thenReturn(List.of(hit(2L, 0.9), hit(1L, 0.3)));
         AgentMemorySegment hit = AgentMemorySegment.builder().id(1L).summary("用户喜欢园艺").build();
         when(memorySegmentRepository.findAllById(List.of(1L))).thenReturn(List.of(hit));
 
@@ -143,7 +167,7 @@ class MemoryRetrievalServiceTest {
         when(zhipuEmbedding.embed("你好")).thenReturn(vector());
         // 两条均 ≤ 阈值 0.55（按距离升序），hitIds=[2L,1L]，摘要按此顺序带序号格式化
         when(memorySegmentRepository.findIdsBySimilarity(eq(1L), anyString(), eq(3)))
-                .thenReturn(List.<Object[]>of(new Object[]{2L, 0.2}, new Object[]{1L, 0.3}));
+                .thenReturn(List.of(hit(2L, 0.2), hit(1L, 0.3)));
         when(memorySegmentRepository.findAllById(List.of(2L, 1L))).thenReturn(List.of(
                 AgentMemorySegment.builder().id(2L).summary("常发起搬家求助").build(),
                 AgentMemorySegment.builder().id(1L).summary("用户喜欢园艺").build()));
@@ -159,7 +183,7 @@ class MemoryRetrievalServiceTest {
         when(zhipuEmbedding.embed("你好")).thenReturn(vector());
         // 检索距离升序返回 [1,2]，但 created_at 上旧的（3天前）应先注入
         when(memorySegmentRepository.findIdsBySimilarity(eq(1L), anyString(), eq(3)))
-                .thenReturn(List.<Object[]>of(new Object[]{1L, 0.2}, new Object[]{2L, 0.3}));
+                .thenReturn(List.of(hit(1L, 0.2), hit(2L, 0.3)));
         when(memorySegmentRepository.findAllById(List.of(1L, 2L))).thenReturn(List.of(
                 AgentMemorySegment.builder().id(1L).summary("新记忆").title("周末手工")
                         .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build(),
@@ -177,7 +201,7 @@ class MemoryRetrievalServiceTest {
     void should_skipBlankSummary_when_buildText() {
         when(zhipuEmbedding.embed("你好")).thenReturn(vector());
         when(memorySegmentRepository.findIdsBySimilarity(eq(1L), anyString(), eq(3)))
-                .thenReturn(List.<Object[]>of(new Object[]{1L, 0.3}, new Object[]{2L, 0.2}));
+                .thenReturn(List.of(hit(1L, 0.3), hit(2L, 0.2)));
         when(memorySegmentRepository.findAllById(List.of(1L, 2L))).thenReturn(List.of(
                 AgentMemorySegment.builder().id(1L).summary("   ").build(),
                 AgentMemorySegment.builder().id(2L).summary("用户喜欢园艺").build()));
@@ -202,7 +226,7 @@ class MemoryRetrievalServiceTest {
     void should_returnNull_when_findAllByIdThrows() {
         when(zhipuEmbedding.embed("你好")).thenReturn(vector());
         when(memorySegmentRepository.findIdsBySimilarity(eq(1L), anyString(), eq(3)))
-                .thenReturn(List.<Object[]>of(new Object[]{1L, 0.3}));
+                .thenReturn(List.of(hit(1L, 0.3)));
         when(memorySegmentRepository.findAllById(List.of(1L)))
                 .thenThrow(new RuntimeException("pgvector 维度不匹配"));
 

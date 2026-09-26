@@ -14,9 +14,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -146,44 +144,38 @@ public class MemoryRetrievalService {
     }
 
     /**
-     * 按用户向量检索压缩段并按距离阈值过滤（保持距离升序）。
+     * 按用户向量检索压缩段并按距离阈值过滤。
+     *
+     * <p>只负责「筛选」，<b>不保证返回顺序</b>：相关性由 SQL 的 {@code ORDER BY distance ASC LIMIT :top}
+     * 决定「选哪几条」，而展示顺序由 {@link #buildSegmentsText} 按时间重排——
+     * 故此处无需把距离顺序还原出来（还原了也会被下游丢弃）。</p>
      *
      * @param userId      住户用户 ID
      * @param queryVector 查询向量字面量
-     * @return 距离 ≤ 阈值的压缩段列表（升序）
+     * @return 距离 ≤ 阈值的压缩段列表（顺序不保证）
      */
     private List<AgentMemorySegment> searchWithThreshold(Long userId, String queryVector) {
-        List<Object[]> rows = memorySegmentRepository.findIdsBySimilarity(userId, queryVector, memoryRecallTop);
+        List<AgentMemorySegmentRepository.MemorySimilarityHit> hits =
+                memorySegmentRepository.findIdsBySimilarity(userId, queryVector, memoryRecallTop);
         // 距离 ≤ 阈值的候选 id（距离越小越相似；超过阈值的不注入）
         List<Long> hitIds = new ArrayList<>();
-        for (Object[] row : rows) {
-            double distance = ((Number) row[1]).doubleValue();
-            if (distance <= memoryMatchThreshold) {
-                hitIds.add(((Number) row[0]).longValue());
+        for (AgentMemorySegmentRepository.MemorySimilarityHit hit : hits) {
+            if (hit.getDistance() <= memoryMatchThreshold) {
+                hitIds.add(hit.getId());
             }
         }
         if (hitIds.isEmpty()) {
             return List.of();
         }
-        // 按距离升序回填实体（findAllById 无序，需按 hitIds 顺序还原）
-        Map<Long, AgentMemorySegment> byId = new LinkedHashMap<>();
-        for (AgentMemorySegment segment : memorySegmentRepository.findAllById(hitIds)) {
-            byId.put(segment.getId(), segment);
-        }
-        List<AgentMemorySegment> ordered = new ArrayList<>();
-        for (Long id : hitIds) {
-            AgentMemorySegment segment = byId.get(id);
-            if (segment != null) {
-                ordered.add(segment);
-            }
-        }
-        return ordered;
+        // 顺序不参与下游（buildSegmentsText 会按时间重排），直接按 id 取实体即可；
+        // 两次查询之间被删掉的段自然不会出现在结果里
+        return memorySegmentRepository.findAllById(hitIds);
     }
 
     /**
      * 构建命中摘要列表文本（带序号，直接注入用）。
      *
-     * @param segments 命中的压缩段（按距离升序）
+     * @param segments 命中的压缩段（顺序不参与展示，方法内部按时间从旧到新重排）
      * @return 形如「1. 摘要1\n2. 摘要2」的文本；摘要全为空（空白）时返回「无」
      */
     private String buildSegmentsText(List<AgentMemorySegment> segments) {
@@ -198,7 +190,7 @@ public class MemoryRetrievalService {
         for (AgentMemorySegment segment : ordered) {
             String summary = segment.getSummary();
             if (summary != null && !summary.isBlank()) {
-                if (sb.length() > 0) {
+                if (!sb.isEmpty()) {
                     sb.append('\n');
                 }
                 // 时间 + 会话归属标签：帮助模型判断该记忆的先后与所属会话，

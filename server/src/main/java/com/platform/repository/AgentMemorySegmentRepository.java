@@ -24,15 +24,42 @@ public interface AgentMemorySegmentRepository extends JpaRepository<AgentMemoryS
      * @param userId      住户用户 ID（强制过滤，越权防护）
      * @param queryVector 查询向量字面量（pgvector '[0.1,0.2,...]'，1024 维）
      * @param top         召回条数上限
-     * @return 命中行的 id + 余弦距离（Object[0]=id、Object[1]=distance）
+     * @return 命中行列表（压缩段 id + 余弦距离，按距离升序）
      */
-    @Query(value = "SELECT s.id, CAST(s.embedding AS vector(1024)) <=> CAST(:queryVector AS vector(1024)) AS distance " +
+    @Query(value = "SELECT s.id AS id, CAST(s.embedding AS vector(1024)) <=> CAST(:queryVector AS vector(1024)) AS distance " +
             "FROM agent_memory_segments s " +
             "WHERE s.user_id = :userId AND s.embedding IS NOT NULL " +
             "ORDER BY distance ASC LIMIT :top", nativeQuery = true)
-    List<Object[]> findIdsBySimilarity(@Param("userId") Long userId,
-                                       @Param("queryVector") String queryVector,
-                                       @Param("top") int top);
+    List<MemorySimilarityHit> findIdsBySimilarity(@Param("userId") Long userId,
+                                                  @Param("queryVector") String queryVector,
+                                                  @Param("top") int top);
+
+    /**
+     * 记忆检索命中行 — 原生 pgvector 查询的类型化投影（压缩段 id + 余弦距离）。
+     *
+     * <p>刻意声明为 interface 而非 record/class：原生查询不支持 class-based 投影，Spring Data 会拿
+     * {@code TupleBackedMap} 去找 Converter 并抛 {@code ConverterNotFoundException}；
+     * interface 投影由 Spring Data 直接代理映射，是原生查询下唯一可用的类型化返回方式。</p>
+     *
+     * <p>查询列别名必须与 getter 名严格对应（{@code id} / {@code distance}）——
+     * 别名不匹配时 getter 静默返回 null，不报错。</p>
+     */
+    interface MemorySimilarityHit {
+
+        /**
+         * 命中的压缩段 ID。
+         *
+         * @return 压缩段主键，对应 agent_memory_segments.id
+         */
+        Long getId();
+
+        /**
+         * 与查询向量的余弦距离（pgvector {@code <=>} 运算结果）。
+         *
+         * @return 距离值，越小越相似
+         */
+        double getDistance();
+    }
 
     /**
      * 按会话级 conversation_id 查询全部压缩段（联动删除用，硬删）。
