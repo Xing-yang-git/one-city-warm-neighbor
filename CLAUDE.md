@@ -99,7 +99,9 @@ git-save 的三道门禁（详细流程见 [.claude/agents/git-save.md](.claude/
 
 **拆分 vs 合并**：默认按平台拆分提交。仅当跨平台改动服务同一功能、拆开会留下破碎中间态、或单独回滚会破坏功能时才合并。一个提交 = 一个完整、可独立审查、可独立回滚的改动。
 
-**分支命名**：`<type>/<short-description>`，小写连字符，如 `feat/rating-system`、`fix/login-npe`。
+**分支策略（2026-09-30 确立）**：本仓库**直接提交并推送到 `master`**，不建特性分支——历史与远端均只有 `master`（`origin/HEAD -> origin/master`），单人开发不需要 PR 流程。git-save 不得自行新建分支。**若某次改动需要独立分支**（如实验性重构、需他人评审），由用户显式说明分支名再建。
+
+**分支命名**（仅在上述例外场景下使用）：`<type>/<short-description>`，小写连字符，如 `feat/rating-system`、`fix/login-npe`。
 
 ## 7. 注释规范（2026-07-16 确立）
 
