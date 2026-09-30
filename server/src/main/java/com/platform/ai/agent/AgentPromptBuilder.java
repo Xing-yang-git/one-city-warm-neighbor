@@ -71,7 +71,7 @@ public class AgentPromptBuilder {
      */
     public List<Message> buildMessages(String tenantName, String message,
                                        List<AgentSession.AgentMessageItem> history, String memoryText) {
-        String template = promptRepository.get("agent.system");
+        String template = promptRepository.get(PromptRepository.KEY_AGENT_SYSTEM);
         String memory = memoryText == null || memoryText.isBlank() ? "无" : memoryText;
         String system = template
                 .replace("{小区名}", tenantName == null ? "本小区" : tenantName)

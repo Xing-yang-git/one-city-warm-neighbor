@@ -79,6 +79,12 @@ public class AgentService {
     /** DeepSeek 流式连接失败自动重试次数（外部 AI keep-alive 连接空闲被服务端关闭，复用陈旧连接会 Connection reset） */
     private static final int STREAM_CONNECT_RETRY = 1;
 
+    /** 流式掩码窗口下限：词库为空或词极短时仍保留的最小尾巴，避免窗口退化为 0 而漏掉跨分片词 */
+    private static final int MIN_STREAM_CARRY_WINDOW = 8;
+
+    /** 流式掩码窗口的干扰余量：覆盖敏感词两截之间夹的空格/标点/emoji（归一化会剔除它们但仍占窗口） */
+    private static final int STREAM_CARRY_INTERFERENCE_MARGIN = 12;
+
     /** 问候语关键词（纯寒暄走快速通道，不调外部 API，保证秒回；含常用礼貌语，去重后无重复项） */
     private static final List<String> GREETING_KEYWORDS = List.of(
             "你好", "您好", "嗨", "哈喽", "hello", "hi", "在吗", "在不在",
@@ -449,6 +455,23 @@ public class AgentService {
     }
 
     /**
+     * 流式转发的敏感词跨分片掩码窗口长度（保留的尾部字符数）。
+     *
+     * <p>窗口下界由词库决定而非拍脑袋：敏感词若被分片边界切断，前半截一旦转发出去就再也无法掩码，
+     * 故窗口必须覆盖「最长词长 − 1」（最坏情况是词被切成 1 个字符 + 剩下的）。词库由 B端增删，
+     * 写死常数会在运营加长词后静默漏词。</p>
+     *
+     * <p>再叠加 {@link #STREAM_CARRY_INTERFERENCE_MARGIN} 干扰余量：归一化会剔除空格/标点/emoji，
+     * 故同一敏感词的两个半截之间可能夹任意多个干扰字符，这些字符同样占用窗口。</p>
+     *
+     * @return 掩码窗口长度（字符数）
+     */
+    public int streamCarryWindowLength() {
+        return Math.max(sensitiveWordService.longestWordLength() - 1, MIN_STREAM_CARRY_WINDOW)
+                + STREAM_CARRY_INTERFERENCE_MARGIN;
+    }
+
+    /**
      * 防幻觉校验：先移除超出注入资料条数范围的非法 [N] 引用，再检测资料中不存在的数字（仅记日志）。
      *
      * <p>调用方保证传入的 {@code reply} 已是 cleanReply 处理后的文本（剔除 JSON 意图），
@@ -585,7 +608,7 @@ public class AgentService {
     private ToolCallback[] buildToolCallbacks(Long userId, String requestId) {
         log.info("Agent 读工具注册: userId={}, 模型={}", userId, deepseekChatModel.getClass().getSimpleName());
         // 工具描述统一从提示词仓库读取（prompts/agent/tools.md），改文案不动代码
-        Properties toolProps = promptRepository.getProps("agent.tools");
+        Properties toolProps = promptRepository.getProps(PromptRepository.KEY_AGENT_TOOLS);
         return new ToolCallback[]{
                 FunctionToolCallback.builder("search_knowledge",
                                 (KnowledgeSearchParams p) -> toolDispatcher.searchKnowledge(userId, requestId, p))
@@ -700,7 +723,7 @@ public class AgentService {
         if (norm.isEmpty()) {
             return null;
         }
-        Properties greetingProps = promptRepository.getProps("agent.replies");
+        Properties greetingProps = promptRepository.getProps(PromptRepository.KEY_AGENT_REPLIES);
         for (String keyword : GREETING_KEYWORDS) {
             if (norm.startsWith(keyword)) {
                 String rest = norm.substring(keyword.length());

@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * PromptRepository 提示词仓库单元测试 — 验证 classpath:prompts/ 下 4 个提示词文件的加载、
+ * PromptRepository 提示词仓库单元测试 — 验证 classpath:prompts/ 下提示词文件的加载、
  * UTF-8 中文无乱码、properties 文案集解析与缺 key 时的 fail-fast 行为。
  *
  * <p>构造器即完成全部加载（fail-fast 设计），测试直接 {@code new PromptRepository()} 即可：
@@ -19,14 +19,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @DisplayName("PromptRepository 提示词仓库单元测试")
 class PromptRepositoryTest {
 
-    /** 仓库登记的 4 个 key（与 PromptRepository 的登记表一一对应） */
+    /** 抽查的 3 个 key（引用 PromptRepository 常量，避免测试与登记表各自维护一份字面量） */
     private static final List<String> KEYS = List.of(
-            "agent.system", "memory.compress", "memory.archive-title", "block.replies");
+            PromptRepository.KEY_AGENT_SYSTEM, PromptRepository.KEY_MEMORY_COMPRESS,
+            PromptRepository.KEY_BLOCK_REPLIES);
 
     private final PromptRepository repository = new PromptRepository();
 
     @Test
-    @DisplayName("加载 - 4 个登记的 key 均可取到非空内容且中文无乱码")
+    @DisplayName("加载 - 抽查的 3 个 key 均可取到非空内容且中文无乱码")
     void should_loadAllPrompts_when_constructor() {
         for (String key : KEYS) {
             String content = repository.get(key);
@@ -41,7 +42,7 @@ class PromptRepositoryTest {
     @Test
     @DisplayName("加载 - agent.system 含 {小区名} 与 {历史记忆} 占位符")
     void should_containPlaceholders_when_systemPrompt() {
-        String system = repository.get("agent.system");
+        String system = repository.get(PromptRepository.KEY_AGENT_SYSTEM);
 
         assertThat(system).contains("{小区名}").contains("{历史记忆}");
     }
@@ -49,7 +50,7 @@ class PromptRepositoryTest {
     @Test
     @DisplayName("解析 - block.replies 按 properties 格式解析出 11 个 key 且中文值正确")
     void should_parseRepliesProps_when_getProps() {
-        Properties props = repository.getProps("block.replies");
+        Properties props = repository.getProps(PromptRepository.KEY_BLOCK_REPLIES);
 
         assertThat(props).hasSize(11);
         assertThat(props.getProperty("empty")).isEqualTo("请输入有效问题");

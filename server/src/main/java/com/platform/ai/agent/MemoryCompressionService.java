@@ -146,7 +146,8 @@ public class MemoryCompressionService {
                                  String transcript, int segmentNo) {
         TitleSummary ts;
         try {
-            String prompt = promptRepository.get("memory.compress").replace("{messages}", transcript);
+            String prompt = promptRepository.get(PromptRepository.KEY_MEMORY_COMPRESS)
+                    .replace("{messages}", transcript);
             String json = callCompressLlm(prompt);
             ts = parseTitleSummary(json);
         } catch (Exception e) {
@@ -183,7 +184,8 @@ public class MemoryCompressionService {
             try {
                 List<AgentMessage> messages = messageRepository.findByConversationIdOrderByIdAsc(segment.getArchiveRowId());
                 String transcript = buildTranscript(messages);
-                String prompt = promptRepository.get("memory.compress").replace("{messages}", transcript);
+                String prompt = promptRepository.get(PromptRepository.KEY_MEMORY_COMPRESS)
+                        .replace("{messages}", transcript);
                 String json = callCompressLlm(prompt);
                 TitleSummary ts = parseTitleSummary(json);
                 segment.setTitle(ts.title());

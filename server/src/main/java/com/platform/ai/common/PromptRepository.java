@@ -31,19 +31,37 @@ public class PromptRepository {
     /** 提示词资源根目录（classpath 相对路径） */
     private static final String PROMPT_ROOT = "prompts/";
 
+    /** 对话 System Prompt（动态替换 {小区名}/{历史记忆}/{平台功能说明} 占位符） */
+    public static final String KEY_AGENT_SYSTEM = "agent.system";
+
+    /** 工具清单与使用说明（properties 文案集，key = 工具名） */
+    public static final String KEY_AGENT_TOOLS = "agent.tools";
+
+    /** 固定应答文案集（问候语、工具兜底回复等，properties 格式） */
+    public static final String KEY_AGENT_REPLIES = "agent.replies";
+
+    /** 提示词注入特征提示语（properties 格式，不拦截仅附加进模型输入） */
+    public static final String KEY_AGENT_INJECTION = "agent.injection";
+
+    /** 记忆压缩提示词（含 {@code {messages}} 占位符，把会话窗口压成标题 + 摘要） */
+    public static final String KEY_MEMORY_COMPRESS = "memory.compress";
+
+    /** 前置拦截文案集（空消息/重复/超长/敏感词等本地应答，properties 格式） */
+    public static final String KEY_BLOCK_REPLIES = "block.replies";
+
     /**
      * 提示词 key → 资源文件相对路径（key = 子目录/文件名去掉扩展名，点号连接，如 {@code memory.compress}）。
      *
-     * <p>集中登记避免散落硬编码：新增提示词文件只需在此加一行。</p>
+     * <p>集中登记避免散落硬编码：新增提示词文件只需在此加一行；key 用上方 {@code KEY_*}
+     * 常量引用，调用方也引用同一常量，拼写错误在编译期即暴露。</p>
      */
     private static final Map<String, String> PROMPT_FILE_PATHS = Map.of(
-            "agent.system", "agent/system.md",
-            "agent.tools", "agent/tools.md",
-            "agent.replies", "agent/replies.md",
-            "agent.injection", "agent/injection.md",
-            "memory.compress", "memory/compress.md",
-            "memory.archive-title", "memory/archive-title.md",
-            "block.replies", "block/replies.md"
+            KEY_AGENT_SYSTEM, "agent/system.md",
+            KEY_AGENT_TOOLS, "agent/tools.md",
+            KEY_AGENT_REPLIES, "agent/replies.md",
+            KEY_AGENT_INJECTION, "agent/injection.md",
+            KEY_MEMORY_COMPRESS, "memory/compress.md",
+            KEY_BLOCK_REPLIES, "block/replies.md"
     );
 
     /** 内存中的提示词模板，key 与 {@link #PROMPT_FILE_PATHS} 一致；final + 构造期填充，保证只读语义 */

@@ -76,7 +76,7 @@ class MemoryCompressionServiceTest {
             ((Runnable) inv.getArgument(0)).run();
             return null;
         }).when(documentImportExecutor).execute(any(Runnable.class));
-        lenient().when(promptRepository.get("memory.compress")).thenReturn("压缩模板 {messages}");
+        lenient().when(promptRepository.get(PromptRepository.KEY_MEMORY_COMPRESS)).thenReturn("压缩模板 {messages}");
     }
 
     /**

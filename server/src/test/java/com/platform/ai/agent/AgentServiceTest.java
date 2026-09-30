@@ -133,6 +133,29 @@ class AgentServiceTest {
     }
 
     @Test
+    @DisplayName("流式掩码窗口 - 词库为空或词短时取下限 8+12，长词时按最长词长推导")
+    void should_deriveCarryWindow_when_wordLengthVaries() {
+        // 词库为空（longestWordLength 默认 0）→ 低于下限，取 8 + 干扰余量 12
+        when(sensitiveWordService.longestWordLength()).thenReturn(0);
+        assertThat(agentService.streamCarryWindowLength()).isEqualTo(20);
+
+        // 短词仍低于下限，窗口不变——避免窗口退化为 0 漏掉跨分片词。
+        // 词长 9 以内都取下限 8：7 字（如现有缩写 wqnmlgb）算出 6 < 8，故仍是 20
+        when(sensitiveWordService.longestWordLength()).thenReturn(3);
+        assertThat(agentService.streamCarryWindowLength()).isEqualTo(20);
+        when(sensitiveWordService.longestWordLength()).thenReturn(7);
+        assertThat(agentService.streamCarryWindowLength()).isEqualTo(20);
+
+        // 超过下限后窗口开始跟随词库增长：(12 - 1) + 12
+        when(sensitiveWordService.longestWordLength()).thenReturn(12);
+        assertThat(agentService.streamCarryWindowLength()).isEqualTo(23);
+
+        // 更长的词继续跟随，证明窗口由词库推导而非写死
+        when(sensitiveWordService.longestWordLength()).thenReturn(20);
+        assertThat(agentService.streamCarryWindowLength()).isEqualTo(31);
+    }
+
+    @Test
     @DisplayName("对话 - 普通回答时返回回复与引用来源，无动作卡片")
     void should_returnReply_when_ordinaryAnswer() {
         stubCommon("物业几点下班");

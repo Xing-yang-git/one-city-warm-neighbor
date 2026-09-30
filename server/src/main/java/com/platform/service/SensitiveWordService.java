@@ -53,6 +53,9 @@ public class SensitiveWordService {
     /** 激活缩写缓存：归一化文本包含缩写即等同命中对应敏感词 */
     private volatile Set<String> abbrSet = Collections.emptySet();
 
+    /** 启用词与激活缩写中最长的归一化词长（0 = 词库为空），随缓存刷新整体更新 */
+    private volatile int longestWordLength;
+
     /** 每个命中词替换为的星号掩码 */
     private static final String MASK_TEXT = "***";
 
@@ -311,7 +314,39 @@ public class SensitiveWordService {
         }
         wordSet = Collections.unmodifiableSet(enabled);
         abbrSet = Collections.unmodifiableSet(activeAbbrs);
-        log.info("敏感词缓存刷新完成：启用词 {} 个，激活缩写 {} 个", enabled.size(), activeAbbrs.size());
+        longestWordLength = longestLengthOf(enabled, activeAbbrs);
+        log.info("敏感词缓存刷新完成：启用词 {} 个，激活缩写 {} 个，最长词长 {}",
+                enabled.size(), activeAbbrs.size(), longestWordLength);
+    }
+
+    /**
+     * 取两组词集中最长的归一化词长。
+     *
+     * @param words         启用词集
+     * @param abbreviations 激活缩写集
+     * @return 最长词长，均为空时返回 0
+     */
+    private static int longestLengthOf(Set<String> words, Set<String> abbreviations) {
+        int longest = 0;
+        for (String word : words) {
+            longest = Math.max(longest, word.length());
+        }
+        for (String word : abbreviations) {
+            longest = Math.max(longest, word.length());
+        }
+        return longest;
+    }
+
+    /**
+     * 启用词与激活缩写中最长的归一化词长。
+     *
+     * <p>供流式转发计算跨分片掩码窗口：窗口必须不小于「最长词长 − 1」，否则敏感词被分片边界
+     * 切断时前半截已转发出去、再也无法掩码（词库由 B端增删，故不能写死常数）。</p>
+     *
+     * @return 最长归一化词长（词库为空时为 0）
+     */
+    public int longestWordLength() {
+        return longestWordLength;
     }
 
     // ==================== 归一化与匹配辅助 ====================

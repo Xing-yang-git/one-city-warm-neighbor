@@ -151,7 +151,7 @@ public class AgentToolDispatcher {
                                UserActivityService userActivityService,
                                PromptRepository promptRepository) {
         // 兜底文案统一从提示词仓库读取（prompts/agent/replies.md），改文案不动代码
-        Properties replies = promptRepository.getProps("agent.replies");
+        Properties replies = promptRepository.getProps(PromptRepository.KEY_AGENT_REPLIES);
         this.toolLimitReply = replies.getProperty("tool.limit", "");
         this.kbNoPermissionReply = replies.getProperty("kb.no-permission", "");
         this.kbInvalidKeywordReply = replies.getProperty("kb.invalid-keyword", "");

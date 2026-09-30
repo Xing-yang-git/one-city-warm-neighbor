@@ -92,7 +92,7 @@ community-platform/
 │       │   │   ├── search/    # SemanticSearchService, KnowledgeRetrievalService, KnowledgeHit, RerankerService（RAG 检索 + 语义重排）
 │       │   │   ├── document/  # 文档导入：DocumentParserRegistry + pdf/docx/md/csv/xlsx/txt 解析器 + ocr/VisionOcrClient + 分片/清洗/标题派生 + DocumentProcessGuard（幂等防重）
 │       │   │   ├── common/    # AiApiInvoker（LLM 调用熔断/缓存/有界线程池）, PromptRepository（提示词目录读取）
-│       │   │   └── agent/     # AgentController/Service/SessionService/AgentSessionGuard/ArchiveService/ArchiveScheduler/RateLimitService/PromptBuilder/ToolDispatcher/IntentRouter/MessagePreFilter/MemoryCompressionService/MemoryRetrievalService（小邻对话，Redis 会话记忆 + 滑动窗口归档 + 长期记忆压缩与记忆注入 + 恢复 + SSE 流式 + 读工具调用 + 写操作动作卡片 + 限流 + 消息前置拦截）
+│       │   │   └── agent/     # AgentController/Service/SessionService/AgentSessionGuard/ArchiveService/ArchiveScheduler/RateLimitService/PromptBuilder/ToolDispatcher/IntentRouter/IntentTagStreamFilter/MessagePreFilter/MemoryCompressionService/MemoryRetrievalService（小邻对话，Redis 会话记忆 + 滑动窗口归档 + 长期记忆压缩与记忆注入 + 恢复 + SSE 流式 + 读工具调用 + 写操作动作卡片 + 意图标记跨分片过滤 + 限流 + 消息前置拦截）
 │       │   ├── model/entity/  # 20 JPA 实体（Tenant, Building, Unit, Room, User,
 │       │   │                  #   IdleItem, HelpRequest, HelpApplication,
 │       │   │                  #   BorrowRequest, Message, Notification,
@@ -105,12 +105,12 @@ community-platform/
 │       │   ├── service/       # 15 Service（含 WeChatService、KnowledgeDocumentService、KnowledgeImportService、SensitiveWordService）
 │       │   ├── controller/    # 12 Controller
 │       │   ├── websocket/     # ChatWebSocketHandler, DashboardWebSocketHandler
-│       │   └── common/        # Result + Exception + 22 常量类（BizStatus, PostType, DamageType, KnowledgeCategory 等）
+│       │   └── common/        # Result + Exception + 23 常量类（AgentEventType, BizStatus, PostType, DamageType, KnowledgeCategory 等）
 │       ├── main/resources/
 │       │   ├── application.yml
 │       │   ├── prompts/       # 提示词目录（agent/system.md + agent/tools.md + agent/replies.md + agent/injection.md、block/replies.md、memory/*.md，由 PromptRepository 读取）
 │       │   └── db/            # schema.sql（14 张表）+ seed-*.sql + alter-*.sql（知识库/Agent 归档/敏感词/记忆压缩段 增量表）
-│       └── test/java/com/platform/   # 50 个单元测试类（ai/agent、ai/document、ai/common、ai/search、service、security 等）
+│       └── test/java/com/platform/   # 51 个单元测试类（ai/agent、ai/document、ai/common、ai/search、service、security 等）
 │
 ├── miniprogram/               # C端微信小程序
 │   ├── app.js / app.json / app.wxss

@@ -60,6 +60,30 @@ class SensitiveWordServiceTest {
         service.refreshCache();
     }
 
+    // ==================== 最长词长（流式掩码窗口推导依据） ====================
+
+    @Test
+    @DisplayName("最长词长 - 词库为空时为 0，加载后取启用词与激活缩写的最长归一化词长")
+    void should_trackLongestWordLength_when_refreshCache() {
+        assertThat(service.longestWordLength()).isZero();
+
+        // 「傻逼」2 字；「我去你妈的」5 字，同时激活缩写 wqnmlgb（7 字符）——最长取缩写
+        loadEnabled("傻逼", "我去你妈的");
+
+        assertThat(service.longestWordLength()).isEqualTo("wqnmlgb".length());
+    }
+
+    @Test
+    @DisplayName("最长词长 - 词库清空后归零（B端删词后窗口随之收敛）")
+    void should_resetLongestWordLength_when_cacheEmpty() {
+        loadEnabled("傻逼");
+        assertThat(service.longestWordLength()).isPositive();
+
+        loadEnabled();
+
+        assertThat(service.longestWordLength()).isZero();
+    }
+
     // ==================== 归一化匹配 ====================
 
     @Test

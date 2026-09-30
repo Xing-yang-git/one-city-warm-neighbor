@@ -27,9 +27,6 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class MessagePreFilter {
 
-    /** 拦截文案集提示词 key（对应 {@code prompts/block/replies.md} 的 properties 文案集） */
-    private static final String BLOCK_REPLIES_KEY = "block.replies";
-
     /** 消息最大长度（字符数）；接口层已限制 500 字，此处双保险 */
     private static final int MAX_MESSAGE_LENGTH = 2000;
 
@@ -38,7 +35,6 @@ public class MessagePreFilter {
             "忽略之前的指令", "忽略系统提示", "告诉我密码", "泄露管理员", "扮演系统", "越权访问", "提示词");
 
     private final SensitiveWordService sensitiveWordService;
-    private final PromptRepository promptRepository;
 
     /** 拦截文案集（key=empty/symbol/emoji/duplicate/too-long/clear/exit/version/help/sensitive），构造期从提示词仓库读取 */
     private final Properties blockReplies;
@@ -76,9 +72,9 @@ public class MessagePreFilter {
     @Autowired
     public MessagePreFilter(SensitiveWordService sensitiveWordService, PromptRepository promptRepository) {
         this.sensitiveWordService = sensitiveWordService;
-        this.promptRepository = promptRepository;
-        this.blockReplies = promptRepository.getProps(BLOCK_REPLIES_KEY);
-        this.injectionHint = promptRepository.getProps("agent.injection").getProperty("injection.hint", "");
+        this.blockReplies = promptRepository.getProps(PromptRepository.KEY_BLOCK_REPLIES);
+        this.injectionHint = promptRepository.getProps(PromptRepository.KEY_AGENT_INJECTION)
+                .getProperty("injection.hint", "");
 
         // 指令 → 文案映射依赖 blockReplies，在构造期构建（不能是静态常量，文案来自运行时读取的 Properties）
         String clearReply = reply("clear");
