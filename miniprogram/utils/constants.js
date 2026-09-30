@@ -128,8 +128,21 @@ const RATING_TYPE = {
 };
 
 /**
- * 本地存储键 — 跨页面共享的 storage key 统一管理，改名安全。
+ * AI 助手 SSE 事件类型 — 后端流式对话事件体 {"type": ..., "data": ...} 的 type 唯一合法取值。
+ * 与后端 com.platform.common.AgentEventType 保持一致，改动需前后端同步。
+ * 注意：SSE 的 event: 行与 JSON 的 type 字段同一个值，后端由枚举统一发出，此处按 type 分派即可。
  */
+const AGENT_EVENT_TYPE = {
+  START: 'start',       // 会话开始（assistant 页不处理，落到末尾 return false）
+  ANSWER: 'answer',     // 回复文本分块
+  SOURCES: 'sources',   // 引用来源列表
+  ACTION: 'action',     // 动作卡片（写操作，需用户确认）
+  REPLACE: 'replace',   // 整体替换当前气泡正文
+  CLEAR: 'clear',       // 清空消息列表（/clear、/reset、「清除对话」）
+  END: 'end',           // 会话结束
+  ERROR: 'error'        // 错误信息
+};
+
 /** 时长单位 — idle_items.duration_unit / 发布意图 durationUnit 取值，对齐后端 DurationUnit（含按小时档） */
 const DURATION_UNIT = {
   DAY: 'day',     // 按天
@@ -142,6 +155,9 @@ const PICKUP_METHOD = {
   EXPRESS: 'express'            // 快递/邮寄
 };
 
+/**
+ * 本地存储键 — 跨页面共享的 storage key 统一管理，改名安全。
+ */
 const STORAGE_KEY = {
   TOKEN: 'token',               // 登录 token（boot/登录页读写）
   USER_INFO: 'userInfo',        // 用户信息缓存（boot/登录页读写）
@@ -162,6 +178,7 @@ module.exports = {
   RETURN_STATUS,
   NOTIFICATION_TYPE,
   RATING_TYPE,
+  AGENT_EVENT_TYPE,
   DURATION_UNIT,
   PICKUP_METHOD,
   STORAGE_KEY

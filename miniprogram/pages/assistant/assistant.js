@@ -1,6 +1,6 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
-const { POST_TYPE, STORAGE_KEY } = require('../../utils/constants');
+const { POST_TYPE, STORAGE_KEY, AGENT_EVENT_TYPE } = require('../../utils/constants');
 const { parseMarkdown, stripMarkdown } = require('../../utils/markdown');
 // 语音识别管理器实例：不在模块顶层 requirePlugin——微信官方要求插件在运行时动态加载，
 // 插件环境未就绪（后台已添加但工具未启用插件调试/缓存未刷新）时顶层调用会让模块加载直接抛
@@ -544,41 +544,41 @@ Page({
     try { evt = JSON.parse(raw); } catch (e) { return false; }
     const type = evt.type;
 
-    if (type === 'answer') {
+    if (type === AGENT_EVENT_TYPE.ANSWER) {
       // 不直接渲染整块（后端 event 常带几十~一两百字大段文本）：把事件文本放入字符缓冲，
       // 由 _ensureQueueTimer 的蹦字阶段逐字符输出（CHAR_STEP/40ms），避免块状顿挫
       this._charBuffer = evt.data || '';
       this._charIdx = 0;
       return false;
     }
-    if (type === 'sources') {
+    if (type === AGENT_EVENT_TYPE.SOURCES) {
       const srcs = this._dedupSources(evt.data || []);
       this.setData({ messages: this.data.messages.map((m) => (m.id === msgId ? { ...m, sources: srcs } : m)) });
       return false;
     }
-    if (type === 'action') {
+    if (type === AGENT_EVENT_TYPE.ACTION) {
       this.setData({ messages: this.data.messages.map((m) => (m.id === msgId ? { ...m, actions: evt.data || [] } : m)) });
       return false;
     }
-    if (type === 'replace') {
+    if (type === AGENT_EVENT_TYPE.REPLACE) {
       // 剔除写操作意图 JSON 后的干净文案：整体替换正文并重算 Markdown，退出打字机态
       this.setData({ messages: this.data.messages.map((m) => (
         m.id === msgId ? { ...this._withContent(m, evt.data || ''), typewriting: false } : m
       )) });
       return false;
     }
-    if (type === 'error') {
+    if (type === AGENT_EVENT_TYPE.ERROR) {
       this._finishQueueOnEnd(msgId, (m) => ({
         ...this._withContent(m, m.content + '（出错了：' + (evt.data || '请稍后重试') + '）'),
         streaming: false, failed: true,
       }));
       return true;
     }
-    if (type === 'end') {
+    if (type === AGENT_EVENT_TYPE.END) {
       this._finishQueueOnEnd(msgId, (m) => ({ ...m, streaming: false }));
       return true;
     }
-    if (type === 'clear') {
+    if (type === AGENT_EVENT_TYPE.CLEAR) {
       // 后端对 /clear 固定发 answer → clear → end：clear 只清空消息、不停链——
       // 若在此 return true 停止队列，紧随其后的 end 被弃置，_finishQueueOnEnd 永不执行，
       // sending 卡在 true、看门狗悬空，页面连续 45 秒无法发送新消息。故返回 false 由 end 收尾。
