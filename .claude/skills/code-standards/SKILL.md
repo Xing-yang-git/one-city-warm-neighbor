@@ -874,7 +874,7 @@ Step 4.5: Test          ← test-guarantee 技能
 | TypeScript 类型注解的结构性存在（有或无） | **本技能** §3.2 | — |
 | 安全漏洞 | `security-audit` | ✓ |
 | 测试覆盖率/质量 | `test-guarantee` | ✓ |
-| UI 像素对齐 | `pixel-perfect-replication` | ✓ |
+| UI 像素对齐 | 视觉对齐类技能/子代理（与代码规范无关） | ✓ |
 | 数据库 schema 对齐 | `database-schema-alignment` | ✓ |
 | 命名/结构/分层/异常/日志 | **本技能** | — |
 

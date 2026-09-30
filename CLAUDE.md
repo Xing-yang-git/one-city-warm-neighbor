@@ -48,14 +48,14 @@
 
 **调用模式**：子代理开工前必须先通过 Skill 工具加载其技能，技能是方法论，子代理是导航者。
 
-项目级技能：`pixel-perfect-replication`、`annotation-guarantee`、`security-audit`、`code-standards`、`git-commit-standard`、`test-guarantee`、`database-schema-alignment`
+项目级技能：`annotation-guarantee`、`security-audit`、`code-standards`、`git-commit-standard`、`test-guarantee`、`database-schema-alignment`
 用户级技能：`requesting-code-review`、`receiving-code-review`
 
 ## 4. 子代理清单
 
 | 子代理 | 触发方式 | 触发关键词 / 条件 | 技能 | 职责 |
 |---|---|---|---|---|
-| `prototype-alignment` | **按需** | 需显式点名："对齐原型"、"pixel-perfect"、"按原型复刻"（已过原型阶段，不再是 UI 改动默认前置） | pixel-perfect-replication | C端/B端页面与原型像素级对齐（Capture → Compare → Fix → Verify） |
+| `prototype-alignment` | **按需** | 需显式点名："对齐原型"、"pixel-perfect"、"按原型复刻"（已过原型阶段，不再是 UI 改动默认前置） | —（**无技能**：原 `pixel-perfect-replication` 技能已于 2026-09-30 下线，四阶段方法论现内联在 [.claude/agents/prototype-alignment.md](.claude/agents/prototype-alignment.md)） | C端/B端页面与原型像素级对齐（Capture → Compare → Fix → Verify） |
 | `quality-review` | 主动 | "审查"、"review"、"安全检查" | security-audit、annotation-guarantee、test-guarantee 等 | 三端五维审查（安全/质量/注释/测试），产出审查通行证 |
 | `database-operator` | **自动** | Entity 字段变更、schema.sql 修改，或 "对齐数据库" | database-schema-alignment | JPA Entity 与 PostgreSQL 实际 schema 对齐，生成幂等 DDL（psql 优先，SchemaMigration.java 备选） |
 | `git-save` | 被动 | "保存版本"、"提交"、"commit"、"打个点" | git-commit-standard | 审查门禁执行 + Conventional Commit + **文档同步（README/CLAUDE.md）+ 个人记忆同步** |
