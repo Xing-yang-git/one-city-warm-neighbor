@@ -167,7 +167,7 @@ public class AgentController {
                 AtomicLong firstTokenMs = new AtomicLong(-1L);
 
                 // `contentFlux()`返回`Flux<DataBuffer>`，代表分段的流式数据
-                stream.contentFlux()//
+                stream.contentFlux()
                         // 每收到一段数据（每个元素）就触发一次
                         .doOnNext(cr -> {
                             String delta = extractText(cr);
