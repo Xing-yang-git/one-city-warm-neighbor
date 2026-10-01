@@ -119,29 +119,44 @@ public class ArchiveService {
      */
     @Transactional
     public Long archiveWindow(Long userId, int windowSize) {
+        ArchiveTiming timing = new ArchiveTiming(ArchiveTiming.PATH_WINDOW);
+        long methodStart = System.nanoTime();
+        long enclosedStart = System.nanoTime();
         // 锁必须连续覆盖「读 Redis → 最后一次写 Redis」整段（含中间的 PG 写入）：
         // 若只锁住首尾两次 Redis 访问，并发 append 会插进 PG 段，随后用陈旧快照算出的 keep 覆盖，
         // 新消息被静默丢弃——那只是把两次错误写串行化，两次都错
-        return guard.runExclusive(userId, () -> {
-            AgentSession session = sessionService.getSession(userId);
-            if (session == null || session.getMessages().isEmpty()) {
-                return null;
+        Long archived = guard.runExclusive(userId, () -> {
+            long lockHeldStart = System.nanoTime();
+            try {
+                long redisStart = System.nanoTime();
+                AgentSession session = sessionService.getSession(userId);
+                timing.redisReadNanos = System.nanoTime() - redisStart;
+                if (session == null || session.getMessages().isEmpty()) {
+                    return null;
+                }
+                int prefix = session.getArchivedPrefixCount();
+                int unarchived = session.getMessages().size() - prefix;
+                if (unarchived <= 0) {
+                    // 热会话内全是已归档回填消息（无新增）：不重复归档建行
+                    return null;
+                }
+                int count = Math.min(Math.max(windowSize, 1), unarchived);
+                // 只归档新增部分的最旧 count 条；已归档回填前缀不重复落库
+                List<AgentSession.AgentMessageItem> window = new ArrayList<>(session.getMessages().subList(prefix, prefix + count));
+                // 保留部分 = 已归档回填前缀 + 剩余新增（前缀保留作会话继续的上下文，计数不变）
+                List<AgentSession.AgentMessageItem> keep = new ArrayList<>(session.getMessages().subList(0, prefix));
+                keep.addAll(session.getMessages().subList(prefix + count, session.getMessages().size()));
+                session.setArchivedPrefixCount(prefix);
+                return doArchive(userId, session, window, keep, timing);
+            } finally {
+                // 锁内只累加、不打日志：日志 I/O 会拉长用户锁临界区，统一挪到锁外
+                timing.lockHoldNanos = System.nanoTime() - lockHeldStart;
             }
-            int prefix = session.getArchivedPrefixCount();
-            int unarchived = session.getMessages().size() - prefix;
-            if (unarchived <= 0) {
-                // 热会话内全是已归档回填消息（无新增）：不重复归档建行
-                return null;
-            }
-            int count = Math.min(Math.max(windowSize, 1), unarchived);
-            // 只归档新增部分的最旧 count 条；已归档回填前缀不重复落库
-            List<AgentSession.AgentMessageItem> window = new ArrayList<>(session.getMessages().subList(prefix, prefix + count));
-            // 保留部分 = 已归档回填前缀 + 剩余新增（前缀保留作会话继续的上下文，计数不变）
-            List<AgentSession.AgentMessageItem> keep = new ArrayList<>(session.getMessages().subList(0, prefix));
-            keep.addAll(session.getMessages().subList(prefix + count, session.getMessages().size()));
-            session.setArchivedPrefixCount(prefix);
-            return doArchive(userId, session, window, keep);
         });
+        timing.lockWaitNanos = System.nanoTime() - enclosedStart - timing.lockHoldNanos;
+        timing.archiveRowId = archived;
+        logArchiveTiming(userId, System.nanoTime() - methodStart, timing);
+        return archived;
     }
 
     /**
@@ -155,33 +170,66 @@ public class ArchiveService {
      */
     @Transactional
     public Long archiveRemaining(Long userId) {
+        return archiveRemaining(userId, ArchiveTiming.PATH_REMAINING);
+    }
+
+    /**
+     * 剩余全部归档（带入口标识）— 供空闲兜底传入 {@link ArchiveTiming#PATH_IDLE} 以区分样本来源。
+     *
+     * <p>私有重载没有 {@code @Transactional}：本方法是自调用路径（{@code archiveIfIdle} 直接调它），
+     * 自调用不会经过代理，注解本就无效；事务由公开入口或 {@code archiveIfIdle} 提供。</p>
+     *
+     * @param userId 住户用户 ID
+     * @param path   归档入口标识（见 {@link ArchiveTiming} 的 {@code PATH_*} 常量）
+     * @return 归档行 id；无会话/无消息/无新增/未绑定小区时返回 null
+     */
+    private Long archiveRemaining(Long userId, String path) {
+        ArchiveTiming timing = new ArchiveTiming(path);
+        long methodStart = System.nanoTime();
+        long enclosedStart = System.nanoTime();
         // 同 archiveWindow：锁覆盖「读 → PG → 写」整段，避免并发 append 的消息被陈旧 keep 覆盖
-        return guard.runExclusive(userId, () -> {
-            AgentSession session = sessionService.getSession(userId);
-            if (session == null || session.getMessages().isEmpty()) {
-                return null;
-            }
-            int prefix = session.getArchivedPrefixCount();
-            int unarchived = session.getMessages().size() - prefix;
-            if (unarchived <= 0) {
-                // 热会话内仅剩已归档回填消息（上次 resume 的回填，无新增）：不重复归档建行，
-                // 按会话结束语义清理热会话（回填消息已在 PG，清理不丢数据）
-                session.setMessages(new ArrayList<>());
-                session.setConversationId(null);
+        Long archived = guard.runExclusive(userId, () -> {
+            long lockHeldStart = System.nanoTime();
+            try {
+                long redisStart = System.nanoTime();
+                AgentSession session = sessionService.getSession(userId);
+                timing.redisReadNanos = System.nanoTime() - redisStart;
+                if (session == null || session.getMessages().isEmpty()) {
+                    return null;
+                }
+                int prefix = session.getArchivedPrefixCount();
+                int unarchived = session.getMessages().size() - prefix;
+                if (unarchived <= 0) {
+                    // 热会话内仅剩已归档回填消息（上次 resume 的回填，无新增）：不重复归档建行，
+                    // 按会话结束语义清理热会话（回填消息已在 PG，清理不丢数据）
+                    session.setMessages(new ArrayList<>());
+                    session.setConversationId(null);
+                    session.setArchivedPrefixCount(0);
+                    long clearWriteStart = System.nanoTime();
+                    sessionService.saveSession(userId, session);
+                    timing.redisWriteNanos += System.nanoTime() - clearWriteStart;
+                    return null;
+                }
+                // 只归档新增部分；已归档回填前缀不重复落库
+                List<AgentSession.AgentMessageItem> all = new ArrayList<>(session.getMessages().subList(prefix, session.getMessages().size()));
                 session.setArchivedPrefixCount(0);
+                Long result = doArchive(userId, session, all, List.of(), timing);
+                // 会话结束语义：归档全部消息后清空会话级 conversationId——
+                // 否则退出/清空后开启的新会话沿用旧 id，归档时多个会话被合并到同一 conversation_id（历史被合并、条数虚高）
+                session.setConversationId(null);
+                long finalWriteStart = System.nanoTime();
                 sessionService.saveSession(userId, session);
-                return null;
+                timing.redisWriteNanos += System.nanoTime() - finalWriteStart;
+                return result;
+            } finally {
+                // 锁内只累加、不打日志：日志 I/O 会拉长用户锁临界区，统一挪到锁外
+                timing.lockHoldNanos = System.nanoTime() - lockHeldStart;
             }
-            // 只归档新增部分；已归档回填前缀不重复落库
-            List<AgentSession.AgentMessageItem> all = new ArrayList<>(session.getMessages().subList(prefix, session.getMessages().size()));
-            session.setArchivedPrefixCount(0);
-            Long archived = doArchive(userId, session, all, List.of());
-            // 会话结束语义：归档全部消息后清空会话级 conversationId——
-            // 否则退出/清空后开启的新会话沿用旧 id，归档时多个会话被合并到同一 conversation_id（历史被合并、条数虚高）
-            session.setConversationId(null);
-            sessionService.saveSession(userId, session);
-            return archived;
         });
+        timing.lockWaitNanos = System.nanoTime() - enclosedStart - timing.lockHoldNanos;
+        timing.archiveRowId = archived;
+        logArchiveTiming(userId, System.nanoTime() - methodStart, timing);
+        return archived;
     }
 
     /**
@@ -203,7 +251,7 @@ public class ArchiveService {
                 // 锁内权威判定：非空闲或无内容则不归档
                 return false;
             }
-            return archiveRemaining(userId) != null;
+            return archiveRemaining(userId, ArchiveTiming.PATH_IDLE) != null;
         });
     }
 
@@ -214,15 +262,19 @@ public class ArchiveService {
      * @param session  热会话（归档后原地更新 messages）
      * @param toArchive 本次归档的消息列表（按会话顺序）
      * @param keep     归档后保留在 Redis 的消息列表（剩余窗口）
+     * @param timing   耗时采集器（本方法填充 PG/Redis 分段与日志上下文；日志由调用方在锁外输出）
      * @return 归档行 id；未绑定小区时返回 null
      */
     private Long doArchive(Long userId, AgentSession session,
                            List<AgentSession.AgentMessageItem> toArchive,
-                           List<AgentSession.AgentMessageItem> keep) {
+                           List<AgentSession.AgentMessageItem> keep,
+                           ArchiveTiming timing) {
         if (toArchive.isEmpty()) {
             return null;
         }
+        long pgUserStart = System.nanoTime();
         User user = userRepository.findById(userId).orElse(null);
+        timing.pgUserNanos = System.nanoTime() - pgUserStart;
         Long tenantId = user != null ? user.getTenantId() : null;
         if (tenantId == null) {
             log.warn("会话归档跳过（用户未绑定小区，避免 NOT NULL 冲突）: userId={}", userId);
@@ -247,6 +299,7 @@ public class ArchiveService {
                 .status(AgentConversationStatus.ARCHIVED)
                 .lastMessageAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
+        long pgConvStart = System.nanoTime();
         conversation = conversationRepository.save(conversation);
 
         // 会话级 conversation_id：首次归档用新行自身 id 充当，并写回 session.conversationId；后续沿用
@@ -257,6 +310,7 @@ public class ArchiveService {
         }
         conversation.setConversationId(sessionConversationId);
         conversationRepository.save(conversation);
+        timing.pgConvNanos = System.nanoTime() - pgConvStart;
 
         // 批量写消息（saveAll 替代 N+1 逐条 save）
         List<AgentMessage> messages = new ArrayList<>();
@@ -269,18 +323,23 @@ public class ArchiveService {
                     .actions(item.actions())
                     .build());
         }
+        long pgMsgsStart = System.nanoTime();
         messageRepository.saveAll(messages);
+        timing.pgMsgsNanos = System.nanoTime() - pgMsgsStart;
 
         // 归档后移走已归档消息，保留剩余
         session.setMessages(keep);
         session.setLastActive(LocalDateTime.now(AppTimeZone.APP_ZONE));
+        long redisWriteStart = System.nanoTime();
         sessionService.saveSession(userId, session);
+        timing.redisWriteNanos += System.nanoTime() - redisWriteStart;
 
         // 异步触发压缩（不等待、不阻塞；失败在压缩服务内降级，绝不影响归档主链路）
-        triggerCompression(userId, tenantId, sessionConversationId, conversation.getId(), toArchive);
+        triggerCompression(userId, tenantId, sessionConversationId, conversation.getId(), toArchive, timing);
 
-        log.info("Agent 会话归档完成: userId={}, conversationId={}, archiveRowId={}, 归档 {} 条",
-                userId, sessionConversationId, conversation.getId(), toArchive.size());
+        // 耗时日志不在此处输出：本方法在用户锁临界区内，日志 I/O 会拉长临界区（由调用方在锁外打）
+        timing.conversationId = sessionConversationId;
+        timing.archivedCount = toArchive.size();
         return conversation.getId();
     }
 
@@ -496,19 +555,50 @@ public class ArchiveService {
      * @param conversationId 会话级 id
      * @param archiveRowId   归档行 id
      * @param messages       本次归档的消息列表（拼 transcript 用）
+     * @param timing         耗时采集器（填充 segmentNoOf 查询与压缩提交两段）
      */
     private void triggerCompression(Long userId, Long tenantId, Long conversationId, Long archiveRowId,
-                                    List<AgentSession.AgentMessageItem> messages) {
+                                    List<AgentSession.AgentMessageItem> messages, ArchiveTiming timing) {
         try {
+            long segQueryStart = System.nanoTime();
             int used = memoryCompressionService.segmentNoOf(userId, conversationId);
+            timing.segQueryNanos = System.nanoTime() - segQueryStart;
             String transcript = buildTranscript(messages);
+            // 压缩池为有界队列 + CallerRuns：队列满时压缩会回落到本线程同步执行，此项即用于抓该回落
+            long enqueueStart = System.nanoTime();
             memoryCompressionService.compressWindow(userId, tenantId, conversationId, archiveRowId,
                     transcript, used + 1);
+            timing.compressEnqueueNanos = System.nanoTime() - enqueueStart;
         } catch (Exception e) {
             // 触发失败绝不影响归档主链路（归档已完成；压缩段可经会话结束时 compressRetry 补建）
             log.warn("记忆压缩触发失败（归档已完成，稍后可补压）: userId={}, conversationId={}, {}",
                     userId, conversationId, e.getMessage());
         }
+    }
+
+    /**
+     * 输出归档耗时日志（**必须在用户锁之外调用**：锁内打日志会拉长用户锁临界区）。
+     *
+     * <p>一次归档一行、字段顺序固定，便于 grep 与 awk 统计均值/分布；未真正建行时（{@code archiveRowId}
+     * 为 null，如无新增消息、未绑定小区）静默跳过，避免无归档也刷日志。各分段含义见 {@link ArchiveTiming}。</p>
+     *
+     * @param userId     住户用户 ID
+     * @param totalNanos 本次归档调用总耗时（含加锁等待）
+     * @param timing     耗时采集器
+     */
+    private void logArchiveTiming(Long userId, long totalNanos, ArchiveTiming timing) {
+        if (timing.archiveRowId == null) {
+            return;
+        }
+        log.info("Agent 会话归档完成: path={}, userId={}, conversationId={}, archiveRowId={}, 归档 {} 条, "
+                        + "total={}ms, lockWait={}ms, redisRead={}ms, redisWrite={}ms, pgUser={}ms, "
+                        + "pgConv={}ms, pgMsgs={}ms, segQuery={}ms, compressEnqueue={}ms",
+                timing.path, userId, timing.conversationId, timing.archiveRowId, timing.archivedCount,
+                ArchiveTiming.toMs(totalNanos), ArchiveTiming.toMs(timing.lockWaitNanos),
+                ArchiveTiming.toMs(timing.redisReadNanos), ArchiveTiming.toMs(timing.redisWriteNanos),
+                ArchiveTiming.toMs(timing.pgUserNanos), ArchiveTiming.toMs(timing.pgConvNanos),
+                ArchiveTiming.toMs(timing.pgMsgsNanos), ArchiveTiming.toMs(timing.segQueryNanos),
+                ArchiveTiming.toMs(timing.compressEnqueueNanos));
     }
 
     /**
