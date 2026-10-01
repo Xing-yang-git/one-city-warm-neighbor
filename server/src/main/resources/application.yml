@@ -153,6 +153,11 @@ ai:
     max-tokens: 2048 # 对话回复最大 token（reasoning 思维链占用大，512 实测 content 为空；2048 支撑 500 字 Markdown 排版回复）
     temperature-knowledge: 0.2 # RAG 精准检索温度
     temperature-creative: 0.6 # 创意文案温度（PolishingClient 互助感想保持 0.7 不动）
+  # 内容审核重试配置（线程池满时被拒任务暂存 Redis，由定时任务分钟级重投）
+  moderation:
+    retry-batch: 5 # 单轮最多重投条数（实际还会被池子当前剩余容量钳制）
+    retry-max-attempts: 3 # 最大重试次数，超过则不再入队、交回每日巡检兜底
+    retry-backoff-ms: 30000 # 退避基数（毫秒），第 n 次重试等待 base × 2^(n-1)
   # 文档导入解析配置（RAG 数据源：B端上传 → 解析 → 切片 → 嵌入）
   doc:
     chunk-size: 400 # 切片目标长度（字符），按行贪心累加达到后封卡

@@ -10,8 +10,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.scheduling.concurrent.CustomizableThreadFactory;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.client.RestClient;
+
+import com.platform.ai.moderation.ModerationRejectionStore;
 
 import java.util.concurrent.ThreadPoolExecutor;
 
@@ -285,6 +288,37 @@ public class AiConfig {
         executor.setQueueCapacity(50);
         executor.setThreadNamePrefix("doc-import-");
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.initialize();
+        return executor;
+    }
+
+    /**
+     * 内容审核异步线程池（Spring 托管，有界队列 + 自定义拒绝策略）。
+     *
+     * <p>与 {@link #agentExecutor()} / {@link #documentImportExecutor()} 同构；区别在于拒绝策略：
+     * 审核是「要写回结果才算完成」的任务，直接丢弃会让内容长期停在待审核态，故改为把被拒任务
+     * 暂存进 Redis 重试队列（{@link ModerationRejectionStore}），由定时任务快速重投。</p>
+     *
+     * @param rejectionStore 拒绝处理器（池子满时暂存任务到 Redis）
+     * @return 内容审核线程池
+     */
+    @Bean
+    public ThreadPoolTaskExecutor moderationExecutor(ModerationRejectionStore rejectionStore) {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        // 单次审核要走图片 + 文本多次外部 HTTP（读超时 30s），故核心 2；队列满后才扩到 4 兜突发
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(50);
+        executor.setRejectedExecutionHandler(rejectionStore);
+        // 保持原 ModerationService#shutdown 的语义：先等 30 秒跑完在途任务，超时才中断。
+        // 注意 waitForTasksToCompleteOnShutdown 缺省为 false——那样 shutdown 会走 shutdownNow()
+        // （立即中断），等于把「优雅停机」悄悄退化成「直接掐断」。
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(30);
+        // daemon 化：线程不会阻止 JVM 退出，比原先「非 daemon 线程可能挂住关机」更稳
+        CustomizableThreadFactory threadFactory = new CustomizableThreadFactory("moderation-");
+        threadFactory.setDaemon(true);
+        executor.setThreadFactory(threadFactory);
         executor.initialize();
         return executor;
     }

@@ -87,11 +87,11 @@ community-platform/
 │       │   ├── security/      # JwtTokenProvider, JwtAuthenticationFilter, JwtHandshakeInterceptor, LoginUser（登录主体，controller 经 SecurityContext 取用户 id/角色）
 │       │   ├── ai/            # AI 模块（嵌入、审核、匹配、RAG 检索、文档导入、文案生成、Agent 对话）
 │       │   │   ├── embedding/ # EmbeddingClient, EmbeddingService
-│       │   │   ├── moderation/# ModerationClient/Service/Scheduler（内容审核）
+│       │   │   ├── moderation/# ModerationClient/Service/Scheduler + RetryScheduler/RejectionStore/Task（内容审核；线程池满时拒绝的任务暂存 Redis，由定时任务分钟级重投，超限交每日巡检兜底）
 │       │   │   ├── matching/  # MatchingService/Scheduler（供需匹配）
 │       │   │   ├── search/    # SemanticSearchService, KnowledgeRetrievalService, KnowledgeHit, RerankerService（RAG 检索 + 语义重排）
 │       │   │   ├── document/  # 文档导入：DocumentParserRegistry + pdf/docx/md/csv/xlsx/txt 解析器 + ocr/VisionOcrClient + 分片/清洗/标题派生 + DocumentProcessGuard（幂等防重）
-│       │   │   ├── common/    # AiApiInvoker（LLM 调用熔断/缓存/有界线程池）, PromptRepository（提示词目录读取）
+│       │   │   ├── common/    # AiApiInvoker（LLM 调用熔断/缓存）, PromptRepository（提示词目录读取）
 │       │   │   └── agent/     # AgentController/Service/SessionService/AgentSessionGuard/ArchiveService/ArchiveScheduler/RateLimitService/PromptBuilder/ToolDispatcher/IntentRouter/IntentTagStreamFilter/MessagePreFilter/MemoryCompressionService/MemoryRetrievalService（小邻对话，Redis 会话记忆 + 滑动窗口归档 + 长期记忆压缩与记忆注入 + 恢复 + SSE 流式 + 读工具调用 + 写操作动作卡片 + 意图标记跨分片过滤 + 限流 + 消息前置拦截）
 │       │   ├── model/entity/  # 20 JPA 实体（Tenant, Building, Unit, Room, User,
 │       │   │                  #   IdleItem, HelpRequest, HelpApplication,
@@ -110,7 +110,7 @@ community-platform/
 │       │   ├── application.yml
 │       │   ├── prompts/       # 提示词目录（agent/system.md + agent/tools.md + agent/replies.md + agent/injection.md、block/replies.md、memory/*.md，由 PromptRepository 读取）
 │       │   └── db/            # schema.sql（14 张表）+ seed-*.sql + alter-*.sql（知识库/Agent 归档/敏感词/记忆压缩段 增量表）
-│       └── test/java/com/platform/   # 51 个单元测试类（ai/agent、ai/document、ai/common、ai/search、service、security 等）
+│       └── test/java/com/platform/   # 53 个单元测试类（ai/agent、ai/document、ai/moderation、ai/common、ai/search、service、security 等）
 │
 ├── miniprogram/               # C端微信小程序
 │   ├── app.js / app.json / app.wxss

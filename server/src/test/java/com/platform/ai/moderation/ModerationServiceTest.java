@@ -1,5 +1,6 @@
 package com.platform.ai.moderation;
 
+import com.platform.common.ContentType;
 import com.platform.common.BizStatus;
 import com.platform.common.ModerationStatus;
 import com.platform.common.NotificationType;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.Optional;
 
@@ -44,6 +46,8 @@ class ModerationServiceTest {
     private HelpRequestRepository helpRequestRepository;
     @Mock
     private NotificationService notificationService;
+    @Mock
+    private ThreadPoolTaskExecutor moderationExecutor;
 
     @InjectMocks
     private ModerationService moderationService;
@@ -230,5 +234,68 @@ class ModerationServiceTest {
         moderationService.moderateIdleItem(item);
 
         assertThat(item.getDelistReason()).isEqualTo("图片一有水印；图片二疑似商业库存");
+    }
+
+    // ==================== 重投（拒绝补偿链路） ====================
+
+    @Test
+    @DisplayName("重投 - 内容仍待审核时重新提交到池子")
+    void should_dispatchAgain_when_stillPending() {
+        IdleItem item = idleItem();
+        item.setModerationStatus(ModerationStatus.PENDING);
+        when(idleItemRepository.findById(1L)).thenReturn(Optional.of(item));
+
+        boolean dispatched = moderationService.tryDispatchFromRetry(ContentType.IDLE, 1L, 1);
+
+        assertThat(dispatched).isTrue();
+        verify(moderationExecutor).execute(any(ModerationTask.class));
+    }
+
+    @Test
+    @DisplayName("重投 - 求助信息仍待审核时同样重新提交（与闲置对称）")
+    void should_dispatchHelpAgain_when_stillPending() {
+        HelpRequest hr = helpRequest();
+        hr.setModerationStatus(ModerationStatus.PENDING);
+        when(helpRequestRepository.findById(11L)).thenReturn(Optional.of(hr));
+
+        boolean dispatched = moderationService.tryDispatchFromRetry(ContentType.HELP, 11L, 1);
+
+        assertThat(dispatched).isTrue();
+        verify(moderationExecutor).execute(any(ModerationTask.class));
+    }
+
+    @Test
+    @DisplayName("重投 - 内容实体已不存在时跳过且不提交")
+    void should_skip_when_entityMissing() {
+        when(idleItemRepository.findById(anyLong())).thenReturn(Optional.empty());
+
+        boolean dispatched = moderationService.tryDispatchFromRetry(ContentType.IDLE, 99L, 1);
+
+        assertThat(dispatched).isFalse();
+        verify(moderationExecutor, never()).execute(any(ModerationTask.class));
+    }
+
+    @Test
+    @DisplayName("重投 - 内容已被处理（非待审核）时跳过，避免重复发通知")
+    void should_skip_when_alreadyProcessed() {
+        // 已驳回：status 变为 offline，moderationStatus 变为 red
+        HelpRequest processed = helpRequest();
+        processed.setStatus(BizStatus.OFFLINE);
+        processed.setModerationStatus(ModerationStatus.RED);
+        when(helpRequestRepository.findById(11L)).thenReturn(Optional.of(processed));
+
+        boolean dispatched = moderationService.tryDispatchFromRetry(ContentType.HELP, 11L, 1);
+
+        assertThat(dispatched).isFalse();
+        verify(moderationExecutor, never()).execute(any(ModerationTask.class));
+    }
+
+    @Test
+    @DisplayName("重投 - 未知内容类型时跳过且不提交")
+    void should_skip_when_unknownType() {
+        boolean dispatched = moderationService.tryDispatchFromRetry("unknown", 1L, 1);
+
+        assertThat(dispatched).isFalse();
+        verify(moderationExecutor, never()).execute(any(ModerationTask.class));
     }
 }
