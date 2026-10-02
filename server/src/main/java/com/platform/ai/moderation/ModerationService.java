@@ -326,89 +326,90 @@ public class ModerationService {
     /**
      * 根据审核结果更新实体状态并通知用户。
      *
+     * <p>状态写入采用条件更新：仅当内容仍是「待审核 + 待 AI 审核」时才生效。审核是异步的，
+     * 结果回来时内容可能已被用户下架、被并发申请占用或被管理员处理，此时应丢弃结果而不是
+     * 覆盖当前状态，并避免向用户重复推送通知。受影响行数为 0 即表示结果已过期。</p>
+     *
      * @param id     实体 ID
      * @param level  审核等级：green / yellow / red
      * @param reason 违规原因（green 时为空）
      * @param type   实体类型：idle / help
      */
     private void applyResult(Long id, String level, String reason, String type) {
+        String targetStatus = targetStatusOf(level);
+        if (targetStatus == null) {
+            log.warn("未知审核等级: level={}, id={}", level, id);
+            return;
+        }
+        // 审核通过时无需下架原因；待人工复核/驳回时记录原因供用户与管理员查看
+        String delistReason = ModerationStatus.GREEN.equals(level) ? null : reason;
+
+        int updated = ContentType.IDLE.equals(type)
+                ? idleItemRepository.applyModerationResult(id, targetStatus, level, delistReason)
+                : helpRequestRepository.applyModerationResult(id, targetStatus, level, delistReason);
+        if (updated == 0) {
+            log.info("审核结果已过期，内容状态已变更，丢弃本次结果: type={}, id={}, level={}", type, id, level);
+            return;
+        }
+
+        log.info("审核结果已写入: type={}, id={}, level={}, status={}", type, id, level, targetStatus);
+        notifyModerationResult(id, level, reason, type);
+    }
+
+    /**
+     * 审核等级对应的目标内容状态。
+     *
+     * @param level 审核等级：green / yellow / red
+     * @return 目标状态；未知等级返回 null
+     */
+    private static String targetStatusOf(String level) {
+        switch (level) {
+            case ModerationStatus.GREEN:
+                return BizStatus.ONLINE;
+            case ModerationStatus.YELLOW:
+                return BizStatus.PENDING_REVIEW;
+            case ModerationStatus.RED:
+                return BizStatus.OFFLINE;
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * 审核结果生效后按等级发送通知：通过 / 驳回各一条；待人工复核不发通知，仅记日志。
+     *
+     * <p>通知只在此处发出（即条件更新已成功的分支），保证并发重复审核不会向用户重复推送。</p>
+     *
+     * @param id     实体 ID
+     * @param level  审核等级
+     * @param reason 违规原因
+     * @param type   实体类型：idle / help
+     */
+    private void notifyModerationResult(Long id, String level, String reason, String type) {
+        if (ModerationStatus.YELLOW.equals(level)) {
+            log.info("待人工复核: type={}, id={}, reason={}", type, id, reason);
+            return;
+        }
+        boolean approved = ModerationStatus.GREEN.equals(level);
+        String notifyType = approved ? NotificationType.CONTENT_APPROVED : NotificationType.CONTENT_REJECTED;
+        String title = approved ? "内容审核通过" : "内容审核未通过";
+
         if (ContentType.IDLE.equals(type)) {
-            idleItemRepository.findById(id).ifPresentOrElse(item -> {
-                item.setModerationStatus(level);
-
-                switch (level) {
-                    case ModerationStatus.GREEN:
-                        item.setStatus(BizStatus.ONLINE);
-                        item.setDelistReason(null);
-                        idleItemRepository.save(item);
-                        log.info("闲置物品审核通过，自动上线: id={}", id);
-                        // 通知用户审核通过
-                        notificationService.create(item.getUserId(),
-                                NotificationType.CONTENT_APPROVED,
-                                "内容审核通过",
-                                "您发布的「" + item.getTitle() + "」已通过审核，已自动上线展示",
-                                item.getId());
-                        break;
-                    case ModerationStatus.YELLOW:
-                        // 保持 pending_review，等待管理员复核
-                        item.setDelistReason(reason);
-                        idleItemRepository.save(item);
-                        log.info("闲置物品待人工复核: id={}, reason={}", id, reason);
-                        break;
-                    case ModerationStatus.RED:
-                        item.setStatus(BizStatus.OFFLINE);
-                        item.setDelistReason(reason);
-                        idleItemRepository.save(item);
-                        log.info("闲置物品审核驳回: id={}, reason={}", id, reason);
-                        // 通知用户内容被驳回
-                        notificationService.create(item.getUserId(),
-                                NotificationType.CONTENT_REJECTED,
-                                "内容审核未通过",
-                                "您发布的「" + item.getTitle() + "」未通过审核，原因：" + reason,
-                                item.getId());
-                        break;
-                    default:
-                        log.warn("未知审核等级: level={}, id={}", level, id);
-                        break;
-                }
-            }, () -> log.error("审核后找不到闲置物品实体: id={}", id));
+            idleItemRepository.findById(id).ifPresentOrElse(item -> notificationService.create(
+                            item.getUserId(), notifyType, title,
+                            approved
+                                    ? "您发布的「" + item.getTitle() + "」已通过审核，已自动上线展示"
+                                    : "您发布的「" + item.getTitle() + "」未通过审核，原因：" + reason,
+                            item.getId()),
+                    () -> log.error("审核后找不到闲置物品实体: id={}", id));
         } else {
-            helpRequestRepository.findById(id).ifPresentOrElse(hr -> {
-                hr.setModerationStatus(level);
-
-                switch (level) {
-                    case ModerationStatus.GREEN:
-                        hr.setStatus(BizStatus.ONLINE);
-                        hr.setDelistReason(null);
-                        helpRequestRepository.save(hr);
-                        log.info("求助审核通过，自动上线: id={}", id);
-                        notificationService.create(hr.getUserId(),
-                                NotificationType.CONTENT_APPROVED,
-                                "内容审核通过",
-                                "您发布的求助「" + hr.getTitle() + "」已通过审核，已自动上线展示",
-                                hr.getId());
-                        break;
-                    case ModerationStatus.YELLOW:
-                        hr.setDelistReason(reason);
-                        helpRequestRepository.save(hr);
-                        log.info("求助待人工复核: id={}, reason={}", id, reason);
-                        break;
-                    case ModerationStatus.RED:
-                        hr.setStatus(BizStatus.OFFLINE);
-                        hr.setDelistReason(reason);
-                        helpRequestRepository.save(hr);
-                        log.info("求助审核驳回: id={}, reason={}", id, reason);
-                        notificationService.create(hr.getUserId(),
-                                NotificationType.CONTENT_REJECTED,
-                                "内容审核未通过",
-                                "您发布的求助「" + hr.getTitle() + "」未通过审核，原因：" + reason,
-                                hr.getId());
-                        break;
-                    default:
-                        log.warn("未知审核等级: level={}, id={}", id, level);
-                        break;
-                }
-            }, () -> log.error("审核后找不到求助实体: id={}", id));
+            helpRequestRepository.findById(id).ifPresentOrElse(hr -> notificationService.create(
+                            hr.getUserId(), notifyType, title,
+                            approved
+                                    ? "您发布的求助「" + hr.getTitle() + "」已通过审核，已自动上线展示"
+                                    : "您发布的求助「" + hr.getTitle() + "」未通过审核，原因：" + reason,
+                            hr.getId()),
+                    () -> log.error("审核后找不到求助实体: id={}", id));
         }
     }
 

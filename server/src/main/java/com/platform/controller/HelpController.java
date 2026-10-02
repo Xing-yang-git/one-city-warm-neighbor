@@ -89,12 +89,15 @@ public class HelpController {
     /**
      * 求助详情。
      *
-     * @param id 求助 ID
-     * @return 求助详情（含发布者信息）
+     * @param id   求助 ID
+     * @param auth 当前认证用户（用于返回该用户对求助的申请状态，可为 null）
+     * @return 求助详情（含发布者信息与当前用户的申请状态）
      */
     @GetMapping("/{id}")
-    public Result<HelpResponseDTO> detail(@PathVariable Long id) {
-        return Result.ok(helpService.getDetail(id));
+    public Result<HelpResponseDTO> detail(@PathVariable Long id, Authentication auth) {
+        Long userId = auth != null && auth.getPrincipal() instanceof LoginUser loginUser
+                ? loginUser.getUserId() : null;
+        return Result.ok(helpService.getDetail(id, userId));
     }
 
     /**

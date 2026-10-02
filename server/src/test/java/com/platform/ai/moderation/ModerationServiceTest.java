@@ -63,50 +63,46 @@ class ModerationServiceTest {
     }
 
     @Test
-    @DisplayName("闲置审核 - 全部 green 时自动上线并通知通过")
+    @DisplayName("闲置审核 - 全部 green 时条件更新为上线并通知通过")
     void should_passIdle_when_green() {
         when(moderationClient.moderateText(anyString(), anyString()))
                 .thenReturn(new ModerationResult(ModerationStatus.GREEN, ""));
         IdleItem item = idleItem();
+        when(idleItemRepository.applyModerationResult(1L, BizStatus.ONLINE, ModerationStatus.GREEN, null)).thenReturn(1);
         when(idleItemRepository.findById(1L)).thenReturn(Optional.of(item));
 
         moderationService.moderateIdleItem(item);
 
-        assertThat(item.getModerationStatus()).isEqualTo(ModerationStatus.GREEN);
-        assertThat(item.getStatus()).isEqualTo(BizStatus.ONLINE);
-        assertThat(item.getDelistReason()).isNull();
-        verify(idleItemRepository).save(item);
+        verify(idleItemRepository).applyModerationResult(1L, BizStatus.ONLINE, ModerationStatus.GREEN, null);
         verify(notificationService).create(eq(10L), eq(NotificationType.CONTENT_APPROVED), eq("内容审核通过"), anyString(), eq(1L));
     }
 
     @Test
-    @DisplayName("闲置审核 - red 时下架并通知驳回")
+    @DisplayName("闲置审核 - red 时条件更新为下架并通知驳回")
     void should_rejectIdle_when_red() {
         when(moderationClient.moderateText(anyString(), anyString()))
                 .thenReturn(new ModerationResult(ModerationStatus.RED, "疑似违禁品"));
         IdleItem item = idleItem();
+        when(idleItemRepository.applyModerationResult(1L, BizStatus.OFFLINE, ModerationStatus.RED, "疑似违禁品")).thenReturn(1);
         when(idleItemRepository.findById(1L)).thenReturn(Optional.of(item));
 
         moderationService.moderateIdleItem(item);
 
-        assertThat(item.getStatus()).isEqualTo(BizStatus.OFFLINE);
-        assertThat(item.getDelistReason()).isEqualTo("疑似违禁品");
+        verify(idleItemRepository).applyModerationResult(1L, BizStatus.OFFLINE, ModerationStatus.RED, "疑似违禁品");
         verify(notificationService).create(eq(10L), eq(NotificationType.CONTENT_REJECTED), eq("内容审核未通过"), anyString(), eq(1L));
     }
 
     @Test
-    @DisplayName("闲置审核 - yellow 时保持待复核，不自动上线")
+    @DisplayName("闲置审核 - yellow 时保持待复核，不自动上线且不发通知")
     void should_keepPending_when_yellow() {
         when(moderationClient.moderateText(anyString(), anyString()))
                 .thenReturn(new ModerationResult(ModerationStatus.YELLOW, "疑似广告导流"));
         IdleItem item = idleItem();
-        when(idleItemRepository.findById(1L)).thenReturn(Optional.of(item));
+        when(idleItemRepository.applyModerationResult(1L, BizStatus.PENDING_REVIEW, ModerationStatus.YELLOW, "疑似广告导流")).thenReturn(1);
 
         moderationService.moderateIdleItem(item);
 
-        assertThat(item.getModerationStatus()).isEqualTo(ModerationStatus.YELLOW);
-        assertThat(item.getStatus()).isEqualTo(BizStatus.PENDING_REVIEW);
-        assertThat(item.getDelistReason()).isEqualTo("疑似广告导流");
+        verify(idleItemRepository).applyModerationResult(1L, BizStatus.PENDING_REVIEW, ModerationStatus.YELLOW, "疑似广告导流");
         verify(notificationService, never()).create(anyLong(), any(), any(), anyString(), anyLong());
     }
 
@@ -119,12 +115,12 @@ class ModerationServiceTest {
                 .thenReturn(new ModerationResult(ModerationStatus.RED, "图片含违禁品"));
         when(moderationClient.moderateText(anyString(), anyString()))
                 .thenReturn(new ModerationResult(ModerationStatus.GREEN, ""));
+        when(idleItemRepository.applyModerationResult(1L, BizStatus.OFFLINE, ModerationStatus.RED, "图片含违禁品")).thenReturn(1);
         when(idleItemRepository.findById(1L)).thenReturn(Optional.of(item));
 
         moderationService.moderateIdleItem(item);
 
-        assertThat(item.getStatus()).isEqualTo(BizStatus.OFFLINE);
-        assertThat(item.getDelistReason()).isEqualTo("图片含违禁品");
+        verify(idleItemRepository).applyModerationResult(1L, BizStatus.OFFLINE, ModerationStatus.RED, "图片含违禁品");
     }
 
     @Test
@@ -133,12 +129,12 @@ class ModerationServiceTest {
         when(moderationClient.moderateText(anyString(), anyString()))
                 .thenThrow(new RuntimeException("API down"));
         IdleItem item = idleItem();
+        when(idleItemRepository.applyModerationResult(1L, BizStatus.ONLINE, ModerationStatus.GREEN, null)).thenReturn(1);
         when(idleItemRepository.findById(1L)).thenReturn(Optional.of(item));
 
         moderationService.moderateIdleItem(item);
 
-        assertThat(item.getModerationStatus()).isEqualTo(ModerationStatus.GREEN);
-        assertThat(item.getStatus()).isEqualTo(BizStatus.ONLINE);
+        verify(idleItemRepository).applyModerationResult(1L, BizStatus.ONLINE, ModerationStatus.GREEN, null);
     }
 
     @Test
@@ -150,43 +146,42 @@ class ModerationServiceTest {
                 .thenThrow(new RuntimeException("API down"));
         IdleItem item = idleItem();
         item.setImages("[\"/uploads/1.jpg\"]");
+        when(idleItemRepository.applyModerationResult(1L, BizStatus.ONLINE, ModerationStatus.GREEN, null)).thenReturn(1);
         when(idleItemRepository.findById(1L)).thenReturn(Optional.of(item));
 
         moderationService.moderateIdleItem(item);
 
         // 图片 green + 文本失败（重试也失败）→ 汇总 green
-        assertThat(item.getModerationStatus()).isEqualTo(ModerationStatus.GREEN);
-        assertThat(item.getStatus()).isEqualTo(BizStatus.ONLINE);
+        verify(idleItemRepository).applyModerationResult(1L, BizStatus.ONLINE, ModerationStatus.GREEN, null);
     }
 
     @Test
-    @DisplayName("求助审核 - green 时自动上线并通知通过")
+    @DisplayName("求助审核 - green 时条件更新为上线并通知通过")
     void should_passHelp_when_green() {
         when(moderationClient.moderateText(anyString(), anyString()))
                 .thenReturn(new ModerationResult(ModerationStatus.GREEN, ""));
         HelpRequest hr = helpRequest();
+        when(helpRequestRepository.applyModerationResult(11L, BizStatus.ONLINE, ModerationStatus.GREEN, null)).thenReturn(1);
         when(helpRequestRepository.findById(11L)).thenReturn(Optional.of(hr));
 
         moderationService.moderateHelpRequest(hr);
 
-        assertThat(hr.getModerationStatus()).isEqualTo(ModerationStatus.GREEN);
-        assertThat(hr.getStatus()).isEqualTo(BizStatus.ONLINE);
-        verify(helpRequestRepository).save(hr);
+        verify(helpRequestRepository).applyModerationResult(11L, BizStatus.ONLINE, ModerationStatus.GREEN, null);
         verify(notificationService).create(eq(20L), eq(NotificationType.CONTENT_APPROVED), eq("内容审核通过"), anyString(), eq(11L));
     }
 
     @Test
-    @DisplayName("求助审核 - red 时下架并通知驳回")
+    @DisplayName("求助审核 - red 时条件更新为下架并通知驳回")
     void should_rejectHelp_when_red() {
         when(moderationClient.moderateText(anyString(), anyString()))
                 .thenReturn(new ModerationResult(ModerationStatus.RED, "违规内容"));
         HelpRequest hr = helpRequest();
+        when(helpRequestRepository.applyModerationResult(11L, BizStatus.OFFLINE, ModerationStatus.RED, "违规内容")).thenReturn(1);
         when(helpRequestRepository.findById(11L)).thenReturn(Optional.of(hr));
 
         moderationService.moderateHelpRequest(hr);
 
-        assertThat(hr.getStatus()).isEqualTo(BizStatus.OFFLINE);
-        assertThat(hr.getDelistReason()).isEqualTo("违规内容");
+        verify(helpRequestRepository).applyModerationResult(11L, BizStatus.OFFLINE, ModerationStatus.RED, "违规内容");
         verify(notificationService).create(eq(20L), eq(NotificationType.CONTENT_REJECTED), eq("内容审核未通过"), anyString(), eq(11L));
     }
 
@@ -199,24 +194,26 @@ class ModerationServiceTest {
                 .thenThrow(new RuntimeException("图片读取失败"));
         when(moderationClient.moderateText(anyString(), anyString()))
                 .thenReturn(new ModerationResult(ModerationStatus.YELLOW, "疑似商业信息"));
-        when(helpRequestRepository.findById(11L)).thenReturn(Optional.of(hr));
+        when(helpRequestRepository.applyModerationResult(11L, BizStatus.PENDING_REVIEW, ModerationStatus.YELLOW, "疑似商业信息")).thenReturn(1);
 
         moderationService.moderateHelpRequest(hr);
 
-        assertThat(hr.getModerationStatus()).isEqualTo(ModerationStatus.YELLOW);
-        assertThat(hr.getStatus()).isEqualTo(BizStatus.PENDING_REVIEW);
+        verify(helpRequestRepository).applyModerationResult(11L, BizStatus.PENDING_REVIEW, ModerationStatus.YELLOW, "疑似商业信息");
+        verify(notificationService, never()).create(anyLong(), any(), any(), anyString(), anyLong());
     }
 
     @Test
-    @DisplayName("闲置审核 - 实体不存在时仅记日志不抛异常")
-    void should_notThrow_when_idleItemMissing() {
+    @DisplayName("审核 - 条件更新未命中（内容状态已变更）时丢弃结果，不抛异常也不发通知")
+    void should_discardResult_when_conditionNotMatched() {
         when(moderationClient.moderateText(anyString(), anyString()))
                 .thenReturn(new ModerationResult(ModerationStatus.GREEN, ""));
-        when(idleItemRepository.findById(1L)).thenReturn(Optional.empty());
+        // 内容在审核期间已被下架/被申请占用 → 条件更新命中 0 行
+        when(idleItemRepository.applyModerationResult(1L, BizStatus.ONLINE, ModerationStatus.GREEN, null)).thenReturn(0);
 
         moderationService.moderateIdleItem(idleItem());
 
         verify(notificationService, never()).create(anyLong(), any(), any(), anyString(), anyLong());
+        verify(idleItemRepository, never()).findById(anyLong());
     }
 
     @Test
@@ -229,11 +226,12 @@ class ModerationServiceTest {
                 new ModerationResult(ModerationStatus.YELLOW, "图片二疑似商业库存"));
         when(moderationClient.moderateText(anyString(), anyString()))
                 .thenReturn(new ModerationResult(ModerationStatus.GREEN, ""));
-        when(idleItemRepository.findById(1L)).thenReturn(Optional.of(item));
+        String expectedReason = "图片一有水印；图片二疑似商业库存";
+        when(idleItemRepository.applyModerationResult(1L, BizStatus.PENDING_REVIEW, ModerationStatus.YELLOW, expectedReason)).thenReturn(1);
 
         moderationService.moderateIdleItem(item);
 
-        assertThat(item.getDelistReason()).isEqualTo("图片一有水印；图片二疑似商业库存");
+        verify(idleItemRepository).applyModerationResult(1L, BizStatus.PENDING_REVIEW, ModerationStatus.YELLOW, expectedReason);
     }
 
     // ==================== 重投（拒绝补偿链路） ====================

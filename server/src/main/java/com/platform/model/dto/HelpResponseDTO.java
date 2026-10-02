@@ -101,4 +101,12 @@ public class HelpResponseDTO {
 
     /** 发布者归还率，格式为百分比字符串 */
     private String returnRate;
+
+    /**
+     * 当前登录用户对该求助的申请状态，仅详情接口返回。
+     * 有效值："pending"（待审批）/ "approved"（已同意）/ "rejected"（已拒绝）/ "completed"（已完成）；
+     * NULL 表示当前用户从未申请过该求助（或未登录）。
+     * C端据此判断「我来帮忙」按钮是否禁用——rejected 允许重新申请，不禁用。
+     */
+    private String userApplyStatus;
 }

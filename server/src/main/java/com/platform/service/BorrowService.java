@@ -27,6 +27,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * 借入业务逻辑 — 申请借入/借出、审批、归还确认、物品状况补充。
+ *
+ * <p>申请与审批都用「物品行悲观锁 + 申请状态条件更新」保证同一物品不会被重复申领，
+ * 且并发重复审批只有一次生效。</p>
+ */
 @Service
 @Transactional
 public class BorrowService {
@@ -61,11 +67,19 @@ public class BorrowService {
                 .orElseThrow(() -> new BizException("物品不存在"));
 
         if (!BizStatus.ONLINE.equals(idleItem.getStatus())) {
-            throw new BizException("该物品已被其他住户抢先申请，请浏览其他物品");
+            throw new BizException(unavailableMessage(idleItem.getStatus()));
         }
 
         if (idleItem.getUserId().equals(borrowerId)) {
             throw new BizException("不能借入自己的物品");
+        }
+
+        // 防重复：同一用户对该物品已有待审批申请时拒绝。申请成功会把物品状态改为 pending，
+        // 因此同一人再点通常先被上面的状态校验拦下，但那里提示的是「已被其他住户抢先申请」，
+        // 对本人是误导；此处给出准确语义，同时覆盖状态被改回 online 后并发重复提交的窄缝。
+        if (borrowRequestRepository.existsByBorrowerIdAndIdleIdAndStatus(
+                borrowerId, idleItem.getId(), BizStatus.PENDING)) {
+            throw new BizException("您已申请过该物品，请勿重复提交");
         }
 
         BorrowRequest borrowRequest = new BorrowRequest();
@@ -103,31 +117,62 @@ public class BorrowService {
 
     /**
      * 审批借入申请：同意或拒绝。
+     *
+     * <p>并发策略：先用投影查询取出所属物品 ID（不加载申请实体，避免一级缓存中的旧值
+     * 影响后续校验），再对物品行加悲观写锁——与「申请」「编辑」「下架」共用同一把锁，
+     * 使状态流转串行。申请状态本身用条件更新判定（{@link BorrowRequestRepository#decideIfPending}），
+     * 因此并发重复审批只有一次能生效。全程只持有一把锁，不会与其他写路径形成互相等待。</p>
+     *
+     * @param ownerId  物品所有者用户 ID
+     * @param borrowId 借入申请 ID
+     * @param req      审批请求（approved 为 true 表示同意）
+     * @return 审批后的借入申请
+     * @throws BizException 申请不存在、无权操作或该申请已被处理时抛出
      */
     public BorrowResponseDTO approveReject(Long ownerId, Long borrowId, ApproveRequest req) {
-        BorrowRequest borrowRequest = borrowRequestRepository.findById(borrowId)
+        Long idleId = borrowRequestRepository.findIdleIdById(borrowId)
                 .orElseThrow(() -> new BizException("借入申请不存在"));
-        IdleItem idleItem = idleItemRepository.findById(borrowRequest.getIdleId())
+        IdleItem idleItem = idleItemRepository.findByIdWithLock(idleId)
                 .orElseThrow(() -> new BizException("物品不存在"));
 
         if (!idleItem.getUserId().equals(ownerId)) {
             throw new BizException("无权操作该申请");
         }
-        if (!BizStatus.PENDING.equals(borrowRequest.getStatus())) {
+
+        boolean approved = req.getApproved();
+        int updated = borrowRequestRepository.decideIfPending(borrowId,
+                approved ? BizStatus.APPROVED : BizStatus.REJECTED,
+                approved ? LocalDateTime.now(AppTimeZone.APP_ZONE) : null);
+        if (updated == 0) {
             throw new BizException("该申请已被处理，无法重复操作");
         }
 
-        boolean approved = req.getApproved();
-        borrowRequest.setStatus(approved ? BizStatus.APPROVED : BizStatus.REJECTED);
-        if (approved) {
-            borrowRequest.setApprovedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
-        }
-        borrowRequest = borrowRequestRepository.save(borrowRequest);
+        BorrowRequest borrowRequest = borrowRequestRepository.findById(borrowId)
+                .orElseThrow(() -> new BizException("借入申请不存在"));
 
         syncIdleItemAfterApproveReject(idleItem, borrowRequest, approved);
         notifyBorrowResult(borrowRequest, idleItem, req);
 
         return toDTO(borrowRequest);
+    }
+
+    /**
+     * 按物品当前状态生成申请失败的提示文案。
+     *
+     * <p>「审核中」「已下架」与「被别人抢先申请」是三种不同的业务原因，
+     * 统一提示会让用户误以为物品被他人抢走。</p>
+     *
+     * @param status 物品当前状态
+     * @return 对应的提示文案
+     */
+    private static String unavailableMessage(String status) {
+        if (BizStatus.PENDING_REVIEW.equals(status)) {
+            return "该帖子正在审核中，暂时无法申请，请稍后再试";
+        }
+        if (BizStatus.DRAFT.equals(status) || BizStatus.OFFLINE.equals(status)) {
+            return "该帖子已下架，无法申请";
+        }
+        return "该物品已被其他住户抢先申请，请浏览其他物品";
     }
 
     /**

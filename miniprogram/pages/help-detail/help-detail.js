@@ -1,6 +1,6 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
-const { POST_TYPE } = require('../../utils/constants');
+const { POST_TYPE, HELP_APPLICATION_STATUS } = require('../../utils/constants');
 
 /**
  * 求助详情页 — 求助信息展示 + 接单操作入口。
@@ -48,7 +48,14 @@ Page({
         const historyData = this.buildHistoryData(data);
         // 记录帖子的更新时间，用于操作前检测冲突
         const itemUpdatedAt = data.updatedAt || '';
-        this.setData({ item, images: item.images || [], historyData, itemUpdatedAt });
+        // 按钮禁用状态由后端返回的本用户申请状态决定，重新进入页面后仍然生效
+        this.setData({
+          item,
+          images: item.images || [],
+          historyData,
+          itemUpdatedAt,
+          hasApplied: this._isApplyBlocked(item.userApplyStatus)
+        });
       })
       .catch((err) => {
         wx.hideLoading();
@@ -167,6 +174,19 @@ Page({
     });
   },
 
+  /**
+   * 判断「我来帮忙」按钮是否应禁用。
+   * 已申请/已通过/已完成均禁用；已拒绝不禁用——被拒绝后允许重新申请，
+   * 与后端返回的 userApplyStatus 口径一致。
+   * @param {string} userApplyStatus 后端返回的当前用户申请状态
+   * @returns {boolean} true 表示应禁用按钮
+   */
+  _isApplyBlocked(userApplyStatus) {
+    return userApplyStatus === HELP_APPLICATION_STATUS.PENDING
+      || userApplyStatus === HELP_APPLICATION_STATUS.APPROVED
+      || userApplyStatus === HELP_APPLICATION_STATUS.COMPLETED;
+  },
+
   /** 重新拉取求助帖，检测是否在浏览期间被发布者更新；通过则执行回调 */
   _checkHelpFreshness(onFresh) {
     const id = this.data.item.id;
@@ -186,8 +206,14 @@ Page({
             success: () => {
               const item = this.formatItem(data);
               const historyData = this.buildHistoryData(data);
-              // 刷新后重置 hasApplied，按钮状态由最新数据决定
-              this.setData({ item, images: item.images || [], historyData, itemUpdatedAt: newUpdatedAt, hasApplied: false });
+              // 刷新后按钮状态由最新数据里的申请状态决定，不作无条件重置
+              this.setData({
+                item,
+                images: item.images || [],
+                historyData,
+                itemUpdatedAt: newUpdatedAt,
+                hasApplied: this._isApplyBlocked(item.userApplyStatus)
+              });
             }
           });
           return;

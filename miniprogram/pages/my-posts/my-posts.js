@@ -1267,6 +1267,9 @@ Page({
   },
 
   async onDoSave() {
+    // 防连点：保存进行中忽略重复触发（含图片上传与接口调用，耗时较长）
+    if (this._savingEdit) return;
+    this._savingEdit = true;
     this.setData({ showSaveConfirmAlert: false });
 
     const id = this.data.editTargetId;
@@ -1330,6 +1333,7 @@ Page({
       body.images = JSON.stringify(imageUrls);
     } catch (e) {
       wx.hideLoading();
+      this._savingEdit = false;
       wx.showToast({ title: '图片上传失败', icon: 'none' });
       return;
     }
@@ -1354,8 +1358,10 @@ Page({
     } catch (err) {
       wx.hideLoading();
       wx.showToast({ title: (err && err.message) || "操作失败", icon: "none" });
-      // 操作冲突（如编辑期间帖子已被别人申请），刷新列表同步状态
+      // 操作冲突（如编辑期间帖子已有住户申请、或帖子正在审核），刷新列表同步状态
       this.loadMyPosts();
+    } finally {
+      this._savingEdit = false;
     }
   },
 

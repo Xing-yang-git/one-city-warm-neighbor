@@ -198,7 +198,7 @@ class HelpServiceTest {
                 .thenReturn(new UserActivityService.InteractionStats(0, 0, 1, 5, 0, 0));
 
         // 执行
-        HelpResponseDTO result = helpService.getDetail(helpId);
+        HelpResponseDTO result = helpService.getDetail(helpId, null);
 
         // 断言
         assertThat(result).isNotNull();
@@ -208,13 +208,57 @@ class HelpServiceTest {
     }
 
     @Test
+    @DisplayName("获取求助详情 - 传入当前用户时附带其对该求助的申请状态")
+    void should_returnUserApplyStatus_when_currentUserApplied() {
+        // 准备
+        HelpApplication mine = HelpApplication.builder()
+                .id(appId).helpId(helpId).helperId(helperId).status(BizStatus.PENDING).build();
+        when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(ratingRepository.getAverageScore(userId)).thenReturn(null);
+        when(userActivityService.interactionStats(anyLong()))
+                .thenReturn(new UserActivityService.InteractionStats(0, 0, 0, 0, 0, 0));
+        when(helpApplicationRepository.findByHelpIdAndHelperIdOrderByCreatedAtDesc(helpId, helperId))
+                .thenReturn(List.of(mine));
+
+        // 执行
+        HelpResponseDTO result = helpService.getDetail(helpId, helperId);
+
+        // 断言
+        assertThat(result.getUserApplyStatus()).isEqualTo(BizStatus.PENDING);
+    }
+
+    @Test
+    @DisplayName("获取求助详情 - 同一用户多条申请时优先返回仍有效的那条（被拒后可重申）")
+    void should_preferActiveApplication_when_multipleApplications() {
+        // 准备：先被拒、后重新申请且仍在待审批
+        HelpApplication rejected = HelpApplication.builder()
+                .id(301L).helpId(helpId).helperId(helperId).status(BizStatus.REJECTED).build();
+        HelpApplication pending = HelpApplication.builder()
+                .id(302L).helpId(helpId).helperId(helperId).status(BizStatus.PENDING).build();
+        when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(ratingRepository.getAverageScore(userId)).thenReturn(null);
+        when(userActivityService.interactionStats(anyLong()))
+                .thenReturn(new UserActivityService.InteractionStats(0, 0, 0, 0, 0, 0));
+        when(helpApplicationRepository.findByHelpIdAndHelperIdOrderByCreatedAtDesc(helpId, helperId))
+                .thenReturn(List.of(pending, rejected));
+
+        // 执行
+        HelpResponseDTO result = helpService.getDetail(helpId, helperId);
+
+        // 断言
+        assertThat(result.getUserApplyStatus()).isEqualTo(BizStatus.PENDING);
+    }
+
+    @Test
     @DisplayName("获取求助详情 - 求助不存在时抛出异常")
     void should_throwException_when_helpNotFound() {
         // 准备
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.empty());
 
         // 执行 & 断言
-        assertThatThrownBy(() -> helpService.getDetail(helpId))
+        assertThatThrownBy(() -> helpService.getDetail(helpId, null))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("求助信息不存在");
     }
@@ -276,8 +320,10 @@ class HelpServiceTest {
     @DisplayName("下架求助 - 正常下架")
     void should_delistHelp_when_ownerOperates() {
         // 准备
-        when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
+        when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
         when(helpRequestRepository.save(any(HelpRequest.class))).thenReturn(helpRequest);
+        when(helpApplicationRepository.findByHelpIdAndStatus(helpId, BizStatus.PENDING))
+                .thenReturn(Collections.emptyList());
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
         // 执行
@@ -293,7 +339,7 @@ class HelpServiceTest {
     void should_throwException_when_delistNotOwner() {
         // 准备
         Long otherId = 99L;
-        when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
+        when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
 
         // 执行 & 断言
         assertThatThrownBy(() -> helpService.delist(otherId, helpId))
@@ -328,16 +374,29 @@ class HelpServiceTest {
     }
 
     @Test
-    @DisplayName("申请帮助 - 求助已关闭时抛出异常")
+    @DisplayName("申请帮助 - 求助已下架时提示已下架而非被抢先申请")
     void should_throwException_when_helpClosed() {
         // 准备
-        helpRequest.setStatus("offline");
+        helpRequest.setStatus(BizStatus.OFFLINE);
         when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
 
         // 执行 & 断言
         assertThatThrownBy(() -> helpService.apply(helperId, helpId, "note"))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessage("该求助已被其他人抢先申请，请浏览其他求助");
+                .hasMessage("该求助已下架，无法申请");
+    }
+
+    @Test
+    @DisplayName("申请帮助 - 求助正在审核中时提示审核中而非被抢先申请")
+    void should_throwException_when_helpPendingReview() {
+        // 准备
+        helpRequest.setStatus(BizStatus.PENDING_REVIEW);
+        when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
+
+        // 执行 & 断言
+        assertThatThrownBy(() -> helpService.apply(helperId, helpId, "note"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("该求助正在审核中，暂时无法申请，请稍后再试");
     }
 
     @Test
@@ -354,6 +413,18 @@ class HelpServiceTest {
 
     // ==================== approveReject ====================
 
+    /**
+     * 模拟条件更新命中：按传入的目标状态改写实体并返回 1 行受影响。
+     * 真实实现由数据库在一条语句内完成「判断仍是待审批 + 写入新状态」，
+     * 此处以 thenAnswer 复刻其对外可见效果。
+     */
+    private void stubDecideIfPendingHit() {
+        when(helpApplicationRepository.decideIfPending(eq(appId), anyString())).thenAnswer(inv -> {
+            application.setStatus(inv.getArgument(1));
+            return 1;
+        });
+    }
+
     @Test
     @DisplayName("审批帮助 - 通过申请并更新状态")
     void should_approveHelp_when_validApproval() {
@@ -361,9 +432,10 @@ class HelpServiceTest {
         ApproveRequest req = new ApproveRequest();
         req.setApproved(true);
 
+        when(helpApplicationRepository.findHelpIdById(appId)).thenReturn(Optional.of(helpId));
+        when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
+        stubDecideIfPendingHit();
         when(helpApplicationRepository.findById(appId)).thenReturn(Optional.of(application));
-        when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
-        when(helpApplicationRepository.save(any(HelpApplication.class))).thenReturn(application);
         when(helpRequestRepository.save(any(HelpRequest.class))).thenReturn(helpRequest);
         when(notificationService.create(anyLong(), anyString(), anyString(), anyString(), anyLong())).thenReturn(new NotificationDTO());
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
@@ -373,7 +445,33 @@ class HelpServiceTest {
 
         // 断言
         assertThat(application.getStatus()).isEqualTo(BizStatus.APPROVED);
-        assertThat(helpRequest.getStatus()).isEqualTo("active");
+        assertThat(helpRequest.getStatus()).isEqualTo(BizStatus.ACTIVE);
+        verify(helpApplicationRepository).decideIfPending(appId, BizStatus.APPROVED);
+    }
+
+    @Test
+    @DisplayName("审批帮助 - 拒绝且无其他待审批申请时恢复为 online")
+    void should_restoreOnline_when_rejectedWithoutOtherPending() {
+        // 准备
+        ApproveRequest req = new ApproveRequest();
+        req.setApproved(false);
+
+        when(helpApplicationRepository.findHelpIdById(appId)).thenReturn(Optional.of(helpId));
+        when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
+        stubDecideIfPendingHit();
+        when(helpApplicationRepository.findByHelpIdAndStatus(helpId, BizStatus.PENDING))
+                .thenReturn(Collections.emptyList());
+        when(helpApplicationRepository.findById(appId)).thenReturn(Optional.of(application));
+        when(helpRequestRepository.save(any(HelpRequest.class))).thenReturn(helpRequest);
+        when(notificationService.create(anyLong(), anyString(), anyString(), anyString(), anyLong())).thenReturn(new NotificationDTO());
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        // 执行
+        helpService.approveReject(userId, appId, req);
+
+        // 断言
+        assertThat(helpRequest.getStatus()).isEqualTo(BizStatus.ONLINE);
+        verify(helpApplicationRepository).decideIfPending(appId, BizStatus.REJECTED);
     }
 
     @Test
@@ -384,8 +482,8 @@ class HelpServiceTest {
         req.setApproved(true);
         Long otherId = 99L;
 
-        when(helpApplicationRepository.findById(appId)).thenReturn(Optional.of(application));
-        when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
+        when(helpApplicationRepository.findHelpIdById(appId)).thenReturn(Optional.of(helpId));
+        when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
 
         // 执行 & 断言
         assertThatThrownBy(() -> helpService.approveReject(otherId, appId, req))
@@ -394,15 +492,16 @@ class HelpServiceTest {
     }
 
     @Test
-    @DisplayName("审批帮助 - 申请已被处理时抛出异常")
+    @DisplayName("审批帮助 - 申请已被处理（并发重复审批后到者）时抛出异常")
     void should_throwException_when_applicationAlreadyProcessed() {
         // 准备
-        application.setStatus(BizStatus.APPROVED);
         ApproveRequest req = new ApproveRequest();
         req.setApproved(true);
 
-        when(helpApplicationRepository.findById(appId)).thenReturn(Optional.of(application));
-        when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
+        when(helpApplicationRepository.findHelpIdById(appId)).thenReturn(Optional.of(helpId));
+        when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
+        // 条件更新命中 0 行 → 申请已被他人处理
+        when(helpApplicationRepository.decideIfPending(eq(appId), anyString())).thenReturn(0);
 
         // 执行 & 断言
         assertThatThrownBy(() -> helpService.approveReject(userId, appId, req))
@@ -459,7 +558,9 @@ class HelpServiceTest {
         req.setTitle("更新后的求助标题");
         req.setDescription("更新描述");
 
-        when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
+        when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
+        when(helpApplicationRepository.findByHelpIdAndStatus(helpId, BizStatus.PENDING))
+                .thenReturn(Collections.emptyList());
         when(helpRequestRepository.save(any(HelpRequest.class))).thenReturn(helpRequest);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
@@ -474,11 +575,13 @@ class HelpServiceTest {
     @DisplayName("更新求助 - completed状态编辑后退回 pending_review 重新审核")
     void should_autoRelist_when_statusCompleted() {
         // 准备
-        helpRequest.setStatus("completed");
+        helpRequest.setStatus(BizStatus.COMPLETED);
         HelpRequestDTO req = new HelpRequestDTO();
         req.setTitle("重新发布");
 
-        when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
+        when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
+        when(helpApplicationRepository.findByHelpIdAndStatus(helpId, BizStatus.PENDING))
+                .thenReturn(Collections.emptyList());
         when(helpRequestRepository.save(any(HelpRequest.class))).thenReturn(helpRequest);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
@@ -487,6 +590,37 @@ class HelpServiceTest {
 
         // 断言：重新发布走 AI 审核流程，先挂起而非直接上线
         assertThat(result.getStatus()).isEqualTo(BizStatus.PENDING_REVIEW);
+    }
+
+    @Test
+    @DisplayName("编辑门禁 - 有住户正在申请时拒绝编辑")
+    void should_throwException_when_editingWithPendingApplication() {
+        // 准备
+        when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
+        when(helpApplicationRepository.findByHelpIdAndStatus(helpId, BizStatus.PENDING))
+                .thenReturn(List.of(application));
+        HelpRequestDTO req = new HelpRequestDTO();
+
+        // 执行 & 断言
+        assertThatThrownBy(() -> helpService.update(userId, helpId, req))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("该求助有住户正在申请，请先处理申请后再编辑");
+    }
+
+    @Test
+    @DisplayName("编辑门禁 - 内容仍在审核中时拒绝编辑（避免旧结论用到新内容）")
+    void should_throwException_when_editingWhilePendingReview() {
+        // 准备
+        helpRequest.setStatus(BizStatus.PENDING_REVIEW);
+        when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
+        when(helpApplicationRepository.findByHelpIdAndStatus(helpId, BizStatus.PENDING))
+                .thenReturn(Collections.emptyList());
+        HelpRequestDTO req = new HelpRequestDTO();
+
+        // 执行 & 断言
+        assertThatThrownBy(() -> helpService.update(userId, helpId, req))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("该帖子正在审核中，请等审核完成后再编辑");
     }
 
     // ==================== getMyApplications ====================

@@ -15,7 +15,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -57,15 +56,17 @@ class EmbeddingServiceTest {
     }
 
     @Test
-    @DisplayName("更新物品向量 - 生成成功时落库")
-    void should_updateItemEmbedding_when_generated() {
+    @DisplayName("更新物品向量 - 生成成功时只写 embedding 列，不整行回写")
+    void should_updateEmbeddingColumnOnly_when_generated() {
         when(embeddingClient.embed(anyString())).thenReturn(new float[]{0.5f});
-        IdleItem item = IdleItem.builder().id(1L).title("电钻").description("正常").build();
+        IdleItem item = IdleItem.builder().id(1L).title("电钻").description("正常").status("online").build();
 
         service.updateItemEmbedding(item);
 
-        assertThat(item.getEmbedding()).isEqualTo("[0.5]");
-        verify(idleItemRepository).save(item);
+        verify(idleItemRepository).updateEmbeddingById(1L, "[0.5]");
+        // 关键：不再整行 save，避免用旧快照覆盖并发期间的状态变更（如下架）
+        verify(idleItemRepository, never()).save(any(IdleItem.class));
+        assertThat(item.getStatus()).isEqualTo("online");
     }
 
     @Test
@@ -75,7 +76,7 @@ class EmbeddingServiceTest {
 
         service.updateItemEmbedding(item);
 
-        verify(idleItemRepository, never()).save(any(IdleItem.class));
+        verify(idleItemRepository, never()).updateEmbeddingById(any(), anyString());
     }
 
     @Test
@@ -87,7 +88,7 @@ class EmbeddingServiceTest {
         service.updateItemEmbedding(item);
 
         assertThat(item.getEmbedding()).isNull();
-        verify(idleItemRepository, never()).save(any(IdleItem.class));
+        verify(idleItemRepository, never()).updateEmbeddingById(any(), anyString());
     }
 
     @Test
@@ -102,10 +103,8 @@ class EmbeddingServiceTest {
         int count = service.generateAllMissingEmbeddings();
 
         assertThat(count).isEqualTo(2);
-        assertThat(missing1.getEmbedding()).isEqualTo("[0.1]");
-        assertThat(already.getEmbedding()).isEqualTo("[0.9]");
-        // missing1/missing2 各 save 两次（updateItemEmbedding + 批量循环内）
-        verify(idleItemRepository, times(2)).save(missing1);
-        verify(idleItemRepository, never()).save(already);
+        verify(idleItemRepository).updateEmbeddingById(1L, "[0.1]");
+        verify(idleItemRepository).updateEmbeddingById(2L, "[0.1]");
+        verify(idleItemRepository, never()).updateEmbeddingById(3L, "[0.1]");
     }
 }

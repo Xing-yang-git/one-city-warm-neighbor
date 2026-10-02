@@ -5,6 +5,7 @@ import com.platform.common.PostType;
 import com.platform.model.dto.IdleItemDTO;
 import com.platform.model.dto.IdleItemRequest;
 import com.platform.model.dto.PageDTO;
+import com.platform.model.entity.BorrowRequest;
 import com.platform.model.entity.IdleItem;
 import com.platform.model.entity.User;
 import com.platform.ai.embedding.EmbeddingService;
@@ -17,6 +18,7 @@ import com.platform.repository.RatingRepository;
 import com.platform.repository.RoomRepository;
 import com.platform.repository.UserRepository;
 import com.platform.common.BizStatus;
+import com.platform.common.NotificationType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -36,6 +38,8 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -62,6 +66,8 @@ class IdleServiceTest {
     private SemanticSearchService semanticSearchService;
     @Mock
     private ModerationService moderationService;
+    @Mock
+    private NotificationService notificationService;
 
     @InjectMocks
     private IdleService idleService;
@@ -304,8 +310,10 @@ class IdleServiceTest {
     @DisplayName("下架物品 - 正常下架物品")
     void should_delistItem_when_userOwnsItem() {
         // 准备
-        when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(idleItem));
+        when(idleItemRepository.findByIdWithLock(itemId)).thenReturn(Optional.of(idleItem));
         when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
+        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BizStatus.PENDING))
+                .thenReturn(Collections.emptyList());
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
         // 执行
@@ -318,11 +326,32 @@ class IdleServiceTest {
     }
 
     @Test
+    @DisplayName("下架物品 - 一并作废待审批申请并通知申请人")
+    void should_rejectPendingApplications_when_delist() {
+        // 准备：该物品下有一条待审批借入申请
+        BorrowRequest pending = BorrowRequest.builder()
+                .id(500L).idleId(itemId).borrowerId(7L).status(BizStatus.PENDING).build();
+        when(idleItemRepository.findByIdWithLock(itemId)).thenReturn(Optional.of(idleItem));
+        when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
+        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BizStatus.PENDING))
+                .thenReturn(List.of(pending));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        // 执行
+        idleService.delist(userId, itemId);
+
+        // 断言：申请被置为已拒绝，且向申请人推送了失效通知
+        assertThat(pending.getStatus()).isEqualTo(BizStatus.REJECTED);
+        verify(borrowRequestRepository).save(pending);
+        verify(notificationService).create(eq(7L), eq(NotificationType.AUDIT_RESULT), anyString(), anyString(), eq(500L));
+    }
+
+    @Test
     @DisplayName("下架物品 - 非所有者操作时抛出异常")
     void should_throwException_when_delistNotOwner() {
         // 准备
         Long otherUserId = 99L;
-        when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(idleItem));
+        when(idleItemRepository.findByIdWithLock(itemId)).thenReturn(Optional.of(idleItem));
 
         // 执行 & 断言
         assertThatThrownBy(() -> idleService.delist(otherUserId, itemId))
@@ -372,7 +401,9 @@ class IdleServiceTest {
         req.setTitle("更新后的标题");
         req.setDescription("更新描述");
 
-        when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(idleItem));
+        when(idleItemRepository.findByIdWithLock(itemId)).thenReturn(Optional.of(idleItem));
+        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BizStatus.PENDING))
+                .thenReturn(Collections.emptyList());
         when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
@@ -391,7 +422,9 @@ class IdleServiceTest {
         IdleItemRequest req = new IdleItemRequest();
         req.setTitle("只更新标题");
 
-        when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(idleItem));
+        when(idleItemRepository.findByIdWithLock(itemId)).thenReturn(Optional.of(idleItem));
+        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BizStatus.PENDING))
+                .thenReturn(Collections.emptyList());
         when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
@@ -407,11 +440,13 @@ class IdleServiceTest {
     @DisplayName("更新物品 - completed状态编辑后退回 pending_review 重新审核")
     void should_autoRelist_when_statusIsCompleted() {
         // 准备
-        idleItem.setStatus("completed");
+        idleItem.setStatus(BizStatus.COMPLETED);
         IdleItemRequest req = new IdleItemRequest();
         req.setTitle("重新上线");
 
-        when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(idleItem));
+        when(idleItemRepository.findByIdWithLock(itemId)).thenReturn(Optional.of(idleItem));
+        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BizStatus.PENDING))
+                .thenReturn(Collections.emptyList());
         when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
@@ -423,10 +458,41 @@ class IdleServiceTest {
     }
 
     @Test
+    @DisplayName("编辑门禁 - 有住户正在申请时拒绝编辑")
+    void should_throwException_when_editingWithPendingApplication() {
+        // 准备：该物品下存在待审批借入申请
+        BorrowRequest pending = BorrowRequest.builder()
+                .id(500L).idleId(itemId).borrowerId(7L).status(BizStatus.PENDING).build();
+        when(idleItemRepository.findByIdWithLock(itemId)).thenReturn(Optional.of(idleItem));
+        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BizStatus.PENDING))
+                .thenReturn(List.of(pending));
+
+        // 执行 & 断言
+        assertThatThrownBy(() -> idleService.update(userId, itemId, new IdleItemRequest()))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("该物品有住户正在申请，请先处理申请后再编辑");
+    }
+
+    @Test
+    @DisplayName("编辑门禁 - 内容仍在审核中时拒绝编辑（避免旧结论用到新内容）")
+    void should_throwException_when_editingWhilePendingReview() {
+        // 准备
+        idleItem.setStatus(BizStatus.PENDING_REVIEW);
+        when(idleItemRepository.findByIdWithLock(itemId)).thenReturn(Optional.of(idleItem));
+        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BizStatus.PENDING))
+                .thenReturn(Collections.emptyList());
+
+        // 执行 & 断言
+        assertThatThrownBy(() -> idleService.update(userId, itemId, new IdleItemRequest()))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("该帖子正在审核中，请等审核完成后再编辑");
+    }
+
+    @Test
     @DisplayName("更新物品 - 物品不存在时抛出异常")
     void should_throwException_when_updateItemNotFound() {
         // 准备
-        when(idleItemRepository.findById(itemId)).thenReturn(Optional.empty());
+        when(idleItemRepository.findByIdWithLock(itemId)).thenReturn(Optional.empty());
 
         // 执行 & 断言
         assertThatThrownBy(() -> idleService.update(userId, itemId, new IdleItemRequest()))
@@ -439,7 +505,7 @@ class IdleServiceTest {
     void should_throwException_when_updateNotOwner() {
         // 准备
         Long otherUserId = 99L;
-        when(idleItemRepository.findById(itemId)).thenReturn(Optional.of(idleItem));
+        when(idleItemRepository.findByIdWithLock(itemId)).thenReturn(Optional.of(idleItem));
 
         // 执行 & 断言
         assertThatThrownBy(() -> idleService.update(otherUserId, itemId, new IdleItemRequest()))

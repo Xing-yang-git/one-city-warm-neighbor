@@ -26,6 +26,7 @@ Page({
     },
     today: '',
     userId: '',
+    submittingBorrow: false,  // 借用申请提交中，用于防连点
     borrowForm: {
       description: '',
       durationUnit: 'day',
@@ -381,6 +382,8 @@ Page({
   },
 
   onSubmitBorrow() {
+    // 防连点：提交中忽略后续点击（加载提示的遮罩在部分场景不足以保证拦截）
+    if (this.data.submittingBorrow) return;
     const { borrowForm, item } = this.data;
 
     // 校验说明
@@ -393,7 +396,8 @@ Page({
     const selected = borrowForm.durationOptions[borrowForm.durationIndex];
     const durationDays = parseInt(selected) || 1;
 
-    wx.showLoading({ title: '提交中...' });
+    this.setData({ submittingBorrow: true });
+    wx.showLoading({ title: '提交中...', mask: true });
 
     api.post('/api/borrow-requests', {
       idleId: item.id,
@@ -404,13 +408,14 @@ Page({
     })
       .then(() => {
         wx.hideLoading();
-        this.setData({ showSheet: false });
+        this.setData({ showSheet: false, submittingBorrow: false });
         wx.showToast({ title: item.isWanted ? '借出意向已发送' : '借入申请已发送', icon: 'success' });
         // 本地更新物品状态（通过后端 userBorrowStatus 在重新进入时保持）
         this.setData({ 'item.status': POST_STATUS.PENDING, 'item.userBorrowStatus': BORROW_STATUS.PENDING });
       })
       .catch((err) => {
         wx.hideLoading();
+        this.setData({ submittingBorrow: false });
         wx.showToast({ title: err.message, icon: 'none' });
         // 操作失败（如帖子已下架/已被别人申请），刷新数据同步最新状态
         this.loadItem(this.data.item.id);

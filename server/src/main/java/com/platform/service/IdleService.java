@@ -8,11 +8,13 @@ import com.platform.common.AppTimeZone;
 import com.platform.common.BizException;
 import com.platform.common.BizStatus;
 import com.platform.common.ModerationStatus;
+import com.platform.common.NotificationType;
 import com.platform.common.PostType;
 import com.platform.common.UserFormatter;
 import com.platform.model.dto.IdleItemDTO;
 import com.platform.model.dto.IdleItemRequest;
 import com.platform.model.dto.PageDTO;
+import com.platform.model.entity.BorrowRequest;
 import com.platform.model.entity.IdleItem;
 import com.platform.model.entity.User;
 import com.platform.repository.IdleItemRepository;
@@ -35,6 +37,12 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
+/**
+ * 闲置物品业务逻辑 — 发布、浏览、搜索、详情、编辑、下架、删除。
+ *
+ * <p>涉及物品状态变更的写入口（申请、审批、编辑、下架）统一使用物品行悲观锁
+ * （{@code findByIdWithLock}）串行化，避免并发下互相覆盖状态。</p>
+ */
 @Slf4j
 @Service
 @Transactional
@@ -50,6 +58,7 @@ public class IdleService {
     private final EmbeddingService embeddingService;
     private final MatchingScheduler matchingScheduler;
     private final ModerationService moderationService;
+    private final NotificationService notificationService;
 
     public IdleService(IdleItemRepository idleItemRepository,
                        UserRepository userRepository,
@@ -60,7 +69,8 @@ public class IdleService {
                        EmbeddingService embeddingService,
                        MatchingScheduler matchingScheduler,
                        SemanticSearchService semanticSearchService,
-                       ModerationService moderationService) {
+                       ModerationService moderationService,
+                       NotificationService notificationService) {
         this.idleItemRepository = idleItemRepository;
         this.userRepository = userRepository;
         this.roomRepository = roomRepository;
@@ -71,6 +81,7 @@ public class IdleService {
         this.matchingScheduler = matchingScheduler;
         this.semanticSearchService = semanticSearchService;
         this.moderationService = moderationService;
+        this.notificationService = notificationService;
     }
 
     public IdleItemDTO publish(Long userId, IdleItemRequest req) {
@@ -243,8 +254,20 @@ public class IdleService {
         return items.stream().map(this::toDTO).collect(Collectors.toList());
     }
 
+    /**
+     * 下架闲置物品（用户自行下架，状态转为草稿）。
+     *
+     * <p>与申请/编辑/审批共用同一把物品行锁，保证状态流转串行。下架后该物品的待审批申请
+     * 已失去意义，一并置为已拒绝并通知申请人——否则申请会永远悬在「待回应」，
+     * 申请人也收不到任何失效告知（与求助侧下架、管理端下架的既有做法一致）。</p>
+     *
+     * @param userId 操作用户 ID（须为物品所有者）
+     * @param itemId 物品 ID
+     * @return 下架后的物品
+     * @throws BizException 物品不存在或非本人操作时抛出
+     */
     public IdleItemDTO delist(Long userId, Long itemId) {
-        IdleItem item = idleItemRepository.findById(itemId)
+        IdleItem item = idleItemRepository.findByIdWithLock(itemId)
                 .orElseThrow(() -> new BizException("物品不存在"));
 
         if (!item.getUserId().equals(userId)) {
@@ -254,6 +277,21 @@ public class IdleService {
         item.setStatus(BizStatus.DRAFT);
         item.setDelistReason("用户自行下架");
         item = idleItemRepository.save(item);
+
+        List<BorrowRequest> pendingBorrows = borrowRequestRepository
+                .findByIdleIdInAndStatus(List.of(itemId), BizStatus.PENDING);
+        for (BorrowRequest pending : pendingBorrows) {
+            pending.setStatus(BizStatus.REJECTED);
+            borrowRequestRepository.save(pending);
+            notificationService.create(pending.getBorrowerId(), NotificationType.AUDIT_RESULT,
+                    "借入申请已拒绝",
+                    "您的借入申请「" + item.getTitle() + "」因物品已下架而自动拒绝",
+                    pending.getId());
+        }
+        if (!pendingBorrows.isEmpty()) {
+            log.info("物品下架，作废待审批借入申请 {} 条: itemId={}", pendingBorrows.size(), itemId);
+        }
+
         return toDTO(item);
     }
 
@@ -275,14 +313,26 @@ public class IdleService {
      * 更新闲置物品（编辑保存或重新上架）。
      * 编辑后自动退回 pending_review 并重新排队 AI 审核，
      * 审核通过后自动上线。
+     *
+     * <p>加锁与门禁：与申请/审批/下架共用同一把物品行锁，锁内先拒绝两种不允许编辑的状态——
+     * 有住户正在申请时编辑，会让申请人看到与申请时不一致的内容，且编辑与申请互相覆盖；
+     * 审核中编辑，会让后台审核任务把旧内容的结论用到新内容上。二者一并挡在锁内。</p>
+     *
+     * @param userId 操作用户 ID（须为物品所有者）
+     * @param itemId 物品 ID
+     * @param req    编辑请求体
+     * @return 编辑后的物品
+     * @throws BizException 物品不存在、非本人操作、有待处理申请或正在审核时抛出
      */
     public IdleItemDTO update(Long userId, Long itemId, IdleItemRequest req) {
-        IdleItem item = idleItemRepository.findById(itemId)
+        IdleItem item = idleItemRepository.findByIdWithLock(itemId)
                 .orElseThrow(() -> new BizException("物品不存在"));
 
         if (!item.getUserId().equals(userId)) {
             throw new BizException("无权操作该物品");
         }
+
+        assertEditable(itemId, item);
 
         // 保存原始状态，用于判断是否需要重新审核
         String originalStatus = item.getStatus();
@@ -332,6 +382,28 @@ public class IdleService {
         }
 
         return toDTO(item);
+    }
+
+    /**
+     * 编辑前置门禁 — 判定该物品当前是否允许被所有者编辑（须在物品行锁内调用）。
+     *
+     * <p>两类状态禁止编辑：有住户正在申请、内容仍在审核中。前者避免申请人看到的帖子
+     * 与申请时不一致以及编辑与申请互相覆盖；后者保证审核期间内容不变，
+     * 后台审核任务的结论必然对应它实际审过的那份内容。</p>
+     *
+     * @param itemId 物品 ID
+     * @param item   已加锁的物品实体
+     * @throws BizException 存在待处理申请或正在审核时抛出
+     */
+    private void assertEditable(Long itemId, IdleItem item) {
+        List<BorrowRequest> pendingApplications = borrowRequestRepository
+                .findByIdleIdInAndStatus(List.of(itemId), BizStatus.PENDING);
+        if (!pendingApplications.isEmpty()) {
+            throw new BizException("该物品有住户正在申请，请先处理申请后再编辑");
+        }
+        if (BizStatus.PENDING_REVIEW.equals(item.getStatus())) {
+            throw new BizException("该帖子正在审核中，请等审核完成后再编辑");
+        }
     }
 
     private IdleItemDTO enrichWithUserStats(IdleItemDTO dto) {

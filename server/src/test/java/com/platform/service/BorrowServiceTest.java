@@ -29,6 +29,8 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -174,10 +176,10 @@ class BorrowServiceTest {
     }
 
     @Test
-    @DisplayName("申请借入 - 物品已下架时抛出异常")
+    @DisplayName("申请借入 - 物品已下架时提示已下架而非被抢先申请")
     void should_throwException_when_idleOffline() {
         // 准备
-        idleItem.setStatus("offline");
+        idleItem.setStatus(BizStatus.OFFLINE);
         BorrowRequestDTO req = new BorrowRequestDTO();
         req.setIdleId(idleId);
         when(idleItemRepository.findByIdWithLock(idleId)).thenReturn(Optional.of(idleItem));
@@ -185,7 +187,38 @@ class BorrowServiceTest {
         // 执行 & 断言
         assertThatThrownBy(() -> borrowService.apply(borrowerId, req))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessage("该物品已被其他住户抢先申请，请浏览其他物品");
+                .hasMessage("该帖子已下架，无法申请");
+    }
+
+    @Test
+    @DisplayName("申请借入 - 物品正在审核中时提示审核中而非被抢先申请")
+    void should_throwException_when_idlePendingReview() {
+        // 准备
+        idleItem.setStatus(BizStatus.PENDING_REVIEW);
+        BorrowRequestDTO req = new BorrowRequestDTO();
+        req.setIdleId(idleId);
+        when(idleItemRepository.findByIdWithLock(idleId)).thenReturn(Optional.of(idleItem));
+
+        // 执行 & 断言
+        assertThatThrownBy(() -> borrowService.apply(borrowerId, req))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("该帖子正在审核中，暂时无法申请，请稍后再试");
+    }
+
+    @Test
+    @DisplayName("申请借入 - 同一用户已有待审批申请时拒绝重复提交")
+    void should_throwException_when_duplicateApplication() {
+        // 准备
+        BorrowRequestDTO req = new BorrowRequestDTO();
+        req.setIdleId(idleId);
+        when(idleItemRepository.findByIdWithLock(idleId)).thenReturn(Optional.of(idleItem));
+        when(borrowRequestRepository.existsByBorrowerIdAndIdleIdAndStatus(
+                borrowerId, idleId, BizStatus.PENDING)).thenReturn(true);
+
+        // 执行 & 断言
+        assertThatThrownBy(() -> borrowService.apply(borrowerId, req))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("您已申请过该物品，请勿重复提交");
     }
 
     @Test
@@ -228,6 +261,18 @@ class BorrowServiceTest {
 
     // ==================== approveReject ====================
 
+    /**
+     * 模拟条件更新命中：按传入的目标状态改写实体并返回 1 行受影响。
+     * 真实实现由数据库在一条语句内完成「判断仍是待审批 + 写入新状态」，
+     * 此处以 thenAnswer 复刻其对外可见效果。
+     */
+    private void stubDecideIfPendingHit() {
+        when(borrowRequestRepository.decideIfPending(eq(borrowId), anyString(), any())).thenAnswer(inv -> {
+            borrowRequest.setStatus(inv.getArgument(1));
+            return 1;
+        });
+    }
+
     @Test
     @DisplayName("审批通过 - 正常通过申请并更新物品状态")
     void should_approveBorrow_when_validApproval() {
@@ -235,10 +280,11 @@ class BorrowServiceTest {
         ApproveRequest req = new ApproveRequest();
         req.setApproved(true);
 
+        when(borrowRequestRepository.findIdleIdById(borrowId)).thenReturn(Optional.of(idleId));
+        when(idleItemRepository.findByIdWithLock(idleId)).thenReturn(Optional.of(idleItem));
+        stubDecideIfPendingHit();
         when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.of(borrowRequest));
         when(idleItemRepository.findById(idleId)).thenReturn(Optional.of(idleItem));
-        when(borrowRequestRepository.save(any(BorrowRequest.class))).thenReturn(borrowRequest);
-        when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
         when(notificationService.create(any(), any(), any(), any(), any())).thenReturn(new NotificationDTO());
         when(userRepository.findById(ownerId)).thenReturn(Optional.of(owner));
         when(userRepository.findById(borrowerId)).thenReturn(Optional.of(borrower));
@@ -248,7 +294,8 @@ class BorrowServiceTest {
 
         // 断言
         assertThat(result.getStatus()).isEqualTo(BizStatus.APPROVED);
-        assertThat(idleItem.getStatus()).isEqualTo("active");
+        assertThat(idleItem.getStatus()).isEqualTo(BizStatus.ACTIVE);
+        verify(borrowRequestRepository).decideIfPending(eq(borrowId), eq(BizStatus.APPROVED), any());
         verify(notificationService, atLeastOnce()).create(any(), any(), any(), any(), any());
     }
 
@@ -260,9 +307,14 @@ class BorrowServiceTest {
         req.setApproved(false);
         req.setReason("物品暂时不方便");
 
+        when(borrowRequestRepository.findIdleIdById(borrowId)).thenReturn(Optional.of(idleId));
+        when(idleItemRepository.findByIdWithLock(idleId)).thenReturn(Optional.of(idleItem));
+        stubDecideIfPendingHit();
         when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.of(borrowRequest));
+        // 拒绝分支：该物品是否还有其他待审批申请（无 → 恢复为 online）
+        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(idleId), BizStatus.PENDING))
+                .thenReturn(Collections.emptyList());
         when(idleItemRepository.findById(idleId)).thenReturn(Optional.of(idleItem));
-        when(borrowRequestRepository.save(any(BorrowRequest.class))).thenReturn(borrowRequest);
         when(notificationService.create(any(), any(), any(), any(), any())).thenReturn(new NotificationDTO());
         when(userRepository.findById(ownerId)).thenReturn(Optional.of(owner));
         when(userRepository.findById(borrowerId)).thenReturn(Optional.of(borrower));
@@ -271,7 +323,9 @@ class BorrowServiceTest {
         BorrowResponseDTO result = borrowService.approveReject(ownerId, borrowId, req);
 
         // 断言
-        assertThat(result.getStatus()).isEqualTo("rejected");
+        assertThat(result.getStatus()).isEqualTo(BizStatus.REJECTED);
+        assertThat(idleItem.getStatus()).isEqualTo(BizStatus.ONLINE);
+        verify(borrowRequestRepository).decideIfPending(eq(borrowId), eq(BizStatus.REJECTED), any());
         verify(notificationService, atLeastOnce()).create(any(), any(), any(), any(), any());
     }
 
@@ -283,8 +337,8 @@ class BorrowServiceTest {
         req.setApproved(true);
         Long otherUserId = 99L;
 
-        when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.of(borrowRequest));
-        when(idleItemRepository.findById(idleId)).thenReturn(Optional.of(idleItem));
+        when(borrowRequestRepository.findIdleIdById(borrowId)).thenReturn(Optional.of(idleId));
+        when(idleItemRepository.findByIdWithLock(idleId)).thenReturn(Optional.of(idleItem));
 
         // 执行 & 断言
         assertThatThrownBy(() -> borrowService.approveReject(otherUserId, borrowId, req))
@@ -293,15 +347,16 @@ class BorrowServiceTest {
     }
 
     @Test
-    @DisplayName("审批 - 申请已被处理时抛出异常")
+    @DisplayName("审批 - 申请已被处理（并发重复审批后到者）时抛出异常")
     void should_throwException_when_alreadyProcessed() {
         // 准备
-        borrowRequest.setStatus(BizStatus.APPROVED);
         ApproveRequest req = new ApproveRequest();
         req.setApproved(true);
 
-        when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.of(borrowRequest));
-        when(idleItemRepository.findById(idleId)).thenReturn(Optional.of(idleItem));
+        when(borrowRequestRepository.findIdleIdById(borrowId)).thenReturn(Optional.of(idleId));
+        when(idleItemRepository.findByIdWithLock(idleId)).thenReturn(Optional.of(idleItem));
+        // 条件更新命中 0 行 → 申请已被他人处理
+        when(borrowRequestRepository.decideIfPending(eq(borrowId), anyString(), any())).thenReturn(0);
 
         // 执行 & 断言
         assertThatThrownBy(() -> borrowService.approveReject(ownerId, borrowId, req))

@@ -35,6 +35,12 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
+/**
+ * 互助求助业务逻辑 — 发布、浏览、搜索、申请接单、审批、完成、编辑、下架。
+ *
+ * <p>涉及求助状态变更的写入口（申请、审批、编辑、下架）统一使用求助行悲观锁
+ * （{@code findByIdWithLock}）串行化，避免并发下互相覆盖状态。</p>
+ */
 @Service
 @Transactional
 public class HelpService {
@@ -139,10 +145,49 @@ public class HelpService {
                 .build();
     }
 
-    public HelpResponseDTO getDetail(Long helpId) {
+    /**
+     * 获取求助详情，可选带上当前用户对该求助的申请状态。
+     *
+     * @param helpId        求助 ID
+     * @param currentUserId 当前用户 ID（可为 null，表示未登录/无身份）
+     * @return 求助详情（含发布者统计信息与当前用户的申请状态）
+     * @throws BizException 求助不存在时抛出
+     */
+    public HelpResponseDTO getDetail(Long helpId, Long currentUserId) {
         HelpRequest helpRequest = helpRequestRepository.findById(helpId)
                 .orElseThrow(() -> new BizException("求助信息不存在"));
-        return enrichWithUserStats(toDTO(helpRequest));
+        HelpResponseDTO dto = enrichWithUserStats(toDTO(helpRequest));
+
+        // 附带当前用户的申请状态：C端据此在重新进入页面后仍能正确禁用「我来帮忙」按钮
+        if (currentUserId != null) {
+            dto.setUserApplyStatus(resolveUserApplyStatus(helpId, currentUserId));
+        }
+
+        return dto;
+    }
+
+    /**
+     * 取当前用户对该求助的申请状态。
+     *
+     * <p>同一用户可能存在多条历史申请（被拒后重新申请），此时优先返回仍有效的那条
+     * （pending/approved/completed）；只有全部已拒绝时才返回 rejected。
+     * 依据：被拒绝的申请允许重新提交，C端不应据此禁用按钮。</p>
+     *
+     * @param helpId   求助 ID
+     * @param helperId 帮助者用户 ID
+     * @return 申请状态；该用户从未申请时返回 null
+     */
+    private String resolveUserApplyStatus(Long helpId, Long helperId) {
+        String rejectedStatus = null;
+        List<HelpApplication> myApplications = helpApplicationRepository
+                .findByHelpIdAndHelperIdOrderByCreatedAtDesc(helpId, helperId);
+        for (HelpApplication application : myApplications) {
+            if (!BizStatus.REJECTED.equals(application.getStatus())) {
+                return application.getStatus();
+            }
+            rejectedStatus = application.getStatus();
+        }
+        return rejectedStatus;
     }
 
     public PageDTO<HelpResponseDTO> search(Long userId, String keyword, int page, int size) {
@@ -174,8 +219,18 @@ public class HelpService {
         return requests.stream().map(this::toDTO).collect(Collectors.toList());
     }
 
+    /**
+     * 下架求助（状态转为草稿），并作废该求助下所有待处理的帮助申请。
+     *
+     * <p>与申请/编辑/审批共用同一把求助行锁，保证状态流转串行。</p>
+     *
+     * @param userId 操作用户 ID（须为求助发布者）
+     * @param helpId 求助 ID
+     * @return 下架后的求助
+     * @throws BizException 求助不存在或非本人操作时抛出
+     */
     public HelpResponseDTO delist(Long userId, Long helpId) {
-        HelpRequest helpRequest = helpRequestRepository.findById(helpId)
+        HelpRequest helpRequest = helpRequestRepository.findByIdWithLock(helpId)
                 .orElseThrow(() -> new BizException("求助信息不存在"));
 
         if (!helpRequest.getUserId().equals(userId)) {
@@ -223,7 +278,7 @@ public class HelpService {
                 .orElseThrow(() -> new BizException("求助信息不存在"));
 
         if (!BizStatus.ONLINE.equals(helpRequest.getStatus())) {
-            throw new BizException("该求助已被其他人抢先申请，请浏览其他求助");
+            throw new BizException(unavailableMessage(helpRequest.getStatus()));
         }
 
         if (helpRequest.getUserId().equals(helperId)) {
@@ -263,23 +318,36 @@ public class HelpService {
         return toDTO(helpRequest);
     }
 
+    /**
+     * 审批帮助申请：同意或拒绝。
+     *
+     * <p>并发策略：先用投影查询取出所属求助 ID（不加载申请实体，避免一级缓存中的旧值
+     * 影响后续校验），再对求助行加悲观写锁——与「申请」「编辑」「下架」共用同一把锁，
+     * 使状态流转串行。申请状态本身用条件更新判定（{@link HelpApplicationRepository#decideIfPending}），
+     * 因此并发重复审批只有一次能生效。全程只持有一把锁，不会与其他写路径形成互相等待。</p>
+     *
+     * @param ownerId 求助发布者用户 ID
+     * @param appId   帮助申请 ID
+     * @param req     审批请求（approved 为 true 表示同意）
+     * @return 审批后的求助信息
+     * @throws BizException 申请或求助不存在、无权操作或该申请已被处理时抛出
+     */
     public HelpResponseDTO approveReject(Long ownerId, Long appId, ApproveRequest req) {
-        HelpApplication application = helpApplicationRepository.findById(appId)
+        Long helpId = helpApplicationRepository.findHelpIdById(appId)
                 .orElseThrow(() -> new BizException("帮助申请不存在"));
 
-        HelpRequest helpRequest = helpRequestRepository.findById(application.getHelpId())
+        HelpRequest helpRequest = helpRequestRepository.findByIdWithLock(helpId)
                 .orElseThrow(() -> new BizException("求助信息不存在"));
 
         if (!helpRequest.getUserId().equals(ownerId)) {
             throw new BizException("无权操作该申请");
         }
 
-        if (!BizStatus.PENDING.equals(application.getStatus())) {
+        int updated = helpApplicationRepository.decideIfPending(appId,
+                req.getApproved() ? BizStatus.APPROVED : BizStatus.REJECTED);
+        if (updated == 0) {
             throw new BizException("该申请已被处理，无法重复操作");
         }
-
-        application.setStatus(req.getApproved() ? BizStatus.APPROVED : BizStatus.REJECTED);
-        helpApplicationRepository.save(application);
 
         // 同步 HelpRequest 状态
         if (req.getApproved()) {
@@ -288,12 +356,15 @@ public class HelpService {
         } else {
             // 拒绝时：若该求助没有其他待审批的申请，恢复为 online（首页重新可见）
             List<HelpApplication> pendingForHelp = helpApplicationRepository
-                    .findByHelpIdAndStatus(application.getHelpId(), BizStatus.PENDING);
+                    .findByHelpIdAndStatus(helpId, BizStatus.PENDING);
             if (pendingForHelp.isEmpty()) {
                 helpRequest.setStatus(BizStatus.ONLINE);
                 helpRequestRepository.save(helpRequest);
             }
         }
+
+        HelpApplication application = helpApplicationRepository.findById(appId)
+                .orElseThrow(() -> new BizException("帮助申请不存在"));
 
         if (req.getApproved()) {
             createNotification(application.getHelperId(), NotificationType.HELP_APPROVED,
@@ -309,6 +380,25 @@ public class HelpService {
         }
 
         return toDTO(helpRequest);
+    }
+
+    /**
+     * 按求助当前状态生成申请失败的提示文案。
+     *
+     * <p>「审核中」「已下架」与「被别人抢先申请」是三种不同的业务原因，
+     * 统一提示会让用户误以为求助被他人抢走。</p>
+     *
+     * @param status 求助当前状态
+     * @return 对应的提示文案
+     */
+    private static String unavailableMessage(String status) {
+        if (BizStatus.PENDING_REVIEW.equals(status)) {
+            return "该求助正在审核中，暂时无法申请，请稍后再试";
+        }
+        if (BizStatus.DRAFT.equals(status) || BizStatus.OFFLINE.equals(status)) {
+            return "该求助已下架，无法申请";
+        }
+        return "该求助已被其他人抢先申请，请浏览其他求助";
     }
 
     /**
@@ -355,14 +445,26 @@ public class HelpService {
      * 更新求助信息（编辑保存或重新上架）。
      * 编辑后自动退回 pending_review 并重新排队 AI 审核，
      * 审核通过后自动上线。
+     *
+     * <p>加锁与门禁：与申请/审批/下架共用同一把求助行锁，锁内先拒绝两种不允许编辑的状态——
+     * 有住户正在申请时编辑，会让申请人看到与申请时不一致的内容，且编辑与申请互相覆盖；
+     * 审核中编辑，会让后台审核任务把旧内容的结论用到新内容上。二者一并挡在锁内。</p>
+     *
+     * @param userId 操作用户 ID（须为求助发布者）
+     * @param helpId 求助 ID
+     * @param req    编辑请求体
+     * @return 编辑后的求助
+     * @throws BizException 求助不存在、非本人操作、有待处理申请或正在审核时抛出
      */
     public HelpResponseDTO update(Long userId, Long helpId, HelpRequestDTO req) {
-        HelpRequest helpRequest = helpRequestRepository.findById(helpId)
+        HelpRequest helpRequest = helpRequestRepository.findByIdWithLock(helpId)
                 .orElseThrow(() -> new BizException("求助信息不存在"));
 
         if (!helpRequest.getUserId().equals(userId)) {
             throw new BizException("无权操作该求助");
         }
+
+        assertEditable(helpId, helpRequest);
 
         // 保存原始状态，用于判断是否需要重新审核
         String originalStatus = helpRequest.getStatus();
@@ -414,6 +516,28 @@ public class HelpService {
         }
 
         return toDTO(helpRequest);
+    }
+
+    /**
+     * 编辑前置门禁 — 判定该求助当前是否允许被发布者编辑（须在求助行锁内调用）。
+     *
+     * <p>两类状态禁止编辑：有住户正在申请、内容仍在审核中。前者避免申请人看到的帖子
+     * 与申请时不一致以及编辑与申请互相覆盖；后者保证审核期间内容不变，
+     * 后台审核任务的结论必然对应它实际审过的那份内容。</p>
+     *
+     * @param helpId      求助 ID
+     * @param helpRequest 已加锁的求助实体
+     * @throws BizException 存在待处理申请或正在审核时抛出
+     */
+    private void assertEditable(Long helpId, HelpRequest helpRequest) {
+        List<HelpApplication> pendingApplications = helpApplicationRepository
+                .findByHelpIdAndStatus(helpId, BizStatus.PENDING);
+        if (!pendingApplications.isEmpty()) {
+            throw new BizException("该求助有住户正在申请，请先处理申请后再编辑");
+        }
+        if (BizStatus.PENDING_REVIEW.equals(helpRequest.getStatus())) {
+            throw new BizException("该帖子正在审核中，请等审核完成后再编辑");
+        }
     }
 
     public List<HelpResponseDTO> getMyApplications(Long userId) {
