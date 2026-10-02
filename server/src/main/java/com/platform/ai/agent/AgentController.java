@@ -50,6 +50,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * </ul>
  *
  * <p>安全：内存限流防刷 API 额度；SSE error 事件只透出白名单业务文案，内部细节仅记日志。</p>
+ *
+ * <p>并发：同一住户同时只允许一个 /chat 在飞（{@link AgentTurnGuard} 请求级门，前端 sending 之外的兜底）；
+ * 热会话的读-改-写由 {@link AgentSessionGuard} 按用户串行化，覆盖 /chat、/exit、/resume 与归档调度器。</p>
  */
 @Slf4j
 @RestController
@@ -65,6 +68,7 @@ public class AgentController {
     private final AgentToolDispatcher toolDispatcher;
     private final MemoryCompressionService memoryCompressionService;
     private final MessagePreFilter preFilter;
+    private final AgentTurnGuard turnGuard;
 
     public AgentController(AgentService agentService,
                            ArchiveService archiveService,
@@ -75,7 +79,8 @@ public class AgentController {
                            IntentRouter intentRouter,
                            AgentToolDispatcher toolDispatcher,
                            MemoryCompressionService memoryCompressionService,
-                           MessagePreFilter preFilter) {
+                           MessagePreFilter preFilter,
+                           AgentTurnGuard turnGuard) {
         this.agentService = agentService;
         this.archiveService = archiveService;
         this.objectMapper = objectMapper;
@@ -85,10 +90,12 @@ public class AgentController {
         this.toolDispatcher = toolDispatcher;
         this.memoryCompressionService = memoryCompressionService;
         this.preFilter = preFilter;
+        this.turnGuard = turnGuard;
     }
 
     /**
-     * 流式对话 — SSE 事件流（限流超限时返回 SSE error 事件，HTTP 状态仍为 200）。
+     * 流式对话 — SSE 事件流。限流超限、以及同一用户已有请求在飞（对话门拒绝）时，均返回 SSE error 事件，
+     * HTTP 状态仍为 200。
      *
      * @param req  用户消息
      * @param auth 当前认证用户
@@ -116,16 +123,40 @@ public class AgentController {
             return reject;
         }
 
-        // SSE 长连接（真流式，逐分块推送）：300 秒为兜底上限，正常路径由 doOnComplete 发 end 后主动 complete
+        // SSE 长连接（真流式，逐分块推送）：300 秒为兜底上限，正常路径由 doOnComplete 发 end 后主动 complete。
+        // 刻意在获取对话门之前建流：这样「已拿到门但建流失败」的残留路径不存在，且被门拒绝时可直接复用它回错
         SseEmitter emitter = new SseEmitter(300_000L);
         // 客户端断开 / 超时：确保 emitter 完成。否则超时后仍在跑的内容流每次 send 都会抛异常，
         // 从 doOnNext 逃逸到 Reactor 的 onErrorDropped，污染日志
         emitter.onTimeout(emitter::complete);
-        // 连接完成时，记录日志（可用于统计 SSE 连接时长）
-        emitter.onCompletion(() -> log.debug("Agent SSE 流结束: userId={}", userId));
 
-        // 提交任务 → 线程池挑选线程执行
-        agentExecutor.execute(() -> {
+        // 对话门：同一住户同时只允许一个 /chat 在飞。前端已用 sending 禁用发送按钮，
+        // 此处兜底绕过前端的场景（重试、弱网重发、脚本重放），否则两条请求会并发改写同一份热会话。
+        // 与限流的先后是刻意的：先限流后过门，被门拒绝的请求同样消耗配额（防连点刷量）
+        AgentTurnGuard.TurnToken token = turnGuard.tryAcquire(userId);
+        if (token == null) {
+            try {
+                emitter.send(SseEmitter.event().name(AgentEventType.ERROR.getValue())
+                        .data(toJson(AgentEventType.ERROR, "上一条回复还在生成中，请稍候")));
+            } catch (IOException e) {
+                log.debug("对话门拒绝响应发送失败: userId={}", userId, e);
+            }
+            // 立即完成 SSE 流，避免客户端长时间挂起（本就未取得门，无需释放）
+            emitter.complete();
+            return emitter;
+        }
+
+        // 连接完成时释放对话门并记录日志：本回调覆盖正常完成、completeWithError、onTimeout 与客户端断开。
+        // release 带令牌——按引用相等校验所有权，重复释放或「门已被下个请求重新获得」时都不会误清
+        emitter.onCompletion(() -> {
+            turnGuard.release(userId, token);
+            log.debug("Agent SSE 流结束: userId={}", userId);
+        });
+
+        // 提交任务 → 线程池挑选线程执行。
+        // 用命名 Runnable + 外层 try 而非直接传 lambda：若线程池将来改用抛出型拒绝策略
+        // （本项目审核池已有先例），必须在此归还对话门，否则该用户会被永久拒绝到进程重启
+        Runnable chatTask = () -> {
             try {
                 // 发送 SSE 事件
                 safeSend(emitter, AgentEventType.START, Map.of("message", req.getMessage()));
@@ -222,8 +253,16 @@ public class AgentController {
                                     userId, Math.max(firstTokenMs.get(), 0L), System.currentTimeMillis() - streamStartMs);
                             // sources 事件在 answer 分块之后发出（无命中发空列表）
                             safeSend(emitter, AgentEventType.SOURCES, sources);
-                            // 回填会话：历史保留展示前的原文 guarded（敏感词未替换，避免掩码污染后续上下文判断）
-                            agentService.completeStream(userId, req.getMessage(), guarded, sources, action, stream.requestId());
+                            // 回填会话：历史保留展示前的原文 guarded（敏感词未替换，避免掩码污染后续上下文判断）。
+                            // 回复此时已完整送达，落库失败不再打扰用户：只记 ERROR 日志、照常发 END（本轮历史未保存，
+                            // 靠日志与热会话"连续同角色消息"告警定位）。必须显式 catch——doOnComplete 回调抛出的异常
+                            // 会被 Reactor 转成 onError 信号传给下游 doOnError，反而发出 error 事件，与约定相反
+                            try {
+                                agentService.completeStream(userId, req.getMessage(), guarded, sources, action, stream.requestId());
+                            } catch (Exception e) {
+                                log.error("Agent 回复已送达但会话落库失败（本轮历史未保存）: userId={}, requestId={}",
+                                        userId, stream.requestId(), e);
+                            }
                             // 端到端总耗时：含前置准备（拦截/意图/记忆检索）+ 流式生成 + 后处理 + 历史回填
                             log.info("Agent 对话端到端耗时: userId={}, 总耗时={}ms", userId, System.currentTimeMillis() - requestStartMs);
                             safeSend(emitter, AgentEventType.END, Map.of("done", true));
@@ -236,6 +275,8 @@ public class AgentController {
                             toolDispatcher.reset(stream.requestId());
                             String safeMessage = toSafeMessage(e);
                             safeSend(emitter, AgentEventType.ERROR, safeMessage);
+                            // 补一次对话门释放：正常由 onCompletion 兜底，此处防其未触发
+                            turnGuard.release(userId, token);
                             emitter.completeWithError(e);
                         })
                         .subscribe();
@@ -244,9 +285,20 @@ public class AgentController {
                 log.error("Agent 对话失败: userId={}", userId, e);
                 String safeMessage = toSafeMessage(e);
                 safeSend(emitter, AgentEventType.ERROR, safeMessage);
+                // 同上：防 onCompletion 未触发导致对话门残留
+                turnGuard.release(userId, token);
                 emitter.completeWithError(e);
             }
-        });
+        };
+        try {
+            agentExecutor.execute(chatTask);
+        } catch (RuntimeException e) {
+            // 任务未能提交（如线程池关闭后拒绝）：emitter 不会被任何回调收尾，必须在此归还对话门，
+            // 否则该用户后续所有 /chat 都会被门拒绝到进程重启
+            turnGuard.release(userId, token);
+            emitter.completeWithError(e);
+            throw e;
+        }
 
         return emitter;
     }

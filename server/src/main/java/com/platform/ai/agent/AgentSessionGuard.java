@@ -1,12 +1,11 @@
 package com.platform.ai.agent;
 
+import com.platform.common.BizException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
@@ -30,15 +29,22 @@ import java.util.function.Supplier;
  * <p><b>硬性约束</b>：被本锁保护的临界区内，最后一次 saveSession 之后不得再有任何 Redis 热会话写入。
  * 锁在 {@code @Transactional} 提交前释放，该不变量是「解锁后不回写覆盖后到者」的唯一依据。</p>
  *
+ * <p><b>等待超时即明确失败</b>：拿不到锁时抛 {@link BizException}，<b>不再降级为不加锁执行</b>。
+ * 降级会静默放弃互斥——等于放任这套锁本要防止的丢更新发生，且事后无人知晓；明确失败把问题暴露出来。
+ * 失败的可见程度随调用点而异：请求早期阶段（问候写入、清空指令归档）位于 Controller 的 try 块内，
+ * 会走 SSE error 事件告知用户；流式回复落库（{@code completeStream}）发生在回复已完整送达之后，
+ * 由 Controller 捕获后只记 ERROR 日志、照常结束，表现为本轮历史未保存。</p>
+ *
+ * <p><b>与 {@link AgentTurnGuard} 的分工</b>：那道门是请求级的，管「同用户同时只允许一个 /chat 在飞」，
+ * 覆盖整个 SSE 生命周期；本锁是写入级的，管「同一份 Redis 状态的读-改-写串行化」，覆盖 /chat、
+ * /exit、/resume 与归档调度器全部写路径。门挡不住后三者（都不是 /chat，也没有前端可拦），故本锁不可撤。</p>
+ *
  * <p>单实例部署用进程内锁即可；多实例时需换 Redis 分布式锁（v2，与 DocumentProcessGuard 同口径）。</p>
  *
  * <p>锁对象按 userId 缓存且<b>不清理</b>：key 空间受用户表规模约束（非时间/会话数维度增长），
  * 单条 ReentrantLock 约百字节、1 万用户约 1MB；而清理存在「刚移除又被别的线程 computeIfAbsent
  * 拿到新锁 → 同一用户两把锁并存」的竞态，即使使用两参 remove(key, value) 也无法消除
  * （等待队列为空与 acquire 之间存在窗口），收益远小于风险。</p>
- *
- * <p>等待超过 session-lock-timeout-ms 后<b>降级为不加锁执行</b>：与 Redis 不可用降级同口径，
- * 最坏情况等价于改造前行为，绝不因锁超时抛异常阻断对话主链路或影响 SSE 流。</p>
  */
 @Slf4j
 @Component
@@ -47,16 +53,13 @@ public class AgentSessionGuard {
     /** 锁等待超过该毫秒数即记 WARN（仅用于观测锁竞争，不改变行为） */
     private static final long LOCK_SLOW_WARN_MS = 50L;
 
+    /** 拿不到锁时抛出的业务文案（BizException 的 message 经 Controller 白名单透出给前端） */
+    private static final String BUSY_MESSAGE = "会话正忙，请稍后重试";
+
     /** 每用户一把可重入锁（不清理，理由见类注释） */
     private final Map<Long, ReentrantLock> locks = new ConcurrentHashMap<>();
 
-    /**
-     * 本线程已降级（未持锁）执行的用户 ID：嵌套调用据此跳过等待，避免外层 5s + 内层 5s 叠加超时。
-     * 最外层降级退出时移除本条，集合为空时整体 remove，防止线程池复用线程时残留。
-     */
-    private final ThreadLocal<Set<Long>> degradedUsers = ThreadLocal.withInitial(HashSet::new);
-
-    /** 获取锁的最长等待毫秒数（超时降级不加锁执行）。字段直接初始化，使未经过 Spring 注入的单元测试也能得到合理超时 */
+    /** 获取锁的最长等待毫秒数（超时抛业务异常）。字段直接初始化，使未经过 Spring 注入的单元测试也能得到合理超时 */
     @Value("${ai.agent.session-lock-timeout-ms:5000}")
     private long lockTimeoutMs = 5000L;
 
@@ -67,56 +70,39 @@ public class AgentSessionGuard {
      * @param action 临界区动作（Redis 读-改-写整段）
      * @param <T>    返回值类型
      * @return 动作返回值
+     * @throws BizException 等待锁超时或被中断，此时 action 未执行
      */
     public <T> T runExclusive(Long userId, Supplier<T> action) {
         if (userId == null) {
-            return action.get();
-        }
-        Set<Long> degraded = degradedUsers.get();
-        if (degraded.contains(userId)) {
-            // 本线程外层已降级：嵌套调用直接执行，不再重复等待一个完整超时
             return action.get();
         }
         ReentrantLock lock = locks.computeIfAbsent(userId, k -> new ReentrantLock());
         // 嵌套调用由 ReentrantLock 自身处理：本线程已持锁时 tryLock 立即返回 true 并递增持有计数，
         // 不进入等待与超时逻辑（不能用 isHeldByCurrentThread() 做快速路径——它只查询不计数，
         // 会让配对的 unlock 提前释放一层锁，嵌套场景抛 IllegalMonitorStateException）
-        boolean locked;
-        boolean interrupted = false;
         long startNs = System.nanoTime();
+        boolean locked;
         try {
             locked = lock.tryLock(lockTimeoutMs, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
+            // 恢复中断标志后再失败，不吞掉「被中断」这一事实
             Thread.currentThread().interrupt();
-            locked = false;
-            interrupted = true;
-            log.warn("Agent 会话锁等待被中断（降级不加锁执行）: userId={}", userId);
+            log.warn("Agent 会话锁等待被中断（本次操作未执行）: userId={}", userId);
+            throw new BizException(BUSY_MESSAGE, e);
         }
         long waitedMs = (System.nanoTime() - startNs) / 1_000_000L;
-        if (locked) {
-            if (waitedMs >= LOCK_SLOW_WARN_MS) {
-                log.warn("Agent 会话锁等待耗时偏长: userId={}, 等待={}ms", userId, waitedMs);
-            }
-        } else {
-            degraded.add(userId);
-            // 中断分支已单独记过分因日志，此处不再补一条「超时=5000ms」——那条文案与中断的事实不符
-            if (!interrupted) {
-                log.warn("Agent 会话锁等待超时（降级不加锁执行，存在并发丢更新风险）: userId={}, 超时={}ms",
-                        userId, lockTimeoutMs);
-            }
+        if (!locked) {
+            log.warn("Agent 会话锁等待超时（本次操作未执行）: userId={}, 超时={}ms, 实际等待={}ms",
+                    userId, lockTimeoutMs, waitedMs);
+            throw new BizException(BUSY_MESSAGE);
+        }
+        if (waitedMs >= LOCK_SLOW_WARN_MS) {
+            log.warn("Agent 会话锁等待耗时偏长: userId={}, 等待={}ms", userId, waitedMs);
         }
         try {
             return action.get();
         } finally {
-            if (locked) {
-                lock.unlock();
-            } else {
-                degraded.remove(userId);
-                if (degraded.isEmpty()) {
-                    // 池化线程防残留：空集合整体移除，避免 ThreadLocal 持有失效集合
-                    degradedUsers.remove();
-                }
-            }
+            lock.unlock();
         }
     }
 
@@ -129,6 +115,7 @@ public class AgentSessionGuard {
      *
      * @param userId 住户用户 ID（null 时不加锁直接执行）
      * @param action 临界区动作
+     * @throws BizException 等待锁超时或被中断，此时 action 未执行
      */
     public void executeExclusive(Long userId, Runnable action) {
         runExclusive(userId, () -> {

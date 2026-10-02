@@ -92,7 +92,7 @@ community-platform/
 │       │   │   ├── search/    # SemanticSearchService, KnowledgeRetrievalService, KnowledgeHit, RerankerService（RAG 检索 + 语义重排）
 │       │   │   ├── document/  # 文档导入：DocumentParserRegistry + pdf/docx/md/csv/xlsx/txt 解析器 + ocr/VisionOcrClient + 分片/清洗/标题派生 + DocumentProcessGuard（幂等防重）
 │       │   │   ├── common/    # AiApiInvoker（LLM 调用熔断/缓存）, PromptRepository（提示词目录读取）
-│       │   │   └── agent/     # AgentController/Service/SessionService/AgentSessionGuard/ArchiveService/ArchiveScheduler/ArchiveTiming/RateLimitService/PromptBuilder/ToolDispatcher/IntentRouter/IntentTagStreamFilter/MessagePreFilter/MemoryCompressionService/MemoryRetrievalService（小邻对话，Redis 会话记忆 + 滑动窗口归档 + 长期记忆压缩与记忆注入 + 恢复 + SSE 流式 + 读工具调用 + 写操作动作卡片 + 意图标记跨分片过滤 + 限流 + 消息前置拦截）
+│       │   │   └── agent/     # AgentController/Service/SessionService/AgentSessionGuard/AgentTurnGuard/ArchiveService/ArchiveScheduler/ArchiveTiming/RateLimitService/PromptBuilder/ToolDispatcher/IntentRouter/IntentTagStreamFilter/MessagePreFilter/MemoryCompressionService/MemoryRetrievalService（小邻对话，Redis 会话记忆 + 滑动窗口归档 + 长期记忆压缩与记忆注入 + 恢复 + SSE 流式 + 读工具调用 + 写操作动作卡片 + 意图标记跨分片过滤 + 限流 + 消息前置拦截 + 同用户对话请求互斥）
 │       │   ├── model/entity/  # 20 JPA 实体（Tenant, Building, Unit, Room, User,
 │       │   │                  #   IdleItem, HelpRequest, HelpApplication,
 │       │   │                  #   BorrowRequest, Message, Notification,

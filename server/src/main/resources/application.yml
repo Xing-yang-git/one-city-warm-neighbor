@@ -129,7 +129,7 @@ ai:
     rate-limit-per-minute: 10
     rate-limit-per-day: 100
     session-ttl-hours: 24
-    session-lock-timeout-ms: 5000 # 热会话进程内锁等待上限（超时降级不加锁执行，存在丢更新风险，记 WARN）
+    session-lock-timeout-ms: 5000 # 热会话进程内锁等待上限（超时抛 BizException 明确失败，不再降级不加锁执行）
     knowledge-top-k: 5
     # 语义相似度阈值（余弦距离）：原 0.45 按书面语料标定，对口语化提问过严，实测约 1/4 查询零召回。
     # 30 条评测集实测（工具见 RetrievalEval，含上下游降级差异，同配置多次运行波动约 3~5 个百分点）：

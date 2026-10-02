@@ -4,6 +4,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.platform.common.BizException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -12,7 +13,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -20,12 +20,14 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * AgentSessionGuard 用户级互斥锁单元测试 — 覆盖可重入、串行化、降级与 ThreadLocal 清理。
+ * AgentSessionGuard 用户级互斥锁单元测试 — 覆盖可重入、串行化、超时/中断明确失败与异常释放。
  *
  * <p>AgentSessionGuard 是<b>被测对象本身</b>，全程使用真实实例而非 Mock（Mock 的 runExclusive
  * 默认返回 null 会让临界区逻辑根本不执行）。</p>
@@ -38,7 +40,7 @@ class AgentSessionGuardTest {
     /** 真实被测对象，不 Mock */
     private AgentSessionGuard guard;
 
-    /** 捕获 AgentSessionGuard 日志的 logback appender，用于验证降级 WARN */
+    /** 捕获 AgentSessionGuard 日志的 logback appender，用于验证超时 WARN */
     private Logger guardLogger;
     private ListAppender<ILoggingEvent> logAppender;
 
@@ -64,15 +66,26 @@ class AgentSessionGuardTest {
         return (Map<Long, ReentrantLock>) ReflectionTestUtils.getField(guard, "locks");
     }
 
-    @SuppressWarnings("unchecked")
-    private ThreadLocal<Set<Long>> degradedUsers() {
-        return (ThreadLocal<Set<Long>>) ReflectionTestUtils.getField(guard, "degradedUsers");
-    }
-
-    /** 断言日志中出现过含指定关键字（如「降级」）的 WARN */
+    /** 断言日志中出现过含指定关键字的 WARN */
     private boolean hasWarnContaining(String keyword) {
         return logAppender.list.stream()
                 .anyMatch(e -> e.getLevel() == Level.WARN && e.getFormattedMessage().contains(keyword));
+    }
+
+    /** 启动一个占住 USER_ID 锁的线程，直到返回的 latch 被 countDown 才释放 */
+    private Thread startLockHolder(CountDownLatch holderIn, CountDownLatch releaseHolder) throws InterruptedException {
+        Thread holder = new Thread(() -> guard.runExclusive(USER_ID, () -> {
+            holderIn.countDown();
+            try {
+                releaseHolder.await(3, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return null;
+        }));
+        holder.start();
+        assertThat(holderIn.await(2, TimeUnit.SECONDS)).isTrue();
+        return holder;
     }
 
     // ==================== 可重入 ====================
@@ -198,112 +211,90 @@ class AgentSessionGuardTest {
         }
     }
 
-    // ==================== 超时降级 ====================
+    // ==================== 超时 / 中断明确失败 ====================
 
     @Test
-    @DisplayName("锁超时 - 等待超时后降级不加锁执行并记 WARN")
-    void should_degradeAndWarn_when_lockTimeout() throws Exception {
+    @DisplayName("锁等待超时 - 抛 BizException 且动作不执行")
+    void should_throwBizException_when_lockTimeout() throws Exception {
         // Arrange：小超时，持锁线程驻留 3s
         ReflectionTestUtils.setField(guard, "lockTimeoutMs", 100L);
         CountDownLatch holderIn = new CountDownLatch(1);
         CountDownLatch releaseHolder = new CountDownLatch(1);
-        Thread holder = new Thread(() -> guard.runExclusive(USER_ID, () -> {
-            holderIn.countDown();
-            try {
-                releaseHolder.await(3, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            return null;
-        }));
-        holder.start();
-        assertThat(holderIn.await(2, TimeUnit.SECONDS)).isTrue();
+        Thread holder = startLockHolder(holderIn, releaseHolder);
 
-        // Act
+        // Act：超时后应明确失败，而不是降级执行
         AtomicBoolean actionRan = new AtomicBoolean(false);
         long start = System.nanoTime();
-        String result = guard.runExclusive(USER_ID, () -> {
+        assertThatThrownBy(() -> guard.runExclusive(USER_ID, () -> {
             actionRan.set(true);
-            return "degraded";
-        });
+            return "never";
+        })).isInstanceOf(BizException.class);
         long elapsedMs = (System.nanoTime() - start) / 1_000_000L;
 
         releaseHolder.countDown();
         holder.join(2000);
 
-        // Assert：超时后仍执行 action，且在约一个超时内返回（远早于持锁方 3s 释放）
-        assertThat(result).isEqualTo("degraded");
-        assertThat(actionRan).isTrue();
+        // Assert：动作未执行、在约一个超时内失败（远早于持锁方 3s 释放）、且记了超时 WARN
+        assertThat(actionRan).isFalse();
         assertThat(elapsedMs).isLessThan(400L);
-        assertThat(hasWarnContaining("降级")).isTrue();
+        assertThat(hasWarnContaining("超时")).isTrue();
     }
 
     @Test
-    @DisplayName("降级后嵌套 - 内层不再重复等待一个完整超时")
-    void should_notRepeatTimeout_when_nestedAfterDegrade() throws Exception {
-        // Arrange：小超时 300ms，持锁线程驻留 3s
-        ReflectionTestUtils.setField(guard, "lockTimeoutMs", 300L);
+    @DisplayName("等待锁被中断 - 恢复中断标志并抛 BizException，动作不执行")
+    void should_rethrowAndKeepInterrupt_when_waitInterrupted() throws Exception {
+        // Arrange：持锁线程驻留 3s，等待线程随之阻塞在 tryLock
         CountDownLatch holderIn = new CountDownLatch(1);
         CountDownLatch releaseHolder = new CountDownLatch(1);
-        Thread holder = new Thread(() -> guard.runExclusive(USER_ID, () -> {
-            holderIn.countDown();
-            try {
-                releaseHolder.await(3, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            return null;
-        }));
-        holder.start();
-        assertThat(holderIn.await(2, TimeUnit.SECONDS)).isTrue();
+        Thread holder = startLockHolder(holderIn, releaseHolder);
 
-        // Act：外层超时降级后，内层嵌套调用应直接执行
-        AtomicInteger innerRuns = new AtomicInteger();
-        long start = System.nanoTime();
-        guard.runExclusive(USER_ID, () -> {
-            guard.runExclusive(USER_ID, () -> {
-                innerRuns.incrementAndGet();
-                return null;
-            });
-            return null;
+        AtomicBoolean actionRan = new AtomicBoolean(false);
+        AtomicReference<Throwable> thrown = new AtomicReference<>();
+        AtomicBoolean interruptFlagKept = new AtomicBoolean(false);
+        Thread waiter = new Thread(() -> {
+            try {
+                guard.runExclusive(USER_ID, () -> {
+                    actionRan.set(true);
+                    return null;
+                });
+            } catch (BizException e) {
+                thrown.set(e);
+                // 中断标志应由 guard 在抛出前恢复，供上层感知
+                interruptFlagKept.set(Thread.currentThread().isInterrupted());
+            }
         });
-        long elapsedMs = (System.nanoTime() - start) / 1_000_000L;
+        waiter.start();
+
+        // Act：待其进入等待后中断
+        Thread.sleep(150);
+        waiter.interrupt();
+        waiter.join(2000);
 
         releaseHolder.countDown();
         holder.join(2000);
 
-        // Assert：内层确实执行，且总耗时只含一次超时（约 300ms），远小于两倍超时的 600ms
-        assertThat(innerRuns.get()).isEqualTo(1);
-        assertThat(elapsedMs).isLessThan(500L);
+        // Assert：中断改为明确失败——抛 BizException、动作不执行、中断标志保持
+        assertThat(thrown.get()).isInstanceOf(BizException.class);
+        assertThat(actionRan).isFalse();
+        assertThat(interruptFlagKept).isTrue();
     }
 
     @Test
-    @DisplayName("降级执行结束 - ThreadLocal degradedUsers 不残留")
-    void should_removeDegradedUser_when_degradeCompletes() throws Exception {
-        // Arrange：小超时，持锁线程驻留
-        ReflectionTestUtils.setField(guard, "lockTimeoutMs", 100L);
-        CountDownLatch holderIn = new CountDownLatch(1);
-        CountDownLatch releaseHolder = new CountDownLatch(1);
-        Thread holder = new Thread(() -> guard.runExclusive(USER_ID, () -> {
-            holderIn.countDown();
-            try {
-                releaseHolder.await(3, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            return null;
-        }));
-        holder.start();
-        assertThat(holderIn.await(2, TimeUnit.SECONDS)).isTrue();
+    @DisplayName("动作自身抛异常 - 异常原样穿透且锁仍被正确释放")
+    void should_releaseLock_when_actionThrows() {
+        // Arrange：用于捕获临界区内的锁实例
+        AtomicReference<ReentrantLock> captured = new AtomicReference<>();
 
-        // Act：本线程超时降级执行
-        guard.runExclusive(USER_ID, () -> "degraded");
+        // Act & Assert：异常原样穿透，不被 guard 吞掉或包装
+        assertThatThrownBy(() -> guard.runExclusive(USER_ID, () -> {
+            captured.set(locks().get(USER_ID));
+            throw new IllegalStateException("action 内部失败");
+        })).isInstanceOf(IllegalStateException.class).hasMessage("action 内部失败");
 
-        releaseHolder.countDown();
-        holder.join(2000);
-
-        // Assert：withInitial 使 get() 恒非 null，故断言「集合为空」而非「为 null」
-        assertThat(degradedUsers().get()).isEmpty();
+        // Assert：锁已释放（finally 生效），未被后续调用阻塞
+        assertThat(captured.get().isLocked()).isFalse();
+        assertThat(captured.get().getHoldCount()).isZero();
+        assertThat(guard.runExclusive(USER_ID, () -> "again")).isEqualTo("again");
     }
 
     // ==================== 边界 ====================
@@ -352,45 +343,5 @@ class AgentSessionGuardTest {
         assertThat(heldDuringAction).isTrue();
         assertThat(captured[0].isLocked()).isFalse();
         assertThat(captured[0].getHoldCount()).isZero();
-    }
-
-    @Test
-    @DisplayName("等待锁被中断 - 恢复中断标志并降级执行 action")
-    void should_keepInterruptAndDegrade_when_waitInterrupted() throws Exception {
-        // Arrange：持锁线程驻留 3s，等待线程随之阻塞在 tryLock
-        CountDownLatch holderIn = new CountDownLatch(1);
-        CountDownLatch releaseHolder = new CountDownLatch(1);
-        Thread holder = new Thread(() -> guard.runExclusive(USER_ID, () -> {
-            holderIn.countDown();
-            try {
-                releaseHolder.await(3, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            return null;
-        }));
-        holder.start();
-        assertThat(holderIn.await(2, TimeUnit.SECONDS)).isTrue();
-
-        AtomicBoolean actionRan = new AtomicBoolean(false);
-        AtomicBoolean interruptedInsideAction = new AtomicBoolean(false);
-        Thread waiter = new Thread(() -> guard.runExclusive(USER_ID, () -> {
-            interruptedInsideAction.set(Thread.currentThread().isInterrupted());
-            actionRan.set(true);
-            return null;
-        }));
-        waiter.start();
-
-        // Act：待其进入等待后中断
-        Thread.sleep(150);
-        waiter.interrupt();
-        waiter.join(2000);
-
-        releaseHolder.countDown();
-        holder.join(2000);
-
-        // Assert：中断被转换为降级——action 仍执行，且中断标志在 action 内保持为 true
-        assertThat(actionRan).isTrue();
-        assertThat(interruptedInsideAction.get()).isTrue();
     }
 }

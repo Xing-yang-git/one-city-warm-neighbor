@@ -46,6 +46,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -759,5 +760,23 @@ class AgentServiceTest {
         assertThat(retriable).isNotNull();
         assertThatThrownBy(() -> retriable.blockLast())
                 .isInstanceOf(WebClientRequestException.class);
+    }
+
+    // ==================== 流式落库收尾 ====================
+
+    @Test
+    @DisplayName("completeStream - 落库抛异常时仍清理请求级工具状态")
+    void should_resetToolDispatcher_when_appendTurnThrows() {
+        // Arrange：热会话写入抛业务异常，模拟锁等待超时后的「明确失败」
+        doThrow(new BizException("会话正忙，请稍后重试"))
+                .when(sessionService).append(eq(USER_ID), anyString(), anyString(), any(), any());
+        String requestId = "req-落库失败";
+
+        // Act & Assert：异常原样上抛（由 Controller 捕获后只记 ERROR 日志，不再打扰已收到回复的用户）
+        assertThatThrownBy(() -> agentService.completeStream(USER_ID, "你好", "回复", hits(), null, requestId))
+                .isInstanceOf(BizException.class);
+
+        // Assert：reset 仍被调用，请求级计数与命中缓存不随异常泄漏
+        verify(toolDispatcher, times(1)).reset(requestId);
     }
 }

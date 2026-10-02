@@ -212,9 +212,11 @@ public class AgentService {
         }
         String greetingReply = greetingReply(message);
         if (greetingReply != null) {
-            // 问候命中也更新「上一条消息」：否则「今天星期几 → 你好 → 今天星期几」会被误判为连续重复
-            preFilter.recordMessage(userId, message);
             appendGreetingTurn(userId, message, greetingReply);
+            // 落库成功后才更新「上一条消息」：否则锁忙抛异常时问候未落库却已计入，
+            // 下次同样的问候会被误判为连续重复。问候命中仍要更新是为避免
+            // 「今天星期几 → 你好 → 今天星期几」被误判为重复
+            preFilter.recordMessage(userId, message);
             return new AgentChatResult(greetingReply, List.of(), List.of());
         }
 
@@ -292,10 +294,10 @@ public class AgentService {
         // 问候语快速通道：纯寒暄不调任何外部 API（LLM），秒回保证 3~5s 目标
         String greetingReply = greetingReply(message);
         if (greetingReply != null) {
-            // 问候命中也更新「上一条消息」：否则「今天星期几 → 你好 → 今天星期几」会被误判为连续重复
-            preFilter.recordMessage(userId, message);
             // 问候也写入热会话，须与普通问答走同一临界区（否则与并发请求交错产生连续同角色消息）
             appendGreetingTurn(userId, message, greetingReply);
+            // 落库成功后才更新「上一条消息」（理由同 chat()：锁忙抛异常时不该把未落库的问候计入）
+            preFilter.recordMessage(userId, message);
             return AgentChatStream.greeting(greetingReply);
         }
 
@@ -367,12 +369,16 @@ public class AgentService {
      */
     public void completeStream(Long userId, String userMessage, String assistantReply,
                                List<KnowledgeHit> hits, AgentAction action, String requestId) {
-        List<AgentAction> actions = action != null ? List.of(action) : List.of();
-        appendTurn(userId, userMessage, assistantReply, writeJsonOrNull(hits), writeJsonOrNull(actions));
-        // 路由决策日志：本次请求是否调用了知识工具（以命中缓存是否有结果为判断依据）
-        log.info("Agent 路由决策: userId={}, 本次调用了知识工具={}", userId, hits != null && !hits.isEmpty());
-        // 请求级工具状态清理（计数 + 命中缓存）
-        toolDispatcher.reset(requestId);
+        try {
+            List<AgentAction> actions = action != null ? List.of(action) : List.of();
+            appendTurn(userId, userMessage, assistantReply, writeJsonOrNull(hits), writeJsonOrNull(actions));
+            // 路由决策日志：本次请求是否调用了知识工具（以命中缓存是否有结果为判断依据）
+            log.info("Agent 路由决策: userId={}, 本次调用了知识工具={}", userId, hits != null && !hits.isEmpty());
+        } finally {
+            // 请求级工具状态清理（计数 + 命中缓存）必须放 finally：appendTurn 现在会因热会话锁等待超时抛异常，
+            // 若仍按顺序调用，异常会跳过清理，导致本次请求的计数与命中缓存残留在 dispatcher 中
+            toolDispatcher.reset(requestId);
+        }
     }
 
     /**
