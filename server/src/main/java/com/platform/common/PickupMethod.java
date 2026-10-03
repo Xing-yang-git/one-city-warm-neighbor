@@ -11,8 +11,8 @@ public final class PickupMethod {
     /** 工具类，禁止实例化 */
     private PickupMethod() {}
 
-    /** 自取（借用方上门取货） */
+    /** 需自提（借用方上门取货） */
     public static final String SELF_PICKUP = "self_pickup";
-    /** 快递（借出方邮寄发货） */
-    public static final String EXPRESS = "express";
+    /** 自提或送上门（两种方式皆可） */
+    public static final String BOTH = "both";
 }

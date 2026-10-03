@@ -503,7 +503,7 @@ import {
   type AuditUserDTO,
   type AuditCounts,
 } from "@/api/admin";
-import { STATUS, USER_TYPE } from "@/utils/constants";
+import { AUTH_STATUS, USER_TYPE } from "@/utils/constants";
 import AppLayout from "@/layouts/AppLayout.vue";
 import { LIST_PAGE_MAIN_CLASS } from "@/layouts/main-classes";
 import type { AxiosError } from "axios";
@@ -616,9 +616,9 @@ async function loadData(): Promise<void> {
   error.value = "";
   try {
     let status: string | undefined;
-    if (activeTab.value === "pending") status = STATUS.PENDING;
-    else if (activeTab.value === "all") status = STATUS.APPROVED;
-    else if (activeTab.value === "rejected") status = STATUS.REJECTED;
+    if (activeTab.value === "pending") status = AUTH_STATUS.PENDING;
+    else if (activeTab.value === "all") status = AUTH_STATUS.APPROVED;
+    else if (activeTab.value === "rejected") status = AUTH_STATUS.REJECTED;
 
     const res = await getAudits({ status });
     const page = res.data?.data;

@@ -1,6 +1,6 @@
 const api = require("../../utils/api");
 const auth = require("../../utils/auth");
-const { POST_STATUS, POST_TYPE, BORROW_STATUS, RETURN_STATUS, DAMAGE_TYPE, RATING_TYPE, ACTIVITY_ROLE, CONTENT_TYPE, NOTIFICATION_TYPE, DURATION_UNIT, PICKUP_METHOD } = require("../../utils/constants");
+const { POST_STATUS, POST_TYPE, BORROW_STATUS, RETURN_STATUS, DAMAGE_TYPE, RATING_TYPE, ACTIVITY_ROLE, CONTENT_TYPE, NOTIFICATION_TYPE, DURATION_UNIT, PICKUP_METHOD, ITEM_CONDITION } = require("../../utils/constants");
 
 /**
  * 我的帖子页 — 我发布的 / 审批管理 / 进行中 / 已完成 四 Tab 视图。
@@ -93,6 +93,8 @@ Page({
     POST_TYPE: POST_TYPE,
     ACTIVITY_ROLE: ACTIVITY_ROLE,
     CONTENT_TYPE: CONTENT_TYPE,
+    ITEM_CONDITION: ITEM_CONDITION,
+    PICKUP_METHOD: PICKUP_METHOD,
 
     // Confirmation Alerts
     showConfirmAlert: false,
@@ -127,7 +129,7 @@ Page({
     ],
     editDurationIndex: 6,
     editPickupMethod: PICKUP_METHOD.SELF_PICKUP,
-    editCondition: "normal",
+    editCondition: ITEM_CONDITION.NORMAL,
     editUrgency: "normal",
     // 时间段编辑（HELP 专用）
     editEnableTimeRange: false,
@@ -586,9 +588,9 @@ Page({
 
   conditionText(condition) {
     const map = {
-      "like-new": "几乎全新",
-      normal: "正常使用痕迹",
-      worn: "有明显磨损",
+      [ITEM_CONDITION.LIKE_NEW]: "几乎全新",
+      [ITEM_CONDITION.NORMAL]: "正常使用痕迹",
+      [ITEM_CONDITION.WORN]: "有明显磨损",
     };
     return map[condition] || "";
   },
@@ -1087,7 +1089,7 @@ Page({
       editDurationOptions: durationOptions,
       editDurationIndex: durationIndex,
       editPickupMethod: post.pickupMethod || PICKUP_METHOD.SELF_PICKUP,
-      editCondition: post.condition || "normal",
+      editCondition: post.condition || ITEM_CONDITION.NORMAL,
       editUrgency: post.urgency || "normal",
       // HELP 时间段编辑值
       editEnableTimeRange: enableTimeRange,
@@ -2015,28 +2017,6 @@ Page({
   // ================================================================
   // 辅助函数
   // ================================================================
-  getApplyStatusText(status) {
-    const map = {
-      [BORROW_STATUS.PENDING]: "待处理",
-      [BORROW_STATUS.APPROVED]: "已同意",
-      [BORROW_STATUS.REJECTED]: "已拒绝",
-      [BORROW_STATUS.COMPLETED]: "已完成",
-      [BORROW_STATUS.CANCELLED]: "已取消",
-    };
-    return map[status] || status || "待处理";
-  },
-
-  getApplyStatusClass(status) {
-    const map = {
-      [BORROW_STATUS.PENDING]: "post-status-tag-orange",
-      [BORROW_STATUS.APPROVED]: "post-status-tag-green",
-      [BORROW_STATUS.REJECTED]: "post-status-tag-red",
-      [BORROW_STATUS.COMPLETED]: "post-status-tag-green",
-      [BORROW_STATUS.CANCELLED]: "post-status-tag-fill",
-    };
-    return map[status] || "post-status-tag-orange";
-  },
-
   formatTime(timestamp) {
     if (!timestamp) return "";
     const date = new Date(timestamp);

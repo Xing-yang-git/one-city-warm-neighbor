@@ -1,6 +1,6 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
-const { POST_STATUS, BORROW_STATUS, POST_TYPE } = require('../../utils/constants');
+const { POST_STATUS, BORROW_STATUS, POST_TYPE, ITEM_CONDITION, PICKUP_METHOD } = require('../../utils/constants');
 
 /**
  * 闲置物品详情页 — 物品信息展示 + 借用操作入口。
@@ -155,18 +155,18 @@ Page({
 
   formatCondition(condition) {
     const map = {
-      'like-new': '几乎全新',
-      'normal': '正常使用痕迹',
-      'good': '正常使用痕迹',
-      'worn': '有明显磨损'
+      [ITEM_CONDITION.LIKE_NEW]: '几乎全新',
+      [ITEM_CONDITION.NORMAL]: '正常使用痕迹',
+      good: '正常使用痕迹',   // 历史遗留取值（无写入方），仅作展示兜底
+      [ITEM_CONDITION.WORN]: '有明显磨损'
     };
     return map[condition] || condition || '';
   },
 
   formatPickupMethod(method) {
     const map = {
-      'self_pickup': '需自提',
-      'both': '自提 / 可送上门'
+      [PICKUP_METHOD.SELF_PICKUP]: '需自提',
+      [PICKUP_METHOD.BOTH]: '自提 / 可送上门'
     };
     return map[method] || method || '';
   },

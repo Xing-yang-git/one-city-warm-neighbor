@@ -1,7 +1,7 @@
 package com.platform.model.entity;
 
 import com.platform.common.AppTimeZone;
-import com.platform.common.BizStatus;
+import com.platform.common.AuthStatus;
 import com.platform.common.UserType;
 import com.platform.model.entity.column.UsersColumn;
 import jakarta.persistence.*;
@@ -73,10 +73,10 @@ public class User {
     @Column(name = UsersColumn.COL_AVATAR_URL, length = 500)
     private String avatarUrl;
 
-    /** 认证状态：pending(待审核) / approved(已通过) / rejected(已驳回)，引用 {@link BizStatus} */
+    /** 认证状态：registering(注册中) / pending(待审核) / approved(已通过) / rejected(已驳回) / banned(已封禁)，引用 {@link AuthStatus} */
     @Column(name = UsersColumn.COL_AUTH_STATUS, nullable = false, length = 20)
     @Builder.Default
-    private String authStatus = BizStatus.PENDING;
+    private String authStatus = AuthStatus.PENDING;
 
     /** 封禁原因（banned 状态下非空） */
     @Column(name = UsersColumn.COL_BANNED_REASON, length = 200)

@@ -2,7 +2,8 @@ package com.platform.service;
 
 import com.platform.ai.moderation.ModerationService;
 import com.platform.common.AppTimeZone;
-import com.platform.common.BizStatus;
+import com.platform.common.HelpApplicationStatus;
+import com.platform.common.PostStatus;
 import com.platform.model.dto.ApproveRequest;
 import com.platform.model.dto.HelpRequestDTO;
 import com.platform.model.dto.HelpResponseDTO;
@@ -95,7 +96,7 @@ class HelpServiceTest {
                 .description("搬一个沙发")
                 .category("搬家")
                 .isUrgent(false)
-                .status(BizStatus.ONLINE)
+                .status(PostStatus.ONLINE)
                 .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
 
@@ -104,7 +105,7 @@ class HelpServiceTest {
                 .helpId(helpId)
                 .helperId(helperId)
                 .note("我可以帮忙")
-                .status(BizStatus.PENDING)
+                .status(HelpApplicationStatus.PENDING)
                 .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
     }
@@ -136,7 +137,7 @@ class HelpServiceTest {
         // 断言：发布后挂起等待 AI 异步审核（pending_review）
         assertThat(result).isNotNull();
         assertThat(result.getTitle()).isEqualTo("需要帮忙");
-        assertThat(result.getStatus()).isEqualTo(BizStatus.PENDING_REVIEW);
+        assertThat(result.getStatus()).isEqualTo(PostStatus.PENDING_REVIEW);
         assertThat(result.getIsUrgent()).isTrue();
         verify(helpRequestRepository).save(any(HelpRequest.class));
     }
@@ -212,7 +213,7 @@ class HelpServiceTest {
     void should_returnUserApplyStatus_when_currentUserApplied() {
         // 准备
         HelpApplication mine = HelpApplication.builder()
-                .id(appId).helpId(helpId).helperId(helperId).status(BizStatus.PENDING).build();
+                .id(appId).helpId(helpId).helperId(helperId).status(HelpApplicationStatus.PENDING).build();
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(ratingRepository.getAverageScore(userId)).thenReturn(null);
@@ -225,7 +226,7 @@ class HelpServiceTest {
         HelpResponseDTO result = helpService.getDetail(helpId, helperId);
 
         // 断言
-        assertThat(result.getUserApplyStatus()).isEqualTo(BizStatus.PENDING);
+        assertThat(result.getUserApplyStatus()).isEqualTo(HelpApplicationStatus.PENDING);
     }
 
     @Test
@@ -233,9 +234,9 @@ class HelpServiceTest {
     void should_preferActiveApplication_when_multipleApplications() {
         // 准备：先被拒、后重新申请且仍在待审批
         HelpApplication rejected = HelpApplication.builder()
-                .id(301L).helpId(helpId).helperId(helperId).status(BizStatus.REJECTED).build();
+                .id(301L).helpId(helpId).helperId(helperId).status(HelpApplicationStatus.REJECTED).build();
         HelpApplication pending = HelpApplication.builder()
-                .id(302L).helpId(helpId).helperId(helperId).status(BizStatus.PENDING).build();
+                .id(302L).helpId(helpId).helperId(helperId).status(HelpApplicationStatus.PENDING).build();
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(ratingRepository.getAverageScore(userId)).thenReturn(null);
@@ -248,7 +249,7 @@ class HelpServiceTest {
         HelpResponseDTO result = helpService.getDetail(helpId, helperId);
 
         // 断言
-        assertThat(result.getUserApplyStatus()).isEqualTo(BizStatus.PENDING);
+        assertThat(result.getUserApplyStatus()).isEqualTo(HelpApplicationStatus.PENDING);
     }
 
     @Test
@@ -322,7 +323,7 @@ class HelpServiceTest {
         // 准备
         when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
         when(helpRequestRepository.save(any(HelpRequest.class))).thenReturn(helpRequest);
-        when(helpApplicationRepository.findByHelpIdAndStatus(helpId, BizStatus.PENDING))
+        when(helpApplicationRepository.findByHelpIdAndStatus(helpId, HelpApplicationStatus.PENDING))
                 .thenReturn(Collections.emptyList());
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
@@ -377,7 +378,7 @@ class HelpServiceTest {
     @DisplayName("申请帮助 - 求助已下架时提示已下架而非被抢先申请")
     void should_throwException_when_helpClosed() {
         // 准备
-        helpRequest.setStatus(BizStatus.OFFLINE);
+        helpRequest.setStatus(PostStatus.OFFLINE);
         when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
 
         // 执行 & 断言
@@ -390,7 +391,7 @@ class HelpServiceTest {
     @DisplayName("申请帮助 - 求助正在审核中时提示审核中而非被抢先申请")
     void should_throwException_when_helpPendingReview() {
         // 准备
-        helpRequest.setStatus(BizStatus.PENDING_REVIEW);
+        helpRequest.setStatus(PostStatus.PENDING_REVIEW);
         when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
 
         // 执行 & 断言
@@ -444,9 +445,9 @@ class HelpServiceTest {
         HelpResponseDTO result = helpService.approveReject(userId, appId, req);
 
         // 断言
-        assertThat(application.getStatus()).isEqualTo(BizStatus.APPROVED);
-        assertThat(helpRequest.getStatus()).isEqualTo(BizStatus.ACTIVE);
-        verify(helpApplicationRepository).decideIfPending(appId, BizStatus.APPROVED);
+        assertThat(application.getStatus()).isEqualTo(HelpApplicationStatus.APPROVED);
+        assertThat(helpRequest.getStatus()).isEqualTo(PostStatus.ACTIVE);
+        verify(helpApplicationRepository).decideIfPending(appId, HelpApplicationStatus.APPROVED);
     }
 
     @Test
@@ -459,7 +460,7 @@ class HelpServiceTest {
         when(helpApplicationRepository.findHelpIdById(appId)).thenReturn(Optional.of(helpId));
         when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
         stubDecideIfPendingHit();
-        when(helpApplicationRepository.findByHelpIdAndStatus(helpId, BizStatus.PENDING))
+        when(helpApplicationRepository.findByHelpIdAndStatus(helpId, HelpApplicationStatus.PENDING))
                 .thenReturn(Collections.emptyList());
         when(helpApplicationRepository.findById(appId)).thenReturn(Optional.of(application));
         when(helpRequestRepository.save(any(HelpRequest.class))).thenReturn(helpRequest);
@@ -470,8 +471,8 @@ class HelpServiceTest {
         helpService.approveReject(userId, appId, req);
 
         // 断言
-        assertThat(helpRequest.getStatus()).isEqualTo(BizStatus.ONLINE);
-        verify(helpApplicationRepository).decideIfPending(appId, BizStatus.REJECTED);
+        assertThat(helpRequest.getStatus()).isEqualTo(PostStatus.ONLINE);
+        verify(helpApplicationRepository).decideIfPending(appId, HelpApplicationStatus.REJECTED);
     }
 
     @Test
@@ -515,7 +516,7 @@ class HelpServiceTest {
     @DisplayName("完成帮助 - 正常完成帮助")
     void should_completeHelp_when_validCompletion() {
         // 准备
-        application.setStatus(BizStatus.APPROVED);
+        application.setStatus(HelpApplicationStatus.APPROVED);
 
         when(helpApplicationRepository.findById(appId)).thenReturn(Optional.of(application));
         when(helpRequestRepository.findById(helpId)).thenReturn(Optional.of(helpRequest));
@@ -528,8 +529,8 @@ class HelpServiceTest {
         HelpResponseDTO result = helpService.completeHelp(userId, appId);
 
         // 断言
-        assertThat(application.getStatus()).isEqualTo(BizStatus.COMPLETED);
-        assertThat(helpRequest.getStatus()).isEqualTo(BizStatus.COMPLETED);
+        assertThat(application.getStatus()).isEqualTo(HelpApplicationStatus.COMPLETED);
+        assertThat(helpRequest.getStatus()).isEqualTo(PostStatus.COMPLETED);
         verify(notificationService, atLeastOnce()).create(anyLong(), anyString(), anyString(), anyString(), anyLong());
     }
 
@@ -559,7 +560,7 @@ class HelpServiceTest {
         req.setDescription("更新描述");
 
         when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
-        when(helpApplicationRepository.findByHelpIdAndStatus(helpId, BizStatus.PENDING))
+        when(helpApplicationRepository.findByHelpIdAndStatus(helpId, HelpApplicationStatus.PENDING))
                 .thenReturn(Collections.emptyList());
         when(helpRequestRepository.save(any(HelpRequest.class))).thenReturn(helpRequest);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
@@ -575,12 +576,12 @@ class HelpServiceTest {
     @DisplayName("更新求助 - completed状态编辑后退回 pending_review 重新审核")
     void should_autoRelist_when_statusCompleted() {
         // 准备
-        helpRequest.setStatus(BizStatus.COMPLETED);
+        helpRequest.setStatus(PostStatus.COMPLETED);
         HelpRequestDTO req = new HelpRequestDTO();
         req.setTitle("重新发布");
 
         when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
-        when(helpApplicationRepository.findByHelpIdAndStatus(helpId, BizStatus.PENDING))
+        when(helpApplicationRepository.findByHelpIdAndStatus(helpId, HelpApplicationStatus.PENDING))
                 .thenReturn(Collections.emptyList());
         when(helpRequestRepository.save(any(HelpRequest.class))).thenReturn(helpRequest);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
@@ -589,7 +590,7 @@ class HelpServiceTest {
         HelpResponseDTO result = helpService.update(userId, helpId, req);
 
         // 断言：重新发布走 AI 审核流程，先挂起而非直接上线
-        assertThat(result.getStatus()).isEqualTo(BizStatus.PENDING_REVIEW);
+        assertThat(result.getStatus()).isEqualTo(PostStatus.PENDING_REVIEW);
     }
 
     @Test
@@ -597,7 +598,7 @@ class HelpServiceTest {
     void should_throwException_when_editingWithPendingApplication() {
         // 准备
         when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
-        when(helpApplicationRepository.findByHelpIdAndStatus(helpId, BizStatus.PENDING))
+        when(helpApplicationRepository.findByHelpIdAndStatus(helpId, HelpApplicationStatus.PENDING))
                 .thenReturn(List.of(application));
         HelpRequestDTO req = new HelpRequestDTO();
 
@@ -611,9 +612,9 @@ class HelpServiceTest {
     @DisplayName("编辑门禁 - 内容仍在审核中时拒绝编辑（避免旧结论用到新内容）")
     void should_throwException_when_editingWhilePendingReview() {
         // 准备
-        helpRequest.setStatus(BizStatus.PENDING_REVIEW);
+        helpRequest.setStatus(PostStatus.PENDING_REVIEW);
         when(helpRequestRepository.findByIdWithLock(helpId)).thenReturn(Optional.of(helpRequest));
-        when(helpApplicationRepository.findByHelpIdAndStatus(helpId, BizStatus.PENDING))
+        when(helpApplicationRepository.findByHelpIdAndStatus(helpId, HelpApplicationStatus.PENDING))
                 .thenReturn(Collections.emptyList());
         HelpRequestDTO req = new HelpRequestDTO();
 
@@ -638,7 +639,7 @@ class HelpServiceTest {
 
         // 断言
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getApplicationStatus()).isEqualTo(BizStatus.PENDING);
+        assertThat(result.get(0).getApplicationStatus()).isEqualTo(HelpApplicationStatus.PENDING);
         assertThat(result.get(0).getApplicationId()).isEqualTo(appId);
     }
 

@@ -1,6 +1,6 @@
 package com.platform.repository;
 
-import com.platform.common.BizStatus;
+import com.platform.common.HelpApplicationStatus;
 import com.platform.model.entity.HelpApplication;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -81,6 +81,6 @@ public interface HelpApplicationRepository extends JpaRepository<HelpApplication
     @Transactional
     @Modifying
     @Query("UPDATE HelpApplication ha SET ha.status = :status "
-            + "WHERE ha.id = :id AND ha.status = '" + BizStatus.PENDING + "'")
+            + "WHERE ha.id = :id AND ha.status = '" + HelpApplicationStatus.PENDING + "'")
     int decideIfPending(@Param("id") Long id, @Param("status") String status);
 }

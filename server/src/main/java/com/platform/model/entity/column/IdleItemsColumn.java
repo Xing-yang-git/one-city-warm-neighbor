@@ -28,7 +28,7 @@ public final class IdleItemsColumn {
     public static final String COL_DESCRIPTION = "description";
     /** 物品分类 */
     public static final String COL_CATEGORY = "category";
-    /** 物品成色：like-new(几乎全新) / normal(正常) / worn(有磨损)，引用 {@link com.platform.common.BizStatus} */
+    /** 物品成色：like-new(几乎全新) / normal(正常使用痕迹) / worn(有明显磨损)，引用 {@link com.platform.common.ItemCondition} */
     public static final String COL_CONDITION = "condition";
     /** 价格（元） */
     public static final String COL_PRICE = "price";
@@ -38,9 +38,9 @@ public final class IdleItemsColumn {
     public static final String COL_MAX_DURATION = "max_duration";
     /** 借出时长单位：day(天) / week(周) / month(月) */
     public static final String COL_DURATION_UNIT = "duration_unit";
-    /** 取货方式：self_pickup(自取) / express(快递) */
+    /** 取货方式：self_pickup(需自提) / both(自提或送上门) */
     public static final String COL_PICKUP_METHOD = "pickup_method";
-    /** 状态：online(展示中) / reserved(已预订) / offline(已下架) / deleted(已删除)，引用 {@link com.platform.common.BizStatus} */
+    /** 状态：online(展示中) / draft(草稿) / offline(已下架) / pending_review(待AI审核) / pending(已被申请) / active(进行中) / completed(已完成)，引用 {@link com.platform.common.PostStatus} */
     public static final String COL_STATUS = "status";
     /** 统一下架原因 */
     public static final String COL_DELIST_REASON = "delist_reason";

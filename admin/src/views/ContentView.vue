@@ -981,16 +981,16 @@
               <button
                 class="segment-btn"
                 :class="{
-                  active: publishForm.pickupMethod === 'self_pickup',
+                  active: publishForm.pickupMethod === PICKUP_METHOD.SELF_PICKUP,
                 }"
-                @click="publishForm.pickupMethod = 'self_pickup'"
+                @click="publishForm.pickupMethod = PICKUP_METHOD.SELF_PICKUP"
               >
                 需自提
               </button>
               <button
                 class="segment-btn"
-                :class="{ active: publishForm.pickupMethod === 'both' }"
-                @click="publishForm.pickupMethod = 'both'"
+                :class="{ active: publishForm.pickupMethod === PICKUP_METHOD.BOTH }"
+                @click="publishForm.pickupMethod = PICKUP_METHOD.BOTH"
               >
                 自提 / 可送上门
               </button>
@@ -1005,22 +1005,22 @@
             <div class="segment-row">
               <button
                 class="segment-btn"
-                :class="{ active: publishForm.condition === 'like-new' }"
-                @click="publishForm.condition = 'like-new'"
+                :class="{ active: publishForm.condition === ITEM_CONDITION.LIKE_NEW }"
+                @click="publishForm.condition = ITEM_CONDITION.LIKE_NEW"
               >
                 几乎全新
               </button>
               <button
                 class="segment-btn"
-                :class="{ active: publishForm.condition === 'normal' }"
-                @click="publishForm.condition = 'normal'"
+                :class="{ active: publishForm.condition === ITEM_CONDITION.NORMAL }"
+                @click="publishForm.condition = ITEM_CONDITION.NORMAL"
               >
                 正常使用痕迹
               </button>
               <button
                 class="segment-btn"
-                :class="{ active: publishForm.condition === 'worn' }"
-                @click="publishForm.condition = 'worn'"
+                :class="{ active: publishForm.condition === ITEM_CONDITION.WORN }"
+                @click="publishForm.condition = ITEM_CONDITION.WORN"
               >
                 有明显磨损
               </button>
@@ -1615,7 +1615,7 @@ import {
   type ModerationCounts,
 } from "@/api/admin";
 import { upload } from "@/utils/api";
-import { POST_TYPE, CONTENT_TYPE } from "@/utils/constants";
+import { POST_TYPE, CONTENT_TYPE, ITEM_CONDITION, PICKUP_METHOD } from "@/utils/constants";
 import AppLayout from "@/layouts/AppLayout.vue";
 import { LIST_PAGE_MAIN_CLASS } from "@/layouts/main-classes";
 import type { AxiosResponse } from "axios";
@@ -2409,8 +2409,8 @@ const publishForm = reactive<PublishForm>({
   urgency: "一般",
   startTime: "",
   endTime: "",
-  pickupMethod: "self_pickup",
-  condition: "normal",
+  pickupMethod: PICKUP_METHOD.SELF_PICKUP,
+  condition: ITEM_CONDITION.NORMAL,
   enableTimeRange: false,
   images: [],
 });
@@ -2460,8 +2460,8 @@ function openPublish(): void {
   publishForm.urgency = "一般";
   publishForm.startTime = "";
   publishForm.endTime = "";
-  publishForm.pickupMethod = "self_pickup";
-  publishForm.condition = "normal";
+  publishForm.pickupMethod = PICKUP_METHOD.SELF_PICKUP;
+  publishForm.condition = ITEM_CONDITION.NORMAL;
   publishForm.enableTimeRange = false;
   publishForm.images = [];
   selectedResident.value = "";

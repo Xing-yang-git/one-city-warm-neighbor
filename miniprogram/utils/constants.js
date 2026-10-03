@@ -1,11 +1,12 @@
 /**
  * 业务常量定义 — 状态与发布类型的唯一来源
  *
- * 与后端 com.platform.common.BizStatus / PostType 保持一致：
+ * 与后端 com.platform.common 下的常量类（PostStatus / AuthStatus / BorrowStatus /
+ * HelpApplicationStatus / ItemCondition / PostType）保持一致：
  * 这些字符串值即前后端通信的字面值（DTO 字段、URL 参数），不得随意改动。
  */
 
-// ========== 帖子状态（与后端 BizStatus 对齐）==========
+// ========== 帖子状态（与后端 PostStatus 对齐）==========
 const POST_STATUS = {
   ONLINE: 'online',                     // 在线中
   DRAFT: 'draft',                       // 草稿（用户下架后的中间态，C端显示为"已下架"）
@@ -48,7 +49,7 @@ const ACTIVITY_ROLE = {
   HELP_PRO: 'helpPro'  // 帮忙方视角（我承接帮助）
 };
 
-// ========== 账户审核状态（与后端 BizStatus 对齐）==========
+// ========== 账户审核状态（与后端 AuthStatus 对齐）==========
 const AUTH_STATUS = {
   PENDING: 'pending',           // 待审核
   APPROVED: 'approved',         // 已通过
@@ -57,17 +58,18 @@ const AUTH_STATUS = {
   BANNED: 'banned'              // 已封禁
 };
 
-// ========== 借用申请状态（与后端 borrow_requests.status 对齐）==========
+// ========== 借用申请状态（与后端 BorrowStatus 对齐）==========
+// 注：后端 BorrowStatus 另含 compat-only 的 ACTIVE('active')——历史遗留值、无写入方，
+//     C端无读取点，故不定义
 const BORROW_STATUS = {
   PENDING: 'pending',       // 待审批
   APPROVED: 'approved',     // 已同意
   REJECTED: 'rejected',     // 已拒绝
   RETURNED: 'returned',     // 已归还
-  CANCELLED: 'cancelled',   // 已取消
   COMPLETED: 'completed'    // 已完成
 };
 
-// ========== 帮助申请状态（与后端 help_applications.status 对齐）==========
+// ========== 帮助申请状态（与后端 HelpApplicationStatus 对齐）==========
 const HELP_APPLICATION_STATUS = {
   PENDING: 'pending',       // 待审批
   APPROVED: 'approved',     // 已同意
@@ -83,6 +85,17 @@ const DAMAGE_TYPE = {
   NORMAL: 'normal',    // 正常损耗
   ABNORMAL: 'severe',  // 非正常损坏（数据库值保持 severe）
   BROKEN: 'broken'     // 完全损坏
+};
+
+/**
+ * 物品成色 — idle_items.condition 字段的唯一合法取值。
+ * 与后端 com.platform.common.ItemCondition 保持一致。
+ * 注意与 DAMAGE_TYPE 区分：两者都含 normal，但前者是「发布时物品多新」，后者是「归还时损坏程度」。
+ */
+const ITEM_CONDITION = {
+  LIKE_NEW: 'like-new',   // 几乎全新
+  NORMAL: 'normal',       // 正常使用痕迹（发布默认值）
+  WORN: 'worn'            // 有明显磨损
 };
 
 /**
@@ -149,10 +162,13 @@ const DURATION_UNIT = {
   HOUR: 'hour'    // 按小时（需求借入/借出可选档）
 };
 
-/** 取货方式 — idle_items.pickup_method 取值，对齐后端 PickupMethod */
+/**
+ * 取货方式 — idle_items.pickup_method 取值，对齐后端 PickupMethod。
+ * 取值以 db/schema.sql 的列注释与三端 UI 为准：self_pickup / both。
+ */
 const PICKUP_METHOD = {
-  SELF_PICKUP: 'self_pickup',   // 自取
-  EXPRESS: 'express'            // 快递/邮寄
+  SELF_PICKUP: 'self_pickup',   // 需自提
+  BOTH: 'both'                  // 自提或送上门
 };
 
 /**
@@ -175,6 +191,7 @@ module.exports = {
   BORROW_STATUS,
   HELP_APPLICATION_STATUS,
   DAMAGE_TYPE,
+  ITEM_CONDITION,
   RETURN_STATUS,
   NOTIFICATION_TYPE,
   RATING_TYPE,

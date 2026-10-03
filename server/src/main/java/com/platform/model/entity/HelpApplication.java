@@ -1,7 +1,7 @@
 package com.platform.model.entity;
 
 import com.platform.common.AppTimeZone;
-import com.platform.common.BizStatus;
+import com.platform.common.HelpApplicationStatus;
 import com.platform.model.entity.column.HelpApplicationsColumn;
 import jakarta.persistence.*;
 import lombok.*;
@@ -38,10 +38,10 @@ public class HelpApplication {
     @Column(name = HelpApplicationsColumn.COL_NOTE, length = 200)
     private String note;
 
-    /** 申请状态：pending(待审批) / approved(已同意) / rejected(已拒绝) / completed(已完成)，引用 {@link BizStatus} */
+    /** 申请状态：pending(待审批) / approved(已同意) / rejected(已拒绝) / completed(已完成)，引用 {@link HelpApplicationStatus} */
     @Column(name = HelpApplicationsColumn.COL_STATUS, nullable = false, length = 20)
     @Builder.Default
-    private String status = BizStatus.PENDING;
+    private String status = HelpApplicationStatus.PENDING;
 
     /** 完成时间（帮助完成后设置） */
     @Column(name = HelpApplicationsColumn.COL_COMPLETED_AT)

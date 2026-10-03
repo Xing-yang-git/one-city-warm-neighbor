@@ -1,6 +1,6 @@
 package com.platform.security;
 
-import com.platform.common.BizStatus;
+import com.platform.common.AuthStatus;
 import com.platform.common.UserType;
 import com.platform.repository.UserRepository;
 import jakarta.servlet.FilterChain;
@@ -72,7 +72,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 // 未审核通过的账号只放行白名单前缀，其余业务接口一律 403
                 // 若 probe 为 null（用户已不存在，token 过期且命中 /api/auth/ 端点放行），
                 // 跳过审核状态检查——由 controller 层按实际用户状态处理
-                if (probe != null && !BizStatus.APPROVED.equals(probe.getAuthStatus()) && !isAllowedForUnapproved(uri)) {
+                if (probe != null && !AuthStatus.APPROVED.equals(probe.getAuthStatus()) && !isAllowedForUnapproved(uri)) {
                     log.info("Rejecting unapproved user {} on {} — authStatus={}", userId, uri, probe.getAuthStatus());
                     response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                     response.setContentType("application/json;charset=UTF-8");

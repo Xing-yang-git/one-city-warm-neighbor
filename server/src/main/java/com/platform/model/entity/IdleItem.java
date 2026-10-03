@@ -1,7 +1,8 @@
 package com.platform.model.entity;
 
 import com.platform.common.AppTimeZone;
-import com.platform.common.BizStatus;
+import com.platform.common.ItemCondition;
+import com.platform.common.PostStatus;
 import com.platform.common.DurationUnit;
 import com.platform.common.PickupMethod;
 import com.platform.common.PostType;
@@ -57,10 +58,10 @@ public class IdleItem {
     @Column(name = IdleItemsColumn.COL_CATEGORY, nullable = false, length = 20)
     private String category;
 
-    /** 物品成色：like-new(几乎全新) / normal(正常) / worn(有磨损)，引用 {@link BizStatus} */
+    /** 物品成色：like-new(几乎全新) / normal(正常使用痕迹) / worn(有明显磨损)，引用 {@link ItemCondition} */
     @Column(name = IdleItemsColumn.COL_CONDITION, nullable = false, length = 10)
     @Builder.Default
-    private String condition = BizStatus.NORMAL;
+    private String condition = ItemCondition.NORMAL;
 
     /** 价格（元），0 表示免费出借 */
     @Column(name = IdleItemsColumn.COL_PRICE, nullable = false, precision = 10, scale = 2)
@@ -81,15 +82,15 @@ public class IdleItem {
     @Builder.Default
     private String durationUnit = DurationUnit.DAY;
 
-    /** 取货方式：self_pickup(自取) / express(快递)，引用 {@link PickupMethod} */
+    /** 取货方式：self_pickup(需自提) / both(自提或送上门)，引用 {@link PickupMethod} */
     @Column(name = IdleItemsColumn.COL_PICKUP_METHOD, nullable = false, length = 30)
     @Builder.Default
     private String pickupMethod = PickupMethod.SELF_PICKUP;
 
-    /** 状态：online(展示中) / draft(草稿，用户下架) / offline(已下架) / pending_review(待AI审核) / reserved(已预订) / completed(已完成)，引用 {@link BizStatus} */
+    /** 状态：online(展示中) / draft(草稿) / offline(已下架) / pending_review(待AI审核) / pending(已被申请) / active(进行中) / completed(已完成)，引用 {@link PostStatus} */
     @Column(name = IdleItemsColumn.COL_STATUS, nullable = false, length = 20)
     @Builder.Default
-    private String status = BizStatus.ONLINE;
+    private String status = PostStatus.ONLINE;
 
     /** 统一下架原因：AI审核原因、管理员驳回/下架原因、用户自行下架原因，新原因直接覆盖旧值 */
     @Column(name = IdleItemsColumn.COL_DELIST_REASON, length = 200)

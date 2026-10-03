@@ -3,7 +3,10 @@ package com.platform.service;
 import com.platform.common.ActivityRole;
 import com.platform.common.AppTimeZone;
 import com.platform.common.BizException;
-import com.platform.common.BizStatus;
+import com.platform.common.AuthStatus;
+import com.platform.common.BorrowStatus;
+import com.platform.common.HelpApplicationStatus;
+import com.platform.common.PostStatus;
 import com.platform.common.ContentType;
 import com.platform.common.PostType;
 import com.platform.common.UserFormatter;
@@ -39,7 +42,6 @@ import java.util.Optional;
 import java.util.Set;
 
 @Service
-@Transactional(readOnly = true)
 public class UserActivityService {
 
     private static final Logger log = LoggerFactory.getLogger(UserActivityService.class);
@@ -76,6 +78,7 @@ public class UserActivityService {
     /**
      * 获取当前用户的个人资料及统计数据，用于"我的" tab。
      */
+    @Transactional(readOnly = true)
     public UserProfileDTO getProfile(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BizException("用户不存在"));
@@ -94,7 +97,7 @@ public class UserActivityService {
                 .userType(user.getUserType())
                 .userTypeText(UserFormatter.getUserTypeLabel(user.getUserType()))
                 .roomInfo(UserFormatter.formatRoomWithType(user))
-                .isAuth(BizStatus.APPROVED.equals(user.getAuthStatus()))
+                .isAuth(AuthStatus.APPROVED.equals(user.getAuthStatus()))
                 .score(avgScore != null ? Math.round(avgScore * 10.0) / 10.0 : 5.0)
                 .ratingCount((int) ratingCount)
                 .lendCount(stats.lendCount())
@@ -115,6 +118,7 @@ public class UserActivityService {
      * 获取我发布的帖子（闲置 + 求助合并），用于"发布" tab。
      * @param statusFilter "online" | "offline" | "completed" — 按状态过滤
      */
+    @Transactional(readOnly = true)
     public List<MyPostItemDTO> getMyPosts(Long userId, String statusFilter) {
         List<MyPostItemDTO> result = new ArrayList<>();
 
@@ -157,6 +161,7 @@ public class UserActivityService {
      * @param userId 当前住户用户 ID
      * @return 待审批事项列表，按创建时间倒序
      */
+    @Transactional(readOnly = true)
     public List<MyPostItemDTO> getApprovals(Long userId, String type) {
         List<MyPostItemDTO> result;
         if (ActivityRole.BORROW.equals(type) || ActivityRole.LEND.equals(type)) {
@@ -179,7 +184,7 @@ public class UserActivityService {
         List<MyPostItemDTO> result = new ArrayList<>();
         boolean wantWanted = ActivityRole.BORROW.equals(type);
         List<BorrowRequest> pendingBorrows = borrowRequestRepository
-                .findByOwnerIdAndStatus(userId, BizStatus.PENDING);
+                .findByOwnerIdAndStatus(userId, BorrowStatus.PENDING);
         for (BorrowRequest br : pendingBorrows) {
             IdleItem item = resolveIdleItem(br);
             boolean wanted = item != null && PostType.WANTED.equals(item.getPostType());
@@ -208,7 +213,7 @@ public class UserActivityService {
         List<HelpRequest> myHelpRequests = helpRequestRepository.findByUserId(userId);
         for (HelpRequest hr : myHelpRequests) {
             List<HelpApplication> pendingApps = helpApplicationRepository
-                    .findByHelpIdAndStatus(hr.getId(), BizStatus.PENDING);
+                    .findByHelpIdAndStatus(hr.getId(), HelpApplicationStatus.PENDING);
             for (HelpApplication app : pendingApps) {
                 MyPostItemDTO dto = helpRequestToDTO(hr);
                 dto.setId(app.getId());
@@ -235,10 +240,11 @@ public class UserActivityService {
      * 只做计数不做 DTO 组装，避免 getApprovals 的用户统计等重查询开销。
      * 类型语义与 getApprovals 一致：borrow=确认借入（WANTED 帖）、lend=审批借出（LEND 帖）。
      */
+    @Transactional(readOnly = true)
     public ApprovalCountDTO getApprovalCounts(Long userId) {
         int borrow = 0;
         int lend = 0;
-        for (BorrowRequest br : borrowRequestRepository.findByOwnerIdAndStatus(userId, BizStatus.PENDING)) {
+        for (BorrowRequest br : borrowRequestRepository.findByOwnerIdAndStatus(userId, BorrowStatus.PENDING)) {
             IdleItem item = resolveIdleItem(br);
             boolean wanted = item != null && PostType.WANTED.equals(item.getPostType());
             if (wanted) {
@@ -250,7 +256,7 @@ public class UserActivityService {
 
         int help = 0;
         for (HelpRequest hr : helpRequestRepository.findByUserId(userId)) {
-            help += helpApplicationRepository.findByHelpIdAndStatus(hr.getId(), BizStatus.PENDING).size();
+            help += helpApplicationRepository.findByHelpIdAndStatus(hr.getId(), HelpApplicationStatus.PENDING).size();
         }
 
         return ApprovalCountDTO.builder()
@@ -270,6 +276,7 @@ public class UserActivityService {
      * @param role 角色视角，取值见 {@link ActivityRole} 的 role 族：
      *             {@code BORROW}（借入方）/ {@code LEND}（借出方）/ {@code HELP_REQ}（求助方）/ {@code HELP_PRO}（帮忙方）
      */
+    @Transactional(readOnly = true)
     public List<MyPostItemDTO> getInProgress(Long userId, String role) {
         List<MyPostItemDTO> result = switch (role) {
             case ActivityRole.BORROW, ActivityRole.LEND -> collectBorrowInProgress(userId, role);
@@ -289,8 +296,8 @@ public class UserActivityService {
     private List<MyPostItemDTO> collectBorrowInProgress(Long userId, String role) {
         List<MyPostItemDTO> result = new ArrayList<>();
         List<BorrowRequest> pool = new ArrayList<>();
-        pool.addAll(borrowRequestRepository.findByBorrowerIdAndStatus(userId, BizStatus.APPROVED));
-        pool.addAll(borrowRequestRepository.findByOwnerIdAndStatus(userId, BizStatus.APPROVED));
+        pool.addAll(borrowRequestRepository.findByBorrowerIdAndStatus(userId, BorrowStatus.APPROVED));
+        pool.addAll(borrowRequestRepository.findByOwnerIdAndStatus(userId, BorrowStatus.APPROVED));
         Set<Long> seen = new HashSet<>();
         for (BorrowRequest br : pool) {
             if (!seen.add(br.getId())) continue;
@@ -314,7 +321,7 @@ public class UserActivityService {
         List<HelpRequest> myHelpRequests = helpRequestRepository.findByUserId(userId);
         for (HelpRequest hr : myHelpRequests) {
             List<HelpApplication> approvedApps = helpApplicationRepository
-                    .findByHelpIdAndStatus(hr.getId(), BizStatus.APPROVED);
+                    .findByHelpIdAndStatus(hr.getId(), HelpApplicationStatus.APPROVED);
             for (HelpApplication app : approvedApps) {
                 MyPostItemDTO dto = helpRequestToDTO(hr);
                 dto.setId(app.getId());
@@ -347,7 +354,7 @@ public class UserActivityService {
         List<MyPostItemDTO> result = new ArrayList<>();
         List<HelpApplication> myApps = helpApplicationRepository.findByHelperId(userId);
         for (HelpApplication app : myApps) {
-            if (!BizStatus.APPROVED.equals(app.getStatus())) continue;
+            if (!HelpApplicationStatus.APPROVED.equals(app.getStatus())) continue;
             HelpRequest hr = app.getHelpRequest();
             if (hr == null) {
                 hr = helpRequestRepository.findById(app.getHelpId()).orElse(null);
@@ -385,6 +392,7 @@ public class UserActivityService {
      * @param role 角色视角，取值见 {@link ActivityRole} 的 role 族：
      *             {@code BORROW}（借入方）/ {@code LEND}（借出方）/ {@code HELP_REQ}（求助方）/ {@code HELP_PRO}（帮忙方）
      */
+    @Transactional(readOnly = true)
     public List<MyPostItemDTO> getCompleted(Long userId, String role) {
         List<MyPostItemDTO> result = switch (role) {
             case ActivityRole.BORROW, ActivityRole.LEND -> collectBorrowCompleted(userId, role);
@@ -404,15 +412,15 @@ public class UserActivityService {
     private List<MyPostItemDTO> collectBorrowCompleted(Long userId, String role) {
         List<MyPostItemDTO> result = new ArrayList<>();
         List<BorrowRequest> pool = new ArrayList<>();
-        pool.addAll(borrowRequestRepository.findByBorrowerIdAndStatus(userId, BizStatus.RETURNED));
-        pool.addAll(borrowRequestRepository.findByOwnerIdAndStatus(userId, BizStatus.RETURNED));
+        pool.addAll(borrowRequestRepository.findByBorrowerIdAndStatus(userId, BorrowStatus.RETURNED));
+        pool.addAll(borrowRequestRepository.findByOwnerIdAndStatus(userId, BorrowStatus.RETURNED));
         Set<Long> seen = new HashSet<>();
         for (BorrowRequest br : pool) {
             if (!seen.add(br.getId())) continue;
             if (!role.equals(resolveBorrowRole(br, userId))) continue;
             // 跳过已下架的物品
             IdleItem idleItem = resolveIdleItem(br);
-            if (idleItem != null && BizStatus.OFFLINE.equals(idleItem.getStatus())) continue;
+            if (idleItem != null && PostStatus.OFFLINE.equals(idleItem.getStatus())) continue;
             MyPostItemDTO dto = borrowRequestToDTO(br);
             dto.setType(ContentType.IDLE);
             dto.setSubType(role);
@@ -436,9 +444,9 @@ public class UserActivityService {
         List<HelpRequest> myHelpRequests = helpRequestRepository.findByUserId(userId);
         for (HelpRequest hr : myHelpRequests) {
             // 跳过已被管理员下架的求助
-            if (BizStatus.OFFLINE.equals(hr.getStatus())) continue;
+            if (PostStatus.OFFLINE.equals(hr.getStatus())) continue;
             List<HelpApplication> completedApps = helpApplicationRepository
-                    .findByHelpIdAndStatus(hr.getId(), BizStatus.COMPLETED);
+                    .findByHelpIdAndStatus(hr.getId(), HelpApplicationStatus.COMPLETED);
             for (HelpApplication app : completedApps) {
                 MyPostItemDTO dto = helpRequestToDTO(hr);
                 dto.setId(app.getId());
@@ -471,14 +479,14 @@ public class UserActivityService {
         List<MyPostItemDTO> result = new ArrayList<>();
         List<HelpApplication> myApps = helpApplicationRepository.findByHelperId(userId);
         for (HelpApplication app : myApps) {
-            if (!BizStatus.COMPLETED.equals(app.getStatus())) continue;
+            if (!HelpApplicationStatus.COMPLETED.equals(app.getStatus())) continue;
             HelpRequest hr = app.getHelpRequest();
             if (hr == null) {
                 hr = helpRequestRepository.findById(app.getHelpId()).orElse(null);
             }
             if (hr == null) continue;
             // 跳过已被管理员下架的求助
-            if (BizStatus.OFFLINE.equals(hr.getStatus())) continue;
+            if (PostStatus.OFFLINE.equals(hr.getStatus())) continue;
             MyPostItemDTO dto = helpRequestToDTO(hr);
             dto.setId(app.getId());
             dto.setType(ContentType.HELP);
@@ -639,12 +647,12 @@ public class UserActivityService {
     private String mapIdleDisplayStatus(String status) {
         if (status == null) return "";
         return switch (status) {
-            case BizStatus.ONLINE    -> "在线";
-            case BizStatus.OFFLINE   -> "已下架";
-            case BizStatus.DRAFT     -> "已下架";
-            case BizStatus.PENDING   -> "待审批";
-            case BizStatus.ACTIVE    -> "进行中";
-            case BizStatus.COMPLETED -> "已完成";
+            case PostStatus.ONLINE    -> "在线";
+            case PostStatus.OFFLINE   -> "已下架";
+            case PostStatus.DRAFT     -> "已下架";
+            case PostStatus.PENDING   -> "待审批";
+            case PostStatus.ACTIVE    -> "进行中";
+            case PostStatus.COMPLETED -> "已完成";
             default                  -> status;
         };
     }
@@ -652,12 +660,12 @@ public class UserActivityService {
     private String mapHelpDisplayStatus(String status) {
         if (status == null) return "";
         return switch (status) {
-            case BizStatus.ONLINE    -> "在线";
-            case BizStatus.OFFLINE   -> "已下架";
-            case BizStatus.DRAFT     -> "已下架";
-            case BizStatus.PENDING   -> "待审批";
-            case BizStatus.ACTIVE    -> "进行中";
-            case BizStatus.COMPLETED -> "已完成";
+            case PostStatus.ONLINE    -> "在线";
+            case PostStatus.OFFLINE   -> "已下架";
+            case PostStatus.DRAFT     -> "已下架";
+            case PostStatus.PENDING   -> "待审批";
+            case PostStatus.ACTIVE    -> "进行中";
+            case PostStatus.COMPLETED -> "已完成";
             default                  -> status;
         };
     }
@@ -792,6 +800,7 @@ public class UserActivityService {
      * 进行中的记录一律不计，防止"发布即涨数据"。
      * 按时归还率与借入/借出一致，仅统计已评价的归还记录。
      */
+    @Transactional(readOnly = true)
     public InteractionStats interactionStats(Long userId) {
         // 构建"已被对方评价"的交易 ID 集合
         Set<Long> ratedBorrowIds = new HashSet<>();
@@ -807,7 +816,7 @@ public class UserActivityService {
         // 求助统计
         int helpReq = 0;
         for (HelpRequest hr : helpRequestRepository.findByUserId(userId)) {
-            for (HelpApplication app : helpApplicationRepository.findByHelpIdAndStatus(hr.getId(), BizStatus.COMPLETED)) {
+            for (HelpApplication app : helpApplicationRepository.findByHelpIdAndStatus(hr.getId(), HelpApplicationStatus.COMPLETED)) {
                 if (ratedHelpAppIds.contains(app.getId())) helpReq++;
             }
         }
@@ -815,7 +824,7 @@ public class UserActivityService {
         // 帮助他人统计
         int helpPro = 0;
         for (HelpApplication app : helpApplicationRepository.findByHelperId(userId)) {
-            if (BizStatus.COMPLETED.equals(app.getStatus()) && ratedHelpAppIds.contains(app.getId())) {
+            if (HelpApplicationStatus.COMPLETED.equals(app.getStatus()) && ratedHelpAppIds.contains(app.getId())) {
                 helpPro++;
             }
         }
@@ -836,14 +845,14 @@ public class UserActivityService {
     private BorrowLendStats countBorrowLendStats(Long userId, Set<Long> ratedBorrowIds) {
         List<BorrowRequest> pool = new ArrayList<>();
         pool.addAll(borrowRequestRepository.findByBorrowerId(userId));
-        pool.addAll(borrowRequestRepository.findByOwnerIdAndStatus(userId, BizStatus.APPROVED));
-        pool.addAll(borrowRequestRepository.findByOwnerIdAndStatus(userId, BizStatus.RETURNED));
+        pool.addAll(borrowRequestRepository.findByOwnerIdAndStatus(userId, BorrowStatus.APPROVED));
+        pool.addAll(borrowRequestRepository.findByOwnerIdAndStatus(userId, BorrowStatus.RETURNED));
 
         Set<Long> seen = new HashSet<>();
         int borrow = 0, lend = 0, returned = 0, onTime = 0;
         for (BorrowRequest br : pool) {
             if (!seen.add(br.getId())) continue;
-            if (!BizStatus.RETURNED.equals(br.getStatus())) continue;
+            if (!BorrowStatus.RETURNED.equals(br.getStatus())) continue;
             if (!ratedBorrowIds.contains(br.getId())) continue;  // 仅统计已评价的记录，与借入/借出口径一致
             boolean isBorrowRole = ActivityRole.BORROW.equals(resolveBorrowRole(br, userId));
             if (isBorrowRole) {

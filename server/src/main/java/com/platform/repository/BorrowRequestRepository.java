@@ -1,6 +1,6 @@
 package com.platform.repository;
 
-import com.platform.common.BizStatus;
+import com.platform.common.BorrowStatus;
 import com.platform.model.entity.BorrowRequest;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -71,7 +71,7 @@ public interface BorrowRequestRepository extends JpaRepository<BorrowRequest, Lo
     @Transactional
     @Modifying
     @Query("UPDATE BorrowRequest br SET br.status = :status, br.approvedAt = :approvedAt "
-            + "WHERE br.id = :id AND br.status = '" + BizStatus.PENDING + "'")
+            + "WHERE br.id = :id AND br.status = '" + BorrowStatus.PENDING + "'")
     int decideIfPending(@Param("id") Long id,
                         @Param("status") String status,
                         @Param("approvedAt") LocalDateTime approvedAt);

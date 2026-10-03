@@ -8,7 +8,7 @@ import com.platform.ai.document.DocumentParserRegistry;
 import com.platform.ai.document.DocumentProcessGuard;
 import com.platform.ai.document.ParsedDocument;
 import com.platform.ai.document.TextTitleDeriver;
-import com.platform.common.BizStatus;
+import com.platform.common.KnowledgeStatus;
 import com.platform.common.DocumentStatus;
 import com.platform.model.entity.KnowledgeDocument;
 import com.platform.model.entity.KnowledgeItem;
@@ -194,7 +194,7 @@ public class KnowledgeImportService {
                         .source(doc.getSource() != null ? doc.getSource() : stripExt(doc.getFileName()))
                         .tags(doc.getTags())
                         .embedding(embeddings.get(i))
-                        .status(BizStatus.ONLINE)
+                        .status(KnowledgeStatus.ONLINE)
                         .docId(docId)
                         .chunkIndex(i)
                         .pageNo(c.pageNo())

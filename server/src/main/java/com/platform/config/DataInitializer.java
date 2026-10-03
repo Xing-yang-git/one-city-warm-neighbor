@@ -1,6 +1,7 @@
 package com.platform.config;
 
-import com.platform.common.BizStatus;
+import com.platform.common.AuthStatus;
+import com.platform.common.KnowledgeStatus;
 import com.platform.common.KnowledgeCategory;
 import com.platform.common.UserType;
 import com.platform.model.entity.Building;
@@ -110,7 +111,7 @@ public class DataInitializer implements CommandLineRunner {
                     .title(titles[i])
                     .content(contents[i])
                     .source("平台使用帮助")
-                    .status(BizStatus.ONLINE)
+                    .status(KnowledgeStatus.ONLINE)
                     .createdBy(null)
                     .build();
             // 经 KnowledgeService 创建以自动生成 1024 维向量（生成失败留空，可 reindex 补齐）
@@ -131,7 +132,7 @@ public class DataInitializer implements CommandLineRunner {
                 .name("系统管理员")
                 .userType(UserType.SUPER_ADMIN)
                 .tenantId(null)  // super_admin 为平台级，不绑定具体小区
-                .authStatus(BizStatus.APPROVED)
+                .authStatus(AuthStatus.APPROVED)
                 .build();
         userRepository.save(admin);
         log.info("Created super_admin: admin (tenant_id={})", tenantId);

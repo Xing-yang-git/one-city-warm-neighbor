@@ -2,7 +2,8 @@ package com.platform.service;
 
 import com.platform.common.AppTimeZone;
 import com.platform.common.BizException;
-import com.platform.common.BizStatus;
+import com.platform.common.BorrowStatus;
+import com.platform.common.PostStatus;
 import com.platform.common.NotificationType;
 import com.platform.common.PostType;
 import com.platform.model.dto.ApproveRequest;
@@ -34,7 +35,6 @@ import java.util.stream.Collectors;
  * 且并发重复审批只有一次生效。</p>
  */
 @Service
-@Transactional
 public class BorrowService {
 
     private final BorrowRequestRepository borrowRequestRepository;
@@ -54,19 +54,21 @@ public class BorrowService {
         this.userRepository = userRepository;
     }
 
+    @Transactional(readOnly = true)
     public BorrowResponseDTO getDetail(Long borrowId) {
         BorrowRequest br = borrowRequestRepository.findById(borrowId)
                 .orElseThrow(() -> new BizException("借入记录不存在"));
         return toDTO(br);
     }
 
+    @Transactional
     public BorrowResponseDTO apply(Long borrowerId, BorrowRequestDTO req) {
         // 悲观写锁（SELECT ... FOR UPDATE）：防止两个住户同时申请借入同一物品，
         // 确保"检查状态 → 创建申请 → 标记 reserved"三步在锁保护下原子执行
         IdleItem idleItem = idleItemRepository.findByIdWithLock(req.getIdleId())
                 .orElseThrow(() -> new BizException("物品不存在"));
 
-        if (!BizStatus.ONLINE.equals(idleItem.getStatus())) {
+        if (!PostStatus.ONLINE.equals(idleItem.getStatus())) {
             throw new BizException(unavailableMessage(idleItem.getStatus()));
         }
 
@@ -78,7 +80,7 @@ public class BorrowService {
         // 因此同一人再点通常先被上面的状态校验拦下，但那里提示的是「已被其他住户抢先申请」，
         // 对本人是误导；此处给出准确语义，同时覆盖状态被改回 online 后并发重复提交的窄缝。
         if (borrowRequestRepository.existsByBorrowerIdAndIdleIdAndStatus(
-                borrowerId, idleItem.getId(), BizStatus.PENDING)) {
+                borrowerId, idleItem.getId(), BorrowStatus.PENDING)) {
             throw new BizException("您已申请过该物品，请勿重复提交");
         }
 
@@ -88,12 +90,12 @@ public class BorrowService {
         borrowRequest.setDurationType(req.getDurationType() != null ? req.getDurationType() : "day");
         borrowRequest.setDurationDays(req.getDurationDays() != null ? req.getDurationDays() : 7);
         borrowRequest.setNote(req.getNote());
-        borrowRequest.setStatus(BizStatus.PENDING);
+        borrowRequest.setStatus(BorrowStatus.PENDING);
         borrowRequest.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         borrowRequest = borrowRequestRepository.save(borrowRequest);
 
         // 标记物品为"已被预定"，使详情页按钮显示"已申请"而非"我要借出"
-        idleItem.setStatus(BizStatus.PENDING);
+        idleItem.setStatus(PostStatus.PENDING);
         idleItemRepository.save(idleItem);
 
         boolean wanted = PostType.WANTED.equals(idleItem.getPostType());
@@ -129,6 +131,7 @@ public class BorrowService {
      * @return 审批后的借入申请
      * @throws BizException 申请不存在、无权操作或该申请已被处理时抛出
      */
+    @Transactional
     public BorrowResponseDTO approveReject(Long ownerId, Long borrowId, ApproveRequest req) {
         Long idleId = borrowRequestRepository.findIdleIdById(borrowId)
                 .orElseThrow(() -> new BizException("借入申请不存在"));
@@ -141,7 +144,7 @@ public class BorrowService {
 
         boolean approved = req.getApproved();
         int updated = borrowRequestRepository.decideIfPending(borrowId,
-                approved ? BizStatus.APPROVED : BizStatus.REJECTED,
+                approved ? BorrowStatus.APPROVED : BorrowStatus.REJECTED,
                 approved ? LocalDateTime.now(AppTimeZone.APP_ZONE) : null);
         if (updated == 0) {
             throw new BizException("该申请已被处理，无法重复操作");
@@ -166,10 +169,10 @@ public class BorrowService {
      * @return 对应的提示文案
      */
     private static String unavailableMessage(String status) {
-        if (BizStatus.PENDING_REVIEW.equals(status)) {
+        if (PostStatus.PENDING_REVIEW.equals(status)) {
             return "该帖子正在审核中，暂时无法申请，请稍后再试";
         }
-        if (BizStatus.DRAFT.equals(status) || BizStatus.OFFLINE.equals(status)) {
+        if (PostStatus.DRAFT.equals(status) || PostStatus.OFFLINE.equals(status)) {
             return "该帖子已下架，无法申请";
         }
         return "该物品已被其他住户抢先申请，请浏览其他物品";
@@ -180,15 +183,15 @@ public class BorrowService {
      */
     private void syncIdleItemAfterApproveReject(IdleItem idleItem, BorrowRequest borrowRequest, boolean approved) {
         if (approved) {
-            idleItem.setStatus(BizStatus.ACTIVE);
+            idleItem.setStatus(PostStatus.ACTIVE);
             borrowRequest.setStartDate(LocalDate.now(AppTimeZone.APP_ZONE));
             idleItemRepository.save(idleItem);
         } else {
             // 拒绝时：若该物品没有其他待审批的申请，恢复为 online
             List<BorrowRequest> pendingForItem = borrowRequestRepository
-                    .findByIdleIdInAndStatus(List.of(borrowRequest.getIdleId()), BizStatus.PENDING);
+                    .findByIdleIdInAndStatus(List.of(borrowRequest.getIdleId()), BorrowStatus.PENDING);
             if (pendingForItem.isEmpty()) {
-                idleItem.setStatus(BizStatus.ONLINE);
+                idleItem.setStatus(PostStatus.ONLINE);
                 idleItemRepository.save(idleItem);
             }
         }
@@ -220,17 +223,19 @@ public class BorrowService {
         createNotification(borrowRequest.getBorrowerId(), NotificationType.BORROW_RESULT, title, content, borrowRequest.getId());
     }
 
+    @Transactional(readOnly = true)
     public List<BorrowResponseDTO> getMyApplications(Long userId) {
         List<BorrowRequest> requests = borrowRequestRepository.findByBorrowerId(userId);
         return requests.stream().map(this::toDTO).collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public List<BorrowResponseDTO> getPendingApprovals(Long userId) {
         List<IdleItem> myItems = idleItemRepository.findByUserId(userId);
         List<Long> myItemIds = myItems.stream().map(IdleItem::getId).collect(Collectors.toList());
         if (myItemIds.isEmpty()) return new ArrayList<>();
         List<BorrowRequest> pendingRequests = borrowRequestRepository
-                .findByIdleIdInAndStatus(myItemIds, BizStatus.PENDING);
+                .findByIdleIdInAndStatus(myItemIds, BorrowStatus.PENDING);
         return pendingRequests.stream().map(this::toDTO).collect(Collectors.toList());
     }
 
@@ -239,6 +244,7 @@ public class BorrowService {
      * 借入(borrow)与借出(lend)是同一条 BorrowRequest 的两个视角，状态共享，
      * 因此任意一方确认归还后，双方的该笔记录都会从「进行中」进入「已完成」。
      */
+    @Transactional
     public BorrowResponseDTO confirmReturn(Long actorId, Long borrowId, ReturnRequest req) {
         BorrowRequest borrowRequest = borrowRequestRepository.findById(borrowId)
                 .orElseThrow(() -> new BizException("借入记录不存在"));
@@ -252,7 +258,7 @@ public class BorrowService {
             throw new BizException("无权操作该记录");
         }
 
-        if (!BizStatus.APPROVED.equals(borrowRequest.getStatus())) {
+        if (!BorrowStatus.APPROVED.equals(borrowRequest.getStatus())) {
             throw new BizException("该借入不在进行中，无法归还");
         }
 
@@ -267,12 +273,12 @@ public class BorrowService {
         }
         borrowRequest.setIsOnTime(req.getIsOnTime());
         borrowRequest.setReturnPhotos(req.getReturnPhotos());
-        borrowRequest.setStatus(BizStatus.RETURNED);
+        borrowRequest.setStatus(BorrowStatus.RETURNED);
         borrowRequest.setReturnedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         borrowRequest = borrowRequestRepository.save(borrowRequest);
 
         if (idleItem != null) {
-            idleItem.setStatus(BizStatus.COMPLETED);
+            idleItem.setStatus(PostStatus.COMPLETED);
             idleItemRepository.save(idleItem);
         }
 
@@ -292,6 +298,7 @@ public class BorrowService {
      * 补充归还后物品状况（damageType）。
      * 仅物品所有者可在已完成归还的记录上补填，防止借入方归还时跳过了物主确认。
      */
+    @Transactional
     public void updateDamage(Long userId, Long borrowId, String damageType) {
         BorrowRequest br = borrowRequestRepository.findById(borrowId)
                 .orElseThrow(() -> new BizException("借入记录不存在"));
@@ -300,7 +307,7 @@ public class BorrowService {
         if (ownerId == null || !ownerId.equals(userId)) {
             throw new BizException("只有物品所有者可以填写物品状况");
         }
-        if (!BizStatus.RETURNED.equals(br.getStatus())) {
+        if (!BorrowStatus.RETURNED.equals(br.getStatus())) {
             throw new BizException("仅已完成归还的记录可补充物品状况");
         }
         if (damageType == null || damageType.isEmpty()) {

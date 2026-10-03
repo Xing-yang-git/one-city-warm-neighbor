@@ -1,7 +1,7 @@
 package com.platform.model.entity;
 
 import com.platform.common.AppTimeZone;
-import com.platform.common.BizStatus;
+import com.platform.common.KnowledgeStatus;
 import com.platform.model.entity.column.KnowledgeItemsColumn;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -66,10 +66,10 @@ public class KnowledgeItem {
     @Column(name = KnowledgeItemsColumn.COL_EMBEDDING)
     private String embedding;
 
-    /** 状态：online(启用)/offline(停用)，引用 {@link BizStatus} */
+    /** 状态：online(启用)/offline(停用)，引用 {@link KnowledgeStatus} */
     @Column(name = KnowledgeItemsColumn.COL_STATUS, nullable = false, length = 10)
     @Builder.Default
-    private String status = BizStatus.ONLINE;
+    private String status = KnowledgeStatus.ONLINE;
 
     /** 来源文档 ID（NULL=手写条目）→ knowledge_documents.id，删除文档时据此级联清理全部切片 */
     @Column(name = KnowledgeItemsColumn.COL_DOC_ID)

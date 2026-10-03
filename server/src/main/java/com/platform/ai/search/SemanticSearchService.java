@@ -1,7 +1,7 @@
 package com.platform.ai.search;
 
 import com.platform.ai.embedding.EmbeddingService;
-import com.platform.common.BizStatus;
+import com.platform.common.PostStatus;
 import com.platform.config.AiConfig;
 import com.platform.model.entity.IdleItem;
 import com.platform.repository.IdleItemRepository;
@@ -66,7 +66,7 @@ public class SemanticSearchService {
         query.setParameter("embedding", embedding);
         query.setParameter("tenantId", tenantId);
         query.setParameter("postType", postType);
-        query.setParameter("status", BizStatus.ONLINE);
+        query.setParameter("status", PostStatus.ONLINE);
         query.setParameter("threshold", aiConfig.getSimilarityThreshold());
         query.setParameter("limit", limit);
 
@@ -92,7 +92,7 @@ public class SemanticSearchService {
         }
 
         Page<IdleItem> keywordPage = idleItemRepository.searchByTenant(
-                BizStatus.ONLINE, postType, tenantId, queryText, queryText,
+                PostStatus.ONLINE, postType, tenantId, queryText, queryText,
                 PageRequest.of(0, fetchLimit));
 
         for (IdleItem item : keywordPage.getContent()) {

@@ -2,7 +2,7 @@ package com.platform.ai.moderation;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.platform.common.BizStatus;
+import com.platform.common.PostStatus;
 import com.platform.common.ContentType;
 import com.platform.common.ModerationStatus;
 import com.platform.common.NotificationType;
@@ -144,7 +144,7 @@ public class ModerationService {
      * @return true 表示仍需审核
      */
     private boolean isStillPending(String moderationStatus, String status) {
-        return ModerationStatus.PENDING.equals(moderationStatus) && BizStatus.PENDING_REVIEW.equals(status);
+        return ModerationStatus.PENDING.equals(moderationStatus) && PostStatus.PENDING_REVIEW.equals(status);
     }
 
     // ==================== 审核执行逻辑 ====================
@@ -365,11 +365,11 @@ public class ModerationService {
     private static String targetStatusOf(String level) {
         switch (level) {
             case ModerationStatus.GREEN:
-                return BizStatus.ONLINE;
+                return PostStatus.ONLINE;
             case ModerationStatus.YELLOW:
-                return BizStatus.PENDING_REVIEW;
+                return PostStatus.PENDING_REVIEW;
             case ModerationStatus.RED:
-                return BizStatus.OFFLINE;
+                return PostStatus.OFFLINE;
             default:
                 return null;
         }

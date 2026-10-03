@@ -20,7 +20,7 @@ import com.platform.repository.UnitRepository;
 import com.platform.repository.UserRepository;
 import com.platform.security.JwtTokenProvider;
 import com.platform.websocket.ChatWebSocketHandler;
-import com.platform.common.BizStatus;
+import com.platform.common.AuthStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -79,7 +79,7 @@ class AuthServiceTest {
                 .openid(openid)
                 .name("测试用户")
                 .userType("业主")
-                .authStatus(BizStatus.APPROVED)
+                .authStatus(AuthStatus.APPROVED)
                 .createdAt(java.time.LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
     }
@@ -157,7 +157,7 @@ class AuthServiceTest {
 
         // 断言
         assertThat(result.getNeedRegister()).isEqualTo(true);
-        assertThat(user.getAuthStatus()).isEqualTo(BizStatus.REGISTERING);
+        assertThat(user.getAuthStatus()).isEqualTo(AuthStatus.REGISTERING);
     }
 
     @Test
@@ -201,7 +201,7 @@ class AuthServiceTest {
                 .passwordHash("hashed_password")
                 .name("管理员")
                 .userType(UserType.ADMIN)
-                .authStatus(BizStatus.APPROVED)
+                .authStatus(AuthStatus.APPROVED)
                 .build();
 
         when(userRepository.findByUsername("admin")).thenReturn(Optional.of(adminUser));
@@ -345,7 +345,7 @@ class AuthServiceTest {
         assertThat(result).isNotNull();
         assertThat(result.getToken()).isEqualTo("mock-token");
         assertThat(resultUser.getName()).isEqualTo("张三");
-        assertThat(user.getAuthStatus()).isEqualTo(BizStatus.PENDING);
+        assertThat(user.getAuthStatus()).isEqualTo(AuthStatus.PENDING);
         assertThat(user.getRoomId()).isEqualTo(room.getId());
         // 注册保存 + issueUserToken 更新版本各一次
         verify(userRepository, atLeastOnce()).save(any(User.class));
@@ -606,7 +606,7 @@ class AuthServiceTest {
         AuthStatusDTO result = authService.getAuthStatus(userId);
 
         // 断言
-        assertThat(result.getAuthStatus()).isEqualTo(BizStatus.PENDING);
+        assertThat(result.getAuthStatus()).isEqualTo(AuthStatus.PENDING);
         assertThat(result.getRejectReason()).isNull();
     }
 
@@ -637,7 +637,7 @@ class AuthServiceTest {
 
         // 断言
         assertThat(result.getSuccess()).isEqualTo(true);
-        assertThat(user.getAuthStatus()).isEqualTo(BizStatus.PENDING);
+        assertThat(user.getAuthStatus()).isEqualTo(AuthStatus.PENDING);
         assertThat(user.getRejectReason()).isNull();
     }
 

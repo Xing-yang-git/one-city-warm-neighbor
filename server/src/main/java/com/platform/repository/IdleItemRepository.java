@@ -1,6 +1,6 @@
 package com.platform.repository;
 
-import com.platform.common.BizStatus;
+import com.platform.common.PostStatus;
 import com.platform.common.ModerationStatus;
 import com.platform.model.entity.IdleItem;
 import org.springframework.data.domain.Page;
@@ -125,7 +125,7 @@ public interface IdleItemRepository extends JpaRepository<IdleItem, Long> {
      * 此处让数据库在同一条语句内完成「判断 + 写入」，受影响行数为 0 即表示结果已过期，
      * 调用方应丢弃该结果而不是覆盖当前状态。</p>
      *
-     * <p>条件中的状态值取自 {@link BizStatus} / {@link ModerationStatus} 常量拼接（注解需编译期常量），
+     * <p>条件中的状态值取自 {@link PostStatus} / {@link ModerationStatus} 常量拼接（注解需编译期常量），
      * 避免在 JPQL 中硬编码字面量。</p>
      *
      * <p><b>本方法自带 {@code @Transactional}</b>：调用它的审核链路跑在线程池线程上、没有外层事务，
@@ -142,7 +142,7 @@ public interface IdleItemRepository extends JpaRepository<IdleItem, Long> {
     @Transactional
     @Modifying
     @Query("UPDATE IdleItem i SET i.status = :newStatus, i.moderationStatus = :level, i.delistReason = :reason "
-            + "WHERE i.id = :id AND i.status = '" + BizStatus.PENDING_REVIEW + "' "
+            + "WHERE i.id = :id AND i.status = '" + PostStatus.PENDING_REVIEW + "' "
             + "AND i.moderationStatus = '" + ModerationStatus.PENDING + "'")
     int applyModerationResult(@Param("id") Long id,
                               @Param("newStatus") String newStatus,

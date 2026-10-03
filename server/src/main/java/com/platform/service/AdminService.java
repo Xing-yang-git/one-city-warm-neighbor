@@ -4,9 +4,13 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.platform.common.ActivityRole;
 import com.platform.common.AppTimeZone;
+import com.platform.common.AuthStatus;
 import com.platform.common.BizException;
-import com.platform.common.BizStatus;
+import com.platform.common.BorrowStatus;
 import com.platform.common.ContentType;
+import com.platform.common.HelpApplicationStatus;
+import com.platform.common.ItemCondition;
+import com.platform.common.PostStatus;
 import com.platform.common.DamageType;
 import com.platform.common.ModerationStatus;
 import com.platform.common.NotificationType;
@@ -90,7 +94,6 @@ import java.util.stream.Collectors;
 import java.time.format.DateTimeFormatter;
 
 @Service
-@Transactional
 public class AdminService {
 
     private static final Logger log = LoggerFactory.getLogger(AdminService.class);
@@ -159,6 +162,7 @@ public class AdminService {
      * @param adminId 当前管理员用户 ID
      * @return 看板统计数据
      */
+    @Transactional(readOnly = true)
     public DashboardDTO getDashboard(Long adminId) {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
@@ -268,13 +272,13 @@ public class AdminService {
     /** 在线闲置数：postType=LEND 且 status=online（不含 WANTED）。 */
     private long countLendOnline(List<IdleItem> idleItems) {
         return idleItems.stream()
-                .filter(i -> PostType.LEND.equals(i.getPostType()) && BizStatus.ONLINE.equals(i.getStatus()))
+                .filter(i -> PostType.LEND.equals(i.getPostType()) && PostStatus.ONLINE.equals(i.getStatus()))
                 .count();
     }
 
     /** 在线技能求助数：status=online。 */
     private long countHelpOnline(List<HelpRequest> helpRequests) {
-        return helpRequests.stream().filter(h -> BizStatus.ONLINE.equals(h.getStatus())).count();
+        return helpRequests.stream().filter(h -> PostStatus.ONLINE.equals(h.getStatus())).count();
     }
 
     /** 时间窗口内闲置+求助发布总数。 */
@@ -456,9 +460,9 @@ public class AdminService {
     /** 本月完成互助数：归还完成借用（status=returned）+ 完成帮助（status=completed）。 */
     private long countCompleted(List<BorrowRequest> borrows, List<HelpApplication> helpApps,
             LocalDateTime start, LocalDateTime end) {
-        long b = borrows.stream().filter(x -> BizStatus.RETURNED.equals(x.getStatus())
+        long b = borrows.stream().filter(x -> BorrowStatus.RETURNED.equals(x.getStatus())
                 && isWithinMonth(x.getReturnedAt(), start, end)).count();
-        long a = helpApps.stream().filter(x -> BizStatus.COMPLETED.equals(x.getStatus())
+        long a = helpApps.stream().filter(x -> HelpApplicationStatus.COMPLETED.equals(x.getStatus())
                 && isWithinMonth(x.getCompletedAt(), start, end)).count();
         return b + a;
     }
@@ -466,9 +470,9 @@ public class AdminService {
     /** 本月直接下架数：本月发布且状态 offline 的闲置+求助。 */
     private long countRemoved(List<IdleItem> idleItems, List<HelpRequest> helpRequests,
             LocalDateTime start, LocalDateTime end) {
-        long idle = idleItems.stream().filter(i -> BizStatus.OFFLINE.equals(i.getStatus())
+        long idle = idleItems.stream().filter(i -> PostStatus.OFFLINE.equals(i.getStatus())
                 && isWithinMonth(i.getCreatedAt(), start, end)).count();
-        long help = helpRequests.stream().filter(h -> BizStatus.OFFLINE.equals(h.getStatus())
+        long help = helpRequests.stream().filter(h -> PostStatus.OFFLINE.equals(h.getStatus())
                 && isWithinMonth(h.getCreatedAt(), start, end)).count();
         return idle + help;
     }
@@ -502,7 +506,7 @@ public class AdminService {
                 .forEach((uid, count) -> merged.merge(uid, count, Long::sum));
         // 技能接单：帮助接单完成次数（COMPLETED）
         helpApps.stream()
-                .filter(a -> BizStatus.COMPLETED.equals(a.getStatus()))
+                .filter(a -> HelpApplicationStatus.COMPLETED.equals(a.getStatus()))
                 .collect(Collectors.groupingBy(HelpApplication::getHelperId, Collectors.counting()))
                 .forEach((uid, count) -> merged.merge(uid, count, Long::sum));
         List<DashboardDTO.RankingItem> items = new ArrayList<>();
@@ -541,17 +545,18 @@ public class AdminService {
      * @param status  "pending" / "approved" / "rejected" / null（全部非 registering 状态）
      * @return 全部审核用户 DTO 列表
      */
+    @Transactional(readOnly = true)
     public List<UserDTO> getAudits(Long adminId, String status) {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
         List<User> users;
 
         if (status != null && !status.isEmpty()) {
-            if (BizStatus.APPROVED.equals(status)) {
+            if (AuthStatus.APPROVED.equals(status)) {
                 // "全部住户"页签：仅显示真实住户，排除管理员账号
                 users = tenantId != null
-                        ? userRepository.findByTenantIdAndAuthStatusAndUserTypeNotIn(tenantId, BizStatus.APPROVED, ADMIN_USER_TYPES)
-                        : userRepository.findByAuthStatusAndUserTypeNotIn(BizStatus.APPROVED, ADMIN_USER_TYPES);
+                        ? userRepository.findByTenantIdAndAuthStatusAndUserTypeNotIn(tenantId, AuthStatus.APPROVED, ADMIN_USER_TYPES)
+                        : userRepository.findByAuthStatusAndUserTypeNotIn(AuthStatus.APPROVED, ADMIN_USER_TYPES);
             } else {
                 users = tenantId != null
                         ? userRepository.findByTenantIdAndAuthStatus(tenantId, status)
@@ -560,8 +565,8 @@ public class AdminService {
         } else {
             // "all"页签：排除仍处于 "registering" 状态（尚未完成注册）的用户
             users = tenantId != null
-                    ? userRepository.findByTenantIdAndAuthStatusNot(tenantId, BizStatus.REGISTERING)
-                    : userRepository.findByAuthStatusNot(BizStatus.REGISTERING);
+                    ? userRepository.findByTenantIdAndAuthStatusNot(tenantId, AuthStatus.REGISTERING)
+                    : userRepository.findByAuthStatusNot(AuthStatus.REGISTERING);
         }
 
         // 保持与分页版一致的按创建时间倒序（无分页查询不保证顺序）
@@ -589,21 +594,22 @@ public class AdminService {
     /**
      * 获取各审核页签的数量统计。
      */
+    @Transactional(readOnly = true)
     public AuditCountDTO getAuditCounts(Long adminId) {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
         long pending = tenantId != null
-                ? userRepository.countByTenantIdAndAuthStatus(tenantId, BizStatus.PENDING)
-                : userRepository.countByAuthStatus(BizStatus.PENDING);
+                ? userRepository.countByTenantIdAndAuthStatus(tenantId, AuthStatus.PENDING)
+                : userRepository.countByAuthStatus(AuthStatus.PENDING);
         long approved = tenantId != null
-                ? userRepository.countByTenantIdAndAuthStatusAndUserTypeNotIn(tenantId, BizStatus.APPROVED, ADMIN_USER_TYPES)
-                : userRepository.countByAuthStatusAndUserTypeNotIn(BizStatus.APPROVED, ADMIN_USER_TYPES);
+                ? userRepository.countByTenantIdAndAuthStatusAndUserTypeNotIn(tenantId, AuthStatus.APPROVED, ADMIN_USER_TYPES)
+                : userRepository.countByAuthStatusAndUserTypeNotIn(AuthStatus.APPROVED, ADMIN_USER_TYPES);
         long rejected = tenantId != null
-                ? userRepository.countByTenantIdAndAuthStatus(tenantId, BizStatus.REJECTED)
-                : userRepository.countByAuthStatus(BizStatus.REJECTED);
+                ? userRepository.countByTenantIdAndAuthStatus(tenantId, AuthStatus.REJECTED)
+                : userRepository.countByAuthStatus(AuthStatus.REJECTED);
         long all = tenantId != null
-                ? userRepository.countByTenantIdAndAuthStatusNot(tenantId, BizStatus.REGISTERING)
-                : userRepository.countByAuthStatusNot(BizStatus.REGISTERING);
+                ? userRepository.countByTenantIdAndAuthStatusNot(tenantId, AuthStatus.REGISTERING)
+                : userRepository.countByAuthStatusNot(AuthStatus.REGISTERING);
         return AuditCountDTO.builder()
                 .pending(pending)
                 .approved(approved)
@@ -612,12 +618,13 @@ public class AdminService {
                 .build();
     }
 
+    @Transactional
     public Map<String, Object> auditUser(Long adminId, Long userId, AuditRequest req) {
         requireNotSuperAdmin(findAdmin(adminId));
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BizException("用户不存在"));
 
-        user.setAuthStatus(req.getApproved() ? BizStatus.APPROVED : BizStatus.REJECTED);
+        user.setAuthStatus(req.getApproved() ? AuthStatus.APPROVED : AuthStatus.REJECTED);
         if (req.getApproved()) {
             user.setRejectReason(null);
         } else {
@@ -668,6 +675,7 @@ public class AdminService {
      * @param moderatedBy       审核员
      * @return 全部内容列表（按 createdAt 降序）
      */
+    @Transactional(readOnly = true)
     public List<ContentItemDTO> getContentList(Long adminId, String statusTab, String type, Integer buildingNo,
                                                Integer unitNo, String search,
                                                String moderationStatus, String moderatedBy) {
@@ -709,7 +717,7 @@ public class AdminService {
         // 待审批 tab 特殊处理：数据来源为 borrow_requests / help_applications（pending 状态），
         // 而非 idle_items / help_requests 表，与 C端「管理页→审批」数据源一致
         // effectiveTab 是页面 statusTab 域（moderation/pending/showing/progressing/completed/violation/all），
-        // 与 BizStatus 不同域，勿改为常量引用（同段 "moderation" 亦为字面量）
+        // 与 PostStatus 等状态常量不同域，勿改为常量引用（同段 "moderation" 亦为字面量）
         if ("pending".equals(effectiveTab)) {
             List<ContentItemDTO> allItems = new ArrayList<>();
             if (type == null || ContentType.IDLE.equals(type)) {
@@ -783,6 +791,7 @@ public class AdminService {
      * @param type "idle" 或 "help"
      * @return 内容详情 DTO
      */
+    @Transactional(readOnly = true)
     public ContentItemDTO getContentDetail(Long adminId, Long id, String type) {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
@@ -810,44 +819,45 @@ public class AdminService {
      *
      * @return 页签名到数量的映射
      */
+    @Transactional(readOnly = true)
     public ContentCountDTO getContentCounts(Long adminId) {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
 
         long idleShowing = tenantId != null
-                ? idleItemRepository.countByTenantIdAndStatus(tenantId, BizStatus.ONLINE)
-                : idleItemRepository.countByStatus(BizStatus.ONLINE);
+                ? idleItemRepository.countByTenantIdAndStatus(tenantId, PostStatus.ONLINE)
+                : idleItemRepository.countByStatus(PostStatus.ONLINE);
         long helpShowing = tenantId != null
-                ? helpRequestRepository.countByTenantIdAndStatus(tenantId, BizStatus.ONLINE)
-                : helpRequestRepository.countByStatus(BizStatus.ONLINE);
+                ? helpRequestRepository.countByTenantIdAndStatus(tenantId, PostStatus.ONLINE)
+                : helpRequestRepository.countByStatus(PostStatus.ONLINE);
 
         long borrowPending = tenantId != null
-                ? borrowRequestRepository.countByStatusAndTenantId(BizStatus.PENDING, tenantId)
-                : borrowRequestRepository.countByStatus(BizStatus.PENDING);
+                ? borrowRequestRepository.countByStatusAndTenantId(BorrowStatus.PENDING, tenantId)
+                : borrowRequestRepository.countByStatus(BorrowStatus.PENDING);
         long helpAppPending = tenantId != null
-                ? helpApplicationRepository.countByStatusAndTenantId(BizStatus.PENDING, tenantId)
-                : helpApplicationRepository.countByStatus(BizStatus.PENDING);
+                ? helpApplicationRepository.countByStatusAndTenantId(HelpApplicationStatus.PENDING, tenantId)
+                : helpApplicationRepository.countByStatus(HelpApplicationStatus.PENDING);
 
         long idleProgressing = tenantId != null
-                ? idleItemRepository.countByTenantIdAndStatus(tenantId, BizStatus.ACTIVE)
-                : idleItemRepository.countByStatus(BizStatus.ACTIVE);
+                ? idleItemRepository.countByTenantIdAndStatus(tenantId, PostStatus.ACTIVE)
+                : idleItemRepository.countByStatus(PostStatus.ACTIVE);
         long helpProgressing = tenantId != null
-                ? helpRequestRepository.countByTenantIdAndStatus(tenantId, BizStatus.ACTIVE)
-                : helpRequestRepository.countByStatus(BizStatus.ACTIVE);
+                ? helpRequestRepository.countByTenantIdAndStatus(tenantId, PostStatus.ACTIVE)
+                : helpRequestRepository.countByStatus(PostStatus.ACTIVE);
 
         long idleCompleted = tenantId != null
-                ? idleItemRepository.countByTenantIdAndStatus(tenantId, BizStatus.COMPLETED)
-                : idleItemRepository.countByStatus(BizStatus.COMPLETED);
+                ? idleItemRepository.countByTenantIdAndStatus(tenantId, PostStatus.COMPLETED)
+                : idleItemRepository.countByStatus(PostStatus.COMPLETED);
         long helpCompleted = tenantId != null
-                ? helpRequestRepository.countByTenantIdAndStatus(tenantId, BizStatus.COMPLETED)
-                : helpRequestRepository.countByStatus(BizStatus.COMPLETED);
+                ? helpRequestRepository.countByTenantIdAndStatus(tenantId, PostStatus.COMPLETED)
+                : helpRequestRepository.countByStatus(PostStatus.COMPLETED);
 
         long idleViolation = tenantId != null
-                ? idleItemRepository.countByTenantIdAndStatus(tenantId, BizStatus.OFFLINE)
-                : idleItemRepository.countByStatus(BizStatus.OFFLINE);
+                ? idleItemRepository.countByTenantIdAndStatus(tenantId, PostStatus.OFFLINE)
+                : idleItemRepository.countByStatus(PostStatus.OFFLINE);
         long helpViolation = tenantId != null
-                ? helpRequestRepository.countByTenantIdAndStatus(tenantId, BizStatus.OFFLINE)
-                : helpRequestRepository.countByStatus(BizStatus.OFFLINE);
+                ? helpRequestRepository.countByTenantIdAndStatus(tenantId, PostStatus.OFFLINE)
+                : helpRequestRepository.countByStatus(PostStatus.OFFLINE);
 
         long idleAll = idleShowing + idleProgressing + idleCompleted + idleViolation;
         long helpAll = helpShowing + helpProgressing + helpCompleted + helpViolation;
@@ -870,6 +880,7 @@ public class AdminService {
      * @param req       下架请求，包含类型、原因列表和自定义原因
      * @return 结果 map
      */
+    @Transactional
     public OperationResultDTO removeContent(Long adminId, Long contentId, ContentOfflineRequest req) {
         requireNotSuperAdmin(findAdmin(adminId));
         String delistReason = buildDelistReason(req);
@@ -898,10 +909,10 @@ public class AdminService {
                         .orElseThrow(() -> new BizException("物品不存在"));
                 checkVersionConflict(item.getUpdatedAt(), updatedAt);
                 if (ModerationStatus.RED.equals(item.getModerationStatus()) ||
-                    (ModerationStatus.REVIEWED.equals(item.getModerationStatus()) && BizStatus.OFFLINE.equals(item.getStatus()))) {
+                    (ModerationStatus.REVIEWED.equals(item.getModerationStatus()) && PostStatus.OFFLINE.equals(item.getStatus()))) {
                     throw new BizException("该内容已被驳回，无法重新上线");
                 }
-                item.setStatus(BizStatus.ONLINE);
+                item.setStatus(PostStatus.ONLINE);
                 item.setDelistReason(null);
                 item.setModerationStatus(ModerationStatus.REVIEWED);
                 item.setReviewedBy(adminId);
@@ -916,10 +927,10 @@ public class AdminService {
                         .orElseThrow(() -> new BizException("求助不存在"));
                 checkVersionConflict(hr.getUpdatedAt(), updatedAt);
                 if (ModerationStatus.RED.equals(hr.getModerationStatus()) ||
-                    (ModerationStatus.REVIEWED.equals(hr.getModerationStatus()) && BizStatus.OFFLINE.equals(hr.getStatus()))) {
+                    (ModerationStatus.REVIEWED.equals(hr.getModerationStatus()) && PostStatus.OFFLINE.equals(hr.getStatus()))) {
                     throw new BizException("该内容已被驳回，无法重新上线");
                 }
-                hr.setStatus(BizStatus.ONLINE);
+                hr.setStatus(PostStatus.ONLINE);
                 hr.setDelistReason(null);
                 hr.setModerationStatus(ModerationStatus.REVIEWED);
                 hr.setReviewedBy(adminId);
@@ -973,7 +984,7 @@ public class AdminService {
         IdleItem item = idleItemRepository.findById(contentId)
                 .orElseThrow(() -> new BizException("物品不存在"));
         checkVersionConflict(item.getUpdatedAt(), updatedAt);
-        item.setStatus(BizStatus.OFFLINE);
+        item.setStatus(PostStatus.OFFLINE);
         item.setDelistReason(delistReason);
         // 审核 tab 驳回：设为 ModerationStatus.REVIEWED，红牌筛选 (REVIEWED + offline) 可匹配；其他 tab 下架：清空审核状态，不参与 moderation 筛选
         item.setModerationStatus(fromModeration ? ModerationStatus.REVIEWED : null);
@@ -982,10 +993,10 @@ public class AdminService {
 
         // 拒绝该物品下所有待审批的借入申请，使其从待审批列表中消失
         List<BorrowRequest> pendingBorrows = borrowRequestRepository.findByIdleId(contentId).stream()
-                .filter(br -> BizStatus.PENDING.equals(br.getStatus()))
+                .filter(br -> BorrowStatus.PENDING.equals(br.getStatus()))
                 .collect(Collectors.toList());
         for (BorrowRequest br : pendingBorrows) {
-            br.setStatus(BizStatus.REJECTED);
+            br.setStatus(BorrowStatus.REJECTED);
             borrowRequestRepository.save(br);
             createNotification(br.getBorrowerId(), NotificationType.AUDIT_RESULT,
                     "借入申请已拒绝",
@@ -995,10 +1006,10 @@ public class AdminService {
 
         // 强制结束该物品下所有进行中的借用，使其从进行中列表中消失
         List<BorrowRequest> activeBorrows = borrowRequestRepository.findByIdleId(contentId).stream()
-                .filter(br -> BizStatus.APPROVED.equals(br.getStatus()))
+                .filter(br -> BorrowStatus.APPROVED.equals(br.getStatus()))
                 .collect(Collectors.toList());
         for (BorrowRequest br : activeBorrows) {
-            br.setStatus(BizStatus.RETURNED);
+            br.setStatus(BorrowStatus.RETURNED);
             br.setReturnedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
             borrowRequestRepository.save(br);
             createNotification(br.getBorrowerId(), NotificationType.VIOLATION,
@@ -1022,7 +1033,7 @@ public class AdminService {
         HelpRequest item = helpRequestRepository.findById(contentId)
                 .orElseThrow(() -> new BizException("求助信息不存在"));
         checkVersionConflict(item.getUpdatedAt(), updatedAt);
-        item.setStatus(BizStatus.OFFLINE);
+        item.setStatus(PostStatus.OFFLINE);
         item.setDelistReason(delistReason);
         // 审核 tab 驳回：设为 ModerationStatus.REVIEWED，红牌筛选 (REVIEWED + offline) 可匹配；其他 tab 下架：清空审核状态，不参与 moderation 筛选
         item.setModerationStatus(fromModeration ? ModerationStatus.REVIEWED : null);
@@ -1030,9 +1041,9 @@ public class AdminService {
         helpRequestRepository.save(item);
 
         // 拒绝该求助下所有待审批的帮助申请，使其从待审批列表中消失
-        List<HelpApplication> pendingApps = helpApplicationRepository.findByHelpIdAndStatus(contentId, BizStatus.PENDING);
+        List<HelpApplication> pendingApps = helpApplicationRepository.findByHelpIdAndStatus(contentId, HelpApplicationStatus.PENDING);
         for (HelpApplication app : pendingApps) {
-            app.setStatus(BizStatus.REJECTED);
+            app.setStatus(HelpApplicationStatus.REJECTED);
             helpApplicationRepository.save(app);
             createNotification(app.getHelperId(), NotificationType.AUDIT_RESULT,
                     "帮助申请已拒绝",
@@ -1041,9 +1052,9 @@ public class AdminService {
         }
 
         // 强制结束该求助下所有进行中的帮助，使其从进行中列表中消失
-        List<HelpApplication> activeApps = helpApplicationRepository.findByHelpIdAndStatus(contentId, BizStatus.APPROVED);
+        List<HelpApplication> activeApps = helpApplicationRepository.findByHelpIdAndStatus(contentId, HelpApplicationStatus.APPROVED);
         for (HelpApplication app : activeApps) {
-            app.setStatus(BizStatus.COMPLETED);
+            app.setStatus(HelpApplicationStatus.COMPLETED);
             app.setCompletedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
             helpApplicationRepository.save(app);
             createNotification(app.getHelperId(), NotificationType.VIOLATION,
@@ -1077,6 +1088,7 @@ public class AdminService {
 
     // ==================== 代发布 ====================
 
+    @Transactional
     public IdleItemDTO proxyPublishIdle(Long adminId, IdleItemRequest req) {
         requireNotSuperAdmin(findAdmin(adminId));
         // tenant_id 为 NOT NULL 列，代发数据必须归属管理员所在租户，否则 save 直接抛约束异常
@@ -1090,7 +1102,7 @@ public class AdminService {
         item.setCategory(req.getCategory());
         item.setImages(req.getImages());
         item.setPrice(req.getPrice());
-        item.setStatus(BizStatus.ONLINE);
+        item.setStatus(PostStatus.ONLINE);
         item.setIsProxy(true);
         item.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         item = idleItemRepository.save(item);
@@ -1122,6 +1134,7 @@ public class AdminService {
     /**
      * 管理员代发求助。
      */
+    @Transactional
     public HelpResponseDTO proxyPublishHelp(Long adminId, HelpRequestDTO req) {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
@@ -1136,7 +1149,7 @@ public class AdminService {
         // 解析时间字段（格式与 HelpService.publish 一致）
         parseHelpTimeFields(helpRequest, req);
 
-        helpRequest.setStatus(BizStatus.ONLINE);
+        helpRequest.setStatus(PostStatus.ONLINE);
         helpRequest.setIsProxy(true);
         helpRequest.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         helpRequest = helpRequestRepository.save(helpRequest);
@@ -1182,6 +1195,7 @@ public class AdminService {
     /**
      * 获取交易记录（已归还的借用 / 已完成的帮助），按 createdAt 降序分页。
      */
+    @Transactional(readOnly = true)
     public List<RecordItemDTO> getRecords(Long adminId, String type) {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
@@ -1205,7 +1219,7 @@ public class AdminService {
      * 加载该租户下已归还的借用记录（含评分、时长、物品状况等详情）。
      */
     private List<RecordItemDTO> loadBorrowRecords(Long tenantId) {
-        List<BorrowRequest> borrows = borrowRequestRepository.findByStatus(BizStatus.RETURNED).stream()
+        List<BorrowRequest> borrows = borrowRequestRepository.findByStatus(BorrowStatus.RETURNED).stream()
                 .filter(br -> {
                     IdleItem idle = idleItemRepository.findById(br.getIdleId()).orElse(null);
                     return idle != null && tenantMatches(tenantId, idle.getTenantId());
@@ -1331,9 +1345,9 @@ public class AdminService {
     private String condLabel(String condition) {
         if (condition == null) return null;
         return switch (condition) {
-            case "like-new" -> "几乎全新";
-            case "normal"  -> "正常使用痕迹";
-            case "worn"    -> "有明显磨损";
+            case ItemCondition.LIKE_NEW -> "几乎全新";
+            case ItemCondition.NORMAL   -> "正常使用痕迹";
+            case ItemCondition.WORN     -> "有明显磨损";
             default        -> condition;
         };
     }
@@ -1378,7 +1392,7 @@ public class AdminService {
      * 加载该租户下已完成的帮助记录（含评分、时间线等详情）。
      */
     private List<RecordItemDTO> loadHelpRecords(Long tenantId) {
-        List<HelpApplication> applications = helpApplicationRepository.findByStatus(BizStatus.COMPLETED).stream()
+        List<HelpApplication> applications = helpApplicationRepository.findByStatus(HelpApplicationStatus.COMPLETED).stream()
                 .filter(app -> {
                     HelpRequest hr = helpRequestRepository.findById(app.getHelpId()).orElse(null);
                     return hr != null && tenantMatches(tenantId, hr.getTenantId());
@@ -1456,6 +1470,7 @@ public class AdminService {
      * @param adminId 当前管理员 ID（需高级管理员权限）
      * @return 该租户下全部操作日志 DTO 列表
      */
+    @Transactional(readOnly = true)
     public List<OperationLogDTO> getOperationLogs(Long adminId) {
         User admin = findAdmin(adminId);
         requireSeniorAdmin(admin);
@@ -1483,6 +1498,7 @@ public class AdminService {
      * 导出操作日志为 Excel 文件。
      * 按时间倒序排列，包含时间、操作人、动作、目标类型、详情五列。
      */
+    @Transactional(readOnly = true)
     public byte[] exportOperationLogs(Long adminId) {
         User caller = findAdmin(adminId);
         requireSeniorAdmin(caller);
@@ -1532,6 +1548,7 @@ public class AdminService {
      * 导出导出日志为 Excel 文件，按租户范围过滤。
      * super_admin 查看全部记录，senior_admin 仅查看本小区。
      */
+    @Transactional(readOnly = true)
     public byte[] exportExportLogs(Long adminId) {
         User caller = findAdmin(adminId);
         requireSeniorAdmin(caller);
@@ -1602,6 +1619,7 @@ public class AdminService {
      * @param req     导出请求体（勾选项目、日期范围）
      * @return Excel 文件的字节数组
      */
+    @Transactional
     public byte[] exportData(Long adminId, ExportRequest req) {
         User caller = findAdmin(adminId);
         requireSeniorAdmin(caller);
@@ -1711,8 +1729,8 @@ public class AdminService {
     private List<List<Object>> buildResidentsData(Long tenantId, LocalDate startDate, LocalDate endDate) {
         List<List<Object>> data = new ArrayList<>();
         List<User> users = tenantId != null
-                ? userRepository.findByTenantIdAndAuthStatusAndUserTypeNotIn(tenantId, BizStatus.APPROVED, ADMIN_USER_TYPES)
-                : userRepository.findByAuthStatusAndUserTypeNotIn(BizStatus.APPROVED, ADMIN_USER_TYPES);
+                ? userRepository.findByTenantIdAndAuthStatusAndUserTypeNotIn(tenantId, AuthStatus.APPROVED, ADMIN_USER_TYPES)
+                : userRepository.findByAuthStatusAndUserTypeNotIn(AuthStatus.APPROVED, ADMIN_USER_TYPES);
 
         // 按注册时间倒序
         users.sort((a, b) -> {
@@ -1741,7 +1759,7 @@ public class AdminService {
             row.add(user.getName());
             row.add(user.getPhone());
             row.add(UserFormatter.getUserTypeLabel(user.getUserType()));
-            row.add(BizStatus.APPROVED.equals(user.getAuthStatus()) ? "已认证" : "未认证");
+            row.add(AuthStatus.APPROVED.equals(user.getAuthStatus()) ? "已认证" : "未认证");
             row.add(UserFormatter.formatRoom(user));
             row.add(fmt(user.getCreatedAt()));
             row.add(stats.borrowCount());
@@ -1871,7 +1889,7 @@ public class AdminService {
     private List<List<Object>> buildBorrowsData(Long tenantId, LocalDate startDate, LocalDate endDate) {
         List<List<Object>> data = new ArrayList<>();
         // 仅查询已归还的借用记录（确保损坏类型和归还状态非空）
-        List<BorrowRequest> borrows = borrowRequestRepository.findByStatus(BizStatus.RETURNED).stream()
+        List<BorrowRequest> borrows = borrowRequestRepository.findByStatus(BorrowStatus.RETURNED).stream()
                 .filter(br -> {
                     IdleItem idle = idleItemRepository.findById(br.getIdleId()).orElse(null);
                     return idle != null && tenantMatches(tenantId, idle.getTenantId());
@@ -1888,8 +1906,8 @@ public class AdminService {
             IdleItem idleItem = idleItemRepository.findById(br.getIdleId()).orElse(null);
             if (idleItem == null) continue;
             // 排除已下架的物品
-            if (BizStatus.OFFLINE.equals(idleItem.getStatus())
-                    || BizStatus.DRAFT.equals(idleItem.getStatus())) continue;
+            if (PostStatus.OFFLINE.equals(idleItem.getStatus())
+                    || PostStatus.DRAFT.equals(idleItem.getStatus())) continue;
             // 按物品的发布时间过滤（对齐列标签"发布时间"）
             if (!inRange(idleItem.getCreatedAt(), startDate, endDate)) continue;
 
@@ -1988,7 +2006,7 @@ public class AdminService {
         List<List<Object>> data = new ArrayList<>();
 
         // 查询本小区所有已完成的帮助申请
-        List<HelpApplication> applications = helpApplicationRepository.findByStatus(BizStatus.COMPLETED).stream()
+        List<HelpApplication> applications = helpApplicationRepository.findByStatus(HelpApplicationStatus.COMPLETED).stream()
                 .filter(app -> {
                     HelpRequest hr = helpRequestRepository.findById(app.getHelpId()).orElse(null);
                     return hr != null && tenantMatches(tenantId, hr.getTenantId());
@@ -2005,8 +2023,8 @@ public class AdminService {
             HelpRequest helpRequest = helpRequestRepository.findById(app.getHelpId()).orElse(null);
             if (helpRequest == null) continue;
             // 排除已下架的求助
-            if (BizStatus.OFFLINE.equals(helpRequest.getStatus())
-                    || BizStatus.DRAFT.equals(helpRequest.getStatus())) continue;
+            if (PostStatus.OFFLINE.equals(helpRequest.getStatus())
+                    || PostStatus.DRAFT.equals(helpRequest.getStatus())) continue;
             // 按求助的发布时间过滤（对齐列标签"发布时间"）
             if (!inRange(helpRequest.getCreatedAt(), startDate, endDate)) continue;
 
@@ -2345,6 +2363,7 @@ public class AdminService {
      * @param adminId 当前管理员ID
      * @return 全部导出日志 DTO 列表
      */
+    @Transactional(readOnly = true)
     public List<ExportLogDTO> getExportLogs(Long adminId) {
         User caller = findAdmin(adminId);
         requireSeniorAdmin(caller);
@@ -2436,13 +2455,13 @@ public class AdminService {
     private String mapIdleStatus(String status) {
         if (status == null) return "";
         return switch (status) {
-            case BizStatus.ONLINE              -> "在线中";
-            case BizStatus.PENDING             -> "待审批";
-            case BizStatus.ACTIVE              -> "进行中";
-            case BizStatus.COMPLETED           -> "已完成";
-            case BizStatus.OFFLINE -> "已下架";
+            case PostStatus.ONLINE              -> "在线中";
+            case PostStatus.PENDING             -> "待审批";
+            case PostStatus.ACTIVE              -> "进行中";
+            case PostStatus.COMPLETED           -> "已完成";
+            case PostStatus.OFFLINE -> "已下架";
             // 兼容存量数据中的旧值（迁移后不再出现，兜底）
-            case BizStatus.RESERVED, "borrowing" -> "进行中";
+            case "borrowing" -> "进行中";
             default                            -> "";
         };
     }
@@ -2451,13 +2470,13 @@ public class AdminService {
     private String mapHelpStatus(String status) {
         if (status == null) return "";
         return switch (status) {
-            case BizStatus.ONLINE              -> "在线中";
-            case BizStatus.PENDING             -> "待审批";
-            case BizStatus.ACTIVE              -> "进行中";
-            case BizStatus.COMPLETED           -> "已完成";
-            case BizStatus.OFFLINE -> "已下架";
+            case PostStatus.ONLINE              -> "在线中";
+            case PostStatus.PENDING             -> "待审批";
+            case PostStatus.ACTIVE              -> "进行中";
+            case PostStatus.COMPLETED           -> "已完成";
+            case PostStatus.OFFLINE -> "已下架";
             // 兼容存量数据中的旧值（迁移后不再出现，兜底）
-            case BizStatus.RESERVED, "helping" -> "进行中";
+            case "helping" -> "进行中";
             default                            -> "";
         };
     }
@@ -2466,11 +2485,11 @@ public class AdminService {
     private String mapBorrowStatus(String status) {
         if (status == null) return "";
         return switch (status) {
-            case BizStatus.PENDING -> "待确认";
-            case BizStatus.APPROVED -> "已同意";
-            case BizStatus.ACTIVE -> "进行中";
-            case BizStatus.RETURNED -> "已归还";
-            case BizStatus.REJECTED -> "已拒绝";
+            case BorrowStatus.PENDING -> "待确认";
+            case BorrowStatus.APPROVED -> "已同意";
+            case BorrowStatus.ACTIVE -> "进行中";
+            case BorrowStatus.RETURNED -> "已归还";
+            case BorrowStatus.REJECTED -> "已拒绝";
             default -> "";
         };
     }
@@ -2554,6 +2573,7 @@ public class AdminService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public CommunityDTO getCommunityData(Long adminId) {
         Long tenantId = getAdminTenantId(adminId);
 
@@ -2589,6 +2609,7 @@ public class AdminService {
 
     // ==================== 个人资料与密码 ====================
 
+    @Transactional
     public ProfileResponseDTO updateProfile(Long adminId, String name) {
         User admin = findAdmin(adminId);
         if (name != null && !name.trim().isEmpty()) {
@@ -2601,6 +2622,7 @@ public class AdminService {
                 .build();
     }
 
+    @Transactional
     public void updatePassword(Long adminId, String oldPassword, String newPassword) {
         User admin = findAdmin(adminId);
         if (admin.getPasswordHash() == null
@@ -2619,6 +2641,7 @@ public class AdminService {
     /**
      * 列出同小区下的全部管理员用户。仅 super_admin 可调用。
      */
+    @Transactional(readOnly = true)
     public List<AdminDTO> getAdmins(Long adminId) {
         User admin = findAdmin(adminId);
         requireSeniorAdmin(admin);
@@ -2691,7 +2714,7 @@ public class AdminService {
                 .phone(phone.trim())
                 .userType(resolvedType)
                 .tenantId(targetTenantId)
-                .authStatus(BizStatus.APPROVED)
+                .authStatus(AuthStatus.APPROVED)
                 .build();
         newAdmin = userRepository.save(newAdmin);
 
@@ -2774,6 +2797,7 @@ public class AdminService {
      * @param adminId 管理员用户ID
      * @return 小区名称，找不到时返回 "community"
      */
+    @Transactional(readOnly = true)
     public String getTenantName(Long adminId) {
         User admin = findAdmin(adminId);
         Long tenantId = admin.getTenantId();
@@ -2849,6 +2873,7 @@ public class AdminService {
      * @param keyword  姓名或手机号关键词
      * @return 全部匹配住户 DTO 列表
      */
+    @Transactional(readOnly = true)
     public List<ResidentDTO> searchResidents(Long adminId, Integer buildingNo, Integer unitNo, String room,
                                              String userType, String keyword) {
         requireNotSuperAdmin(findAdmin(adminId));
@@ -2968,9 +2993,9 @@ public class AdminService {
                 .updatedAt(item.getUpdatedAt());
 
         // 根据状态填充对方信息、评价和时间线
-        if (BizStatus.ACTIVE.equals(item.getStatus())) {
+        if (PostStatus.ACTIVE.equals(item.getStatus())) {
             fillBorrowingPeerInfo(item, builder);
-        } else if (BizStatus.COMPLETED.equals(item.getStatus())) {
+        } else if (PostStatus.COMPLETED.equals(item.getStatus())) {
             fillCompletedPeerInfo(item, builder);
         }
 
@@ -3080,9 +3105,9 @@ public class AdminService {
                 .updatedAt(item.getUpdatedAt());
 
         // 根据状态填充对方信息、评价和时间线
-        if (BizStatus.ACTIVE.equals(item.getStatus())) {
+        if (PostStatus.ACTIVE.equals(item.getStatus())) {
             fillHelpingPeerInfo(item, builder);
-        } else if (BizStatus.COMPLETED.equals(item.getStatus())) {
+        } else if (PostStatus.COMPLETED.equals(item.getStatus())) {
             fillHelpCompletedPeerInfo(item, builder);
         }
 
@@ -3238,7 +3263,7 @@ public class AdminService {
      */
     private List<ContentItemDTO> fetchPendingBorrowItems(Long tenantId, List<Long> buildingUserIds, String search) {
         List<ContentItemDTO> result = new ArrayList<>();
-        List<BorrowRequest> pendingBorrows = borrowRequestRepository.findByStatus(BizStatus.PENDING);
+        List<BorrowRequest> pendingBorrows = borrowRequestRepository.findByStatus(BorrowStatus.PENDING);
         for (BorrowRequest br : pendingBorrows) {
             IdleItem idleItem = idleItemRepository.findById(br.getIdleId()).orElse(null);
             if (idleItem == null || !tenantMatches(tenantId, idleItem.getTenantId())) {
@@ -3267,7 +3292,7 @@ public class AdminService {
                     .publisherName(owner != null ? owner.getName() : "未知用户")
                     .publisherRoom(owner != null ? UserFormatter.formatRoomWithType(owner) : "")
                     .displayStatus("待审批")
-                    .rawStatus(BizStatus.PENDING)
+                    .rawStatus(BorrowStatus.PENDING)
                     .isProxy(idleItem.getIsProxy())
                     .createdAt(br.getCreatedAt())
                     .maxDuration(idleItem.getMaxDuration())
@@ -3286,7 +3311,7 @@ public class AdminService {
      */
     private List<ContentItemDTO> fetchPendingHelpItems(Long tenantId, List<Long> buildingUserIds, String search) {
         List<ContentItemDTO> result = new ArrayList<>();
-        List<HelpApplication> pendingApps = helpApplicationRepository.findByStatus(BizStatus.PENDING);
+        List<HelpApplication> pendingApps = helpApplicationRepository.findByStatus(HelpApplicationStatus.PENDING);
         for (HelpApplication app : pendingApps) {
             HelpRequest helpRequest = helpRequestRepository.findById(app.getHelpId()).orElse(null);
             if (helpRequest == null || !tenantMatches(tenantId, helpRequest.getTenantId())) {
@@ -3315,7 +3340,7 @@ public class AdminService {
                     .publisherName(requester != null ? requester.getName() : "未知用户")
                     .publisherRoom(requester != null ? UserFormatter.formatRoomWithType(requester) : "")
                     .displayStatus("待审批")
-                    .rawStatus(BizStatus.PENDING)
+                    .rawStatus(HelpApplicationStatus.PENDING)
                     .isProxy(helpRequest.getIsProxy())
                     .isUrgent(helpRequest.getIsUrgent())
                     .createdAt(app.getCreatedAt())
@@ -3332,28 +3357,28 @@ public class AdminService {
     private BorrowRequest findActiveBorrowRequest(Long idleId) {
         List<BorrowRequest> borrows = borrowRequestRepository.findByIdleId(idleId);
         return borrows.stream()
-                .filter(b -> BizStatus.ACTIVE.equals(b.getStatus()) || BizStatus.APPROVED.equals(b.getStatus()))
+                .filter(b -> BorrowStatus.ACTIVE.equals(b.getStatus()) || BorrowStatus.APPROVED.equals(b.getStatus()))
                 .findFirst().orElse(null);
     }
 
     private BorrowRequest findCompletedBorrowRequest(Long idleId) {
         List<BorrowRequest> borrows = borrowRequestRepository.findByIdleId(idleId);
         return borrows.stream()
-                .filter(b -> BizStatus.RETURNED.equals(b.getStatus()))
+                .filter(b -> BorrowStatus.RETURNED.equals(b.getStatus()))
                 .findFirst().orElse(null);
     }
 
     private HelpApplication findActiveHelpApplication(Long helpId) {
         List<HelpApplication> apps = helpApplicationRepository.findByHelpId(helpId);
         return apps.stream()
-                .filter(a -> BizStatus.APPROVED.equals(a.getStatus()))
+                .filter(a -> HelpApplicationStatus.APPROVED.equals(a.getStatus()))
                 .findFirst().orElse(null);
     }
 
     private HelpApplication findCompletedHelpApplication(Long helpId) {
         List<HelpApplication> apps = helpApplicationRepository.findByHelpId(helpId);
         return apps.stream()
-                .filter(a -> BizStatus.COMPLETED.equals(a.getStatus()))
+                .filter(a -> HelpApplicationStatus.COMPLETED.equals(a.getStatus()))
                 .findFirst().orElse(null);
     }
 
@@ -3404,16 +3429,16 @@ public class AdminService {
     private List<String> mapStatusTabToIdleStatuses(String statusTab) {
         switch (statusTab) {
             case "showing":
-                return java.util.Collections.singletonList(BizStatus.ONLINE);
+                return java.util.Collections.singletonList(PostStatus.ONLINE);
             case "progressing":
-                return java.util.Collections.singletonList(BizStatus.ACTIVE);
+                return java.util.Collections.singletonList(PostStatus.ACTIVE);
             case "completed":
-                return java.util.Collections.singletonList(BizStatus.COMPLETED);
+                return java.util.Collections.singletonList(PostStatus.COMPLETED);
             case "violation":
-                return java.util.Collections.singletonList(BizStatus.OFFLINE);
+                return java.util.Collections.singletonList(PostStatus.OFFLINE);
             case "all":
             default:
-                return java.util.Arrays.asList(BizStatus.ONLINE, BizStatus.ACTIVE, BizStatus.COMPLETED, BizStatus.OFFLINE);
+                return java.util.Arrays.asList(PostStatus.ONLINE, PostStatus.ACTIVE, PostStatus.COMPLETED, PostStatus.OFFLINE);
         }
     }
 
@@ -3423,16 +3448,16 @@ public class AdminService {
     private List<String> mapStatusTabToHelpStatuses(String statusTab) {
         switch (statusTab) {
             case "showing":
-                return java.util.Collections.singletonList(BizStatus.ONLINE);
+                return java.util.Collections.singletonList(PostStatus.ONLINE);
             case "progressing":
-                return java.util.Collections.singletonList(BizStatus.ACTIVE);
+                return java.util.Collections.singletonList(PostStatus.ACTIVE);
             case "completed":
-                return java.util.Collections.singletonList(BizStatus.COMPLETED);
+                return java.util.Collections.singletonList(PostStatus.COMPLETED);
             case "violation":
-                return java.util.Collections.singletonList(BizStatus.OFFLINE);
+                return java.util.Collections.singletonList(PostStatus.OFFLINE);
             case "all":
             default:
-                return java.util.Arrays.asList(BizStatus.ONLINE, BizStatus.ACTIVE, BizStatus.COMPLETED, BizStatus.OFFLINE);
+                return java.util.Arrays.asList(PostStatus.ONLINE, PostStatus.ACTIVE, PostStatus.COMPLETED, PostStatus.OFFLINE);
         }
     }
 
@@ -3442,17 +3467,17 @@ public class AdminService {
     private String displayStatus(String rawStatus) {
         if (rawStatus == null) return "未知";
         switch (rawStatus) {
-            case BizStatus.ONLINE:
+            case PostStatus.ONLINE:
                 return "在线中";
-            case BizStatus.PENDING:
+            case PostStatus.PENDING:
                 return "待审批";
-            case BizStatus.ACTIVE:
+            case PostStatus.ACTIVE:
                 return "进行中";
-            case BizStatus.COMPLETED:
+            case PostStatus.COMPLETED:
                 return "已完成";
-            case BizStatus.OFFLINE:
+            case PostStatus.OFFLINE:
                 return "已下架";
-            case BizStatus.PENDING_REVIEW:
+            case PostStatus.PENDING_REVIEW:
                 return "待AI审核";
             default:
                 return rawStatus;
@@ -3573,7 +3598,7 @@ public class AdminService {
         }
         if (ModerationStatus.RED.equals(filter)) {
             return ModerationStatus.RED.equals(actual)
-                || (ModerationStatus.REVIEWED.equals(actual) && BizStatus.OFFLINE.equals(itemStatus));
+                || (ModerationStatus.REVIEWED.equals(actual) && PostStatus.OFFLINE.equals(itemStatus));
         }
         return filter.equals(actual);
     }

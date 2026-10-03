@@ -133,7 +133,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 ### 1.7 业务常量引用规范
 
-> **规则**：当项目中已定义了业务状态常量（如 `STATUS`、`BizStatus`、`POST_TYPE`）时，所有业务代码**必须**引用该常量，**严禁使用裸字符串字面量**进行比较、赋值或条件判断。
+> **规则**：当项目中已定义了业务状态常量（如 `PostStatus`、`BorrowStatus`、`POST_TYPE`）时，所有业务代码**必须**引用该常量，**严禁使用裸字符串字面量**进行比较、赋值或条件判断。
 
 | 规则 | 级别 | 说明 |
 |------|------|------|
@@ -161,7 +161,7 @@ if (activeTab.value === 'all') status = STATUS.APPROVED;      // 比较裸写 'a
 
 ```java
 // ✅ 正确：引用常量类
-if (BizStatus.PENDING.equals(borrowRequest.getStatus())) { ... }
+if (BorrowStatus.PENDING.equals(borrowRequest.getStatus())) { ... }
 
 // ❌ 错误：魔术字符串
 if ("pending".equals(borrowRequest.getStatus())) { ... }
@@ -480,7 +480,7 @@ common/       → 跨层共享：Result、异常、常量
 | Entity 类 | 表名对应 PascalCase | `User`, `IdleItem` |
 | DTO 类 | `*DTO` / `*Request` / `*Response` | `LoginRequest`, `IdleItemDTO` |
 | 配置类 | `*Config` | `SecurityConfig`, `CorsConfig` |
-| 常量类 | `*Constants` 或 `*Status` | `BizStatus`, `PostType` |
+| 常量类 | `*Constants` 或 `*Status` | `PostStatus`, `BorrowStatus`, `PostType` |
 | Controller URL | 复数名词，小写连字符 | `/api/idle-items`, `/api/users` |
 
 ### 4.3 REST API 设计规范
@@ -695,14 +695,15 @@ public class User {
 | 取值可穷举的字符串字段必须有对应的常量类 | **必须** | 如 `durationUnit`（day/week/month）→ `DurationUnit` 常量类 |
 | Entity 默认值必须引用常量 | **必须** | `@Builder.Default private String durationUnit = DurationUnit.DAY;` 而非 `= "day";` |
 | Service 层比较/赋值必须引用常量 | **必须** | `if (DurationUnit.DAY.equals(req.getDurationUnit()))` 而非 `if ("day".equals(...))` |
-| 常量类定义在 `com.platform.common` 包中 | **必须** | 与 BizStatus、PostType 同级 |
+| 常量类定义在 `com.platform.common` 包中 | **必须** | 与 PostStatus、PostType 同级 |
 | 常量类必须有完整的 Javadoc | **必须** | 类 Javadoc 说明字段所属表及用途；常量 Javadoc 说明中文含义 |
 | 常量类的字符串值必须与数据库存储值、前端契约严格一致 | **必须** | 值不可修改；新增取值需前后端同步 |
-| 跨表复用的固定值归类到通用常量类 | **必须** | 如 status 字段多表共用 → BizStatus |
+| 常量类按**业务域**拆分：同一字段的全部取值归入一个类 | **必须** | 如 idle_items.status 与 help_requests.status 共用内容生命周期 → `PostStatus` |
+| 同值跨域必须分开定义，禁止「多表共用就合并」 | **必须** | `pending` 同时存在于 PostStatus / AuthStatus / BorrowStatus / HelpApplicationStatus 四个类，按字段归属各自定义，不可互相引用（历史教训：曾因合并为单个 `BizStatus` 导致语义混淆） |
 | 单表专用的固定值独立建常量类 | **应该** | 如 pickupMethod 仅 idle_items 使用 → PickupMethod |
 | 常量类必须同步到 C端 `utils/constants.js` 和 B端 `utils/constants.ts` | **必须** | B端标记 `as const` 确保字面量类型推断 |
 
-**常量类模板**（遵循已有 BizStatus/PostType 模式）：
+**常量类模板**（遵循已有 PostStatus/PostType 模式）：
 
 ```java
 /**
@@ -927,7 +928,7 @@ Step 4.5: Test          ← test-guarantee 技能
 | 后端 | 构造器注入 | **必须** |
 | 后端 | SQL 参数绑定 | **必须** |
 | 后端 | DTO 类每个字段必须有 Javadoc 注释 | **必须** |
-| 后端 | 已定义状态常量时必须引用常量（如 `BizStatus.PENDING`），禁止魔术字符串 | **必须** |
+| 后端 | 已定义状态常量时必须引用常量（如 `BorrowStatus.PENDING`；常量按业务域拆分，同一值可在多个域各有一个常量） | **必须** |
 | 后端 | Entity 的 @Column/@JoinColumn/@UniqueConstraint 必须引用表字段常量类，禁止硬编码字符串 | **必须** |
 | 后端 | 取值可穷举的字段必须定义常量类，Entity 默认值和 Service 比较/赋值必须引用常量 | **必须** |
 | 后端 | Controller 类及每个端点方法必须有 Javadoc | **必须** |

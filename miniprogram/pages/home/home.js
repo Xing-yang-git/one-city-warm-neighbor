@@ -1,6 +1,6 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
-const { POST_TYPE, STORAGE_KEY } = require('../../utils/constants');
+const { POST_TYPE, STORAGE_KEY, ITEM_CONDITION } = require('../../utils/constants');
 const app = getApp();
 
 // 将分类关键词映射到原型风格的 feather 图标
@@ -232,10 +232,10 @@ Page({
 
   formatCondition(condition) {
     const map = {
-      'like-new': '几乎全新',
-      'normal': '正常使用痕迹',
-      'good': '正常使用痕迹',
-      'worn': '有明显磨损'
+      [ITEM_CONDITION.LIKE_NEW]: '几乎全新',
+      [ITEM_CONDITION.NORMAL]: '正常使用痕迹',
+      good: '正常使用痕迹',   // 历史遗留取值（无写入方），仅作展示兜底
+      [ITEM_CONDITION.WORN]: '有明显磨损'
     };
     return map[condition] || condition || '';
   },

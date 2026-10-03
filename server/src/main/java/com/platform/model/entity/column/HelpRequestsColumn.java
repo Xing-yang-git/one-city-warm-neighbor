@@ -36,7 +36,7 @@ public final class HelpRequestsColumn {
     public static final String COL_IMAGES = "images";
     /** 求助地点 */
     public static final String COL_LOCATION = "location";
-    /** 状态：online(展示中) / reserved(已有人接单) / completed(已完成) / offline(已下架)，引用 {@link com.platform.common.BizStatus} */
+    /** 状态：online(展示中) / draft(草稿) / offline(已下架) / pending_review(待AI审核) / pending(已被申请) / active(进行中) / completed(已完成)，引用 {@link com.platform.common.PostStatus} */
     public static final String COL_STATUS = "status";
     /** 统一下架原因 */
     public static final String COL_DELIST_REASON = "delist_reason";

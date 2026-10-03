@@ -3,7 +3,8 @@ package com.platform.service;
 import com.platform.ai.moderation.ModerationService;
 import com.platform.common.AppTimeZone;
 import com.platform.common.BizException;
-import com.platform.common.BizStatus;
+import com.platform.common.HelpApplicationStatus;
+import com.platform.common.PostStatus;
 import com.platform.common.ModerationStatus;
 import com.platform.common.NotificationType;
 import com.platform.common.UserFormatter;
@@ -42,7 +43,6 @@ import java.util.stream.Collectors;
  * （{@code findByIdWithLock}）串行化，避免并发下互相覆盖状态。</p>
  */
 @Service
-@Transactional
 public class HelpService {
 
     private static final Logger log = LoggerFactory.getLogger(HelpService.class);
@@ -76,6 +76,7 @@ public class HelpService {
 
     private static final DateTimeFormatter DT_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
+    @Transactional
     public HelpResponseDTO publish(Long userId, HelpRequestDTO req) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BizException("用户不存在"));
@@ -104,7 +105,7 @@ public class HelpService {
         }
         helpRequest.setImages(req.getImages());
         // 发布后先挂起，等待 AI 异步审核
-        helpRequest.setStatus(BizStatus.PENDING_REVIEW);
+        helpRequest.setStatus(PostStatus.PENDING_REVIEW);
         helpRequest.setModerationStatus(ModerationStatus.PENDING);
         helpRequest.setIsProxy(req.getIsProxy() != null && req.getIsProxy());
         helpRequest.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
@@ -123,14 +124,15 @@ public class HelpService {
         return toDTO(helpRequest);
     }
 
+    @Transactional(readOnly = true)
     public PageDTO<HelpResponseDTO> getHomeList(Long userId, int page, int size) {
         User user = userRepository.findById(userId).orElse(null);
         Long tenantId = user != null ? user.getTenantId() : null;
         PageRequest pageRequest = PageRequest.of(page, size,
                 Sort.by(Sort.Direction.DESC, "isUrgent", "createdAt"));
         Page<HelpRequest> helpPage = tenantId != null
-                ? helpRequestRepository.findByStatusAndTenantId(BizStatus.ONLINE, tenantId, pageRequest)
-                : helpRequestRepository.findByStatus(BizStatus.ONLINE, pageRequest);
+                ? helpRequestRepository.findByStatusAndTenantId(PostStatus.ONLINE, tenantId, pageRequest)
+                : helpRequestRepository.findByStatus(PostStatus.ONLINE, pageRequest);
 
         List<HelpResponseDTO> dtos = helpPage.getContent().stream()
                 .map(this::toDTO)
@@ -153,6 +155,7 @@ public class HelpService {
      * @return 求助详情（含发布者统计信息与当前用户的申请状态）
      * @throws BizException 求助不存在时抛出
      */
+    @Transactional(readOnly = true)
     public HelpResponseDTO getDetail(Long helpId, Long currentUserId) {
         HelpRequest helpRequest = helpRequestRepository.findById(helpId)
                 .orElseThrow(() -> new BizException("求助信息不存在"));
@@ -182,7 +185,7 @@ public class HelpService {
         List<HelpApplication> myApplications = helpApplicationRepository
                 .findByHelpIdAndHelperIdOrderByCreatedAtDesc(helpId, helperId);
         for (HelpApplication application : myApplications) {
-            if (!BizStatus.REJECTED.equals(application.getStatus())) {
+            if (!HelpApplicationStatus.REJECTED.equals(application.getStatus())) {
                 return application.getStatus();
             }
             rejectedStatus = application.getStatus();
@@ -190,6 +193,7 @@ public class HelpService {
         return rejectedStatus;
     }
 
+    @Transactional(readOnly = true)
     public PageDTO<HelpResponseDTO> search(Long userId, String keyword, int page, int size) {
         // 与 getHomeList 保持一致的租户隔离——不同小区的数据不得互相搜到
         User user = userId != null ? userRepository.findById(userId).orElse(null) : null;
@@ -197,9 +201,9 @@ public class HelpService {
         PageRequest pageRequest = PageRequest.of(page, size,
                 Sort.by(Sort.Direction.DESC, "isUrgent", "createdAt"));
         Page<HelpRequest> helpPage = tenantId != null
-                ? helpRequestRepository.searchByTenant(BizStatus.ONLINE, tenantId, keyword, keyword, pageRequest)
+                ? helpRequestRepository.searchByTenant(PostStatus.ONLINE, tenantId, keyword, keyword, pageRequest)
                 : helpRequestRepository.findByStatusAndTitleContainingOrDescriptionContaining(
-                        BizStatus.ONLINE, keyword, keyword, pageRequest);
+                        PostStatus.ONLINE, keyword, keyword, pageRequest);
 
         List<HelpResponseDTO> dtos = helpPage.getContent().stream()
                 .map(this::toDTO)
@@ -214,6 +218,7 @@ public class HelpService {
                 .build();
     }
 
+    @Transactional(readOnly = true)
     public List<HelpResponseDTO> getMyPosts(Long userId) {
         List<HelpRequest> requests = helpRequestRepository.findByUserId(userId);
         return requests.stream().map(this::toDTO).collect(Collectors.toList());
@@ -229,6 +234,7 @@ public class HelpService {
      * @return 下架后的求助
      * @throws BizException 求助不存在或非本人操作时抛出
      */
+    @Transactional
     public HelpResponseDTO delist(Long userId, Long helpId) {
         HelpRequest helpRequest = helpRequestRepository.findByIdWithLock(helpId)
                 .orElseThrow(() -> new BizException("求助信息不存在"));
@@ -237,15 +243,15 @@ public class HelpService {
             throw new BizException("无权操作该求助");
         }
 
-        helpRequest.setStatus(BizStatus.DRAFT);
+        helpRequest.setStatus(PostStatus.DRAFT);
         helpRequest.setDelistReason("用户自行下架");
         helpRequest = helpRequestRepository.save(helpRequest);
 
         // 将所有待处理的帮助申请设为已拒绝，并通知申请人
         List<HelpApplication> pendingApps = helpApplicationRepository
-                .findByHelpIdAndStatus(helpId, BizStatus.PENDING);
+                .findByHelpIdAndStatus(helpId, HelpApplicationStatus.PENDING);
         for (HelpApplication app : pendingApps) {
-            app.setStatus(BizStatus.REJECTED);
+            app.setStatus(HelpApplicationStatus.REJECTED);
             helpApplicationRepository.save(app);
             // 通知申请人该求助已被发布者下架
             createNotification(app.getHelperId(), NotificationType.HELP_REJECTED,
@@ -260,24 +266,26 @@ public class HelpService {
     /**
      * 用户从草稿中删除求助，将其标记为已下架。
      */
+    @Transactional
     public HelpResponseDTO deleteItem(Long userId, Long helpId) {
         HelpRequest helpRequest = helpRequestRepository.findById(helpId)
                 .orElseThrow(() -> new BizException("求助不存在"));
         if (!helpRequest.getUserId().equals(userId)) {
             throw new BizException("无权操作该求助");
         }
-        helpRequest.setStatus(BizStatus.OFFLINE);
+        helpRequest.setStatus(PostStatus.OFFLINE);
         helpRequest.setDelistReason("用户删除");
         helpRequest = helpRequestRepository.save(helpRequest);
         return toDTO(helpRequest);
     }
 
+    @Transactional
     public HelpResponseDTO apply(Long helperId, Long helpId, String note) {
         // 悲观写锁防并发：两个人同时申请同一求助时，后到达的事务需等待前者提交
         HelpRequest helpRequest = helpRequestRepository.findByIdWithLock(helpId)
                 .orElseThrow(() -> new BizException("求助信息不存在"));
 
-        if (!BizStatus.ONLINE.equals(helpRequest.getStatus())) {
+        if (!PostStatus.ONLINE.equals(helpRequest.getStatus())) {
             throw new BizException(unavailableMessage(helpRequest.getStatus()));
         }
 
@@ -287,7 +295,7 @@ public class HelpService {
 
         // 防重复：同一用户对同一求助已有 pending/approved 申请时拒绝
         if (helpApplicationRepository.existsByHelpIdAndHelperIdAndStatusIn(
-                helpId, helperId, List.of(BizStatus.PENDING, BizStatus.APPROVED))) {
+                helpId, helperId, List.of(HelpApplicationStatus.PENDING, HelpApplicationStatus.APPROVED))) {
             throw new BizException("您已申请过该求助，请勿重复提交");
         }
 
@@ -295,12 +303,12 @@ public class HelpService {
         application.setHelpId(helpId);
         application.setHelperId(helperId);
         application.setNote(note);
-        application.setStatus(BizStatus.PENDING);
+        application.setStatus(HelpApplicationStatus.PENDING);
         application.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         application = helpApplicationRepository.save(application);
 
         // 标记求助为"已被申请"，首页列表不再展示（与闲置物品 reserved 模式一致）
-        helpRequest.setStatus(BizStatus.PENDING);
+        helpRequest.setStatus(PostStatus.PENDING);
         helpRequestRepository.save(helpRequest);
 
         createNotification(helpRequest.getUserId(), NotificationType.HELP_APPLICATION,
@@ -332,6 +340,7 @@ public class HelpService {
      * @return 审批后的求助信息
      * @throws BizException 申请或求助不存在、无权操作或该申请已被处理时抛出
      */
+    @Transactional
     public HelpResponseDTO approveReject(Long ownerId, Long appId, ApproveRequest req) {
         Long helpId = helpApplicationRepository.findHelpIdById(appId)
                 .orElseThrow(() -> new BizException("帮助申请不存在"));
@@ -344,21 +353,21 @@ public class HelpService {
         }
 
         int updated = helpApplicationRepository.decideIfPending(appId,
-                req.getApproved() ? BizStatus.APPROVED : BizStatus.REJECTED);
+                req.getApproved() ? HelpApplicationStatus.APPROVED : HelpApplicationStatus.REJECTED);
         if (updated == 0) {
             throw new BizException("该申请已被处理，无法重复操作");
         }
 
         // 同步 HelpRequest 状态
         if (req.getApproved()) {
-            helpRequest.setStatus(BizStatus.ACTIVE);
+            helpRequest.setStatus(PostStatus.ACTIVE);
             helpRequestRepository.save(helpRequest);
         } else {
             // 拒绝时：若该求助没有其他待审批的申请，恢复为 online（首页重新可见）
             List<HelpApplication> pendingForHelp = helpApplicationRepository
-                    .findByHelpIdAndStatus(helpId, BizStatus.PENDING);
+                    .findByHelpIdAndStatus(helpId, HelpApplicationStatus.PENDING);
             if (pendingForHelp.isEmpty()) {
-                helpRequest.setStatus(BizStatus.ONLINE);
+                helpRequest.setStatus(PostStatus.ONLINE);
                 helpRequestRepository.save(helpRequest);
             }
         }
@@ -392,10 +401,10 @@ public class HelpService {
      * @return 对应的提示文案
      */
     private static String unavailableMessage(String status) {
-        if (BizStatus.PENDING_REVIEW.equals(status)) {
+        if (PostStatus.PENDING_REVIEW.equals(status)) {
             return "该求助正在审核中，暂时无法申请，请稍后再试";
         }
-        if (BizStatus.DRAFT.equals(status) || BizStatus.OFFLINE.equals(status)) {
+        if (PostStatus.DRAFT.equals(status) || PostStatus.OFFLINE.equals(status)) {
             return "该求助已下架，无法申请";
         }
         return "该求助已被其他人抢先申请，请浏览其他求助";
@@ -406,6 +415,7 @@ public class HelpService {
      * 二者是同一条 HelpApplication 的两个视角，状态共享，
      * 任意一方确认后双方都会从「进行中」进入「已完成」。
      */
+    @Transactional
     public HelpResponseDTO completeHelp(Long actorId, Long appId) {
         HelpApplication application = helpApplicationRepository.findById(appId)
                 .orElseThrow(() -> new BizException("帮助申请不存在"));
@@ -419,15 +429,15 @@ public class HelpService {
             throw new BizException("无权操作该申请");
         }
 
-        if (!BizStatus.APPROVED.equals(application.getStatus())) {
+        if (!HelpApplicationStatus.APPROVED.equals(application.getStatus())) {
             throw new BizException("只能完成进行中的帮助申请");
         }
 
-        application.setStatus(BizStatus.COMPLETED);
+        application.setStatus(HelpApplicationStatus.COMPLETED);
         application.setCompletedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         helpApplicationRepository.save(application);
 
-        helpRequest.setStatus(BizStatus.COMPLETED);
+        helpRequest.setStatus(PostStatus.COMPLETED);
         helpRequestRepository.save(helpRequest);
 
         // 通知对方（发起人是求助方则通知帮助方，反之亦然）
@@ -456,6 +466,7 @@ public class HelpService {
      * @return 编辑后的求助
      * @throws BizException 求助不存在、非本人操作、有待处理申请或正在审核时抛出
      */
+    @Transactional
     public HelpResponseDTO update(Long userId, Long helpId, HelpRequestDTO req) {
         HelpRequest helpRequest = helpRequestRepository.findByIdWithLock(helpId)
                 .orElseThrow(() -> new BizException("求助信息不存在"));
@@ -488,15 +499,15 @@ public class HelpService {
         helpRequest.setImages(req.getImages());
 
         // 编辑后重新审核：原状态为 online/completed/offline 时，退回 pending_review
-        boolean needsModeration = BizStatus.ONLINE.equals(originalStatus)
-                || BizStatus.COMPLETED.equals(originalStatus)
-                || BizStatus.OFFLINE.equals(originalStatus)
-                || BizStatus.DRAFT.equals(originalStatus);
+        boolean needsModeration = PostStatus.ONLINE.equals(originalStatus)
+                || PostStatus.COMPLETED.equals(originalStatus)
+                || PostStatus.OFFLINE.equals(originalStatus)
+                || PostStatus.DRAFT.equals(originalStatus);
         if (needsModeration) {
-            helpRequest.setStatus(BizStatus.PENDING_REVIEW);
+            helpRequest.setStatus(PostStatus.PENDING_REVIEW);
             helpRequest.setModerationStatus(ModerationStatus.PENDING);
             // 从 completed/offline 重新发布时刷新时间
-            if (BizStatus.COMPLETED.equals(originalStatus) || BizStatus.OFFLINE.equals(originalStatus)) {
+            if (PostStatus.COMPLETED.equals(originalStatus) || PostStatus.OFFLINE.equals(originalStatus)) {
                 helpRequest.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
             }
         }
@@ -531,15 +542,16 @@ public class HelpService {
      */
     private void assertEditable(Long helpId, HelpRequest helpRequest) {
         List<HelpApplication> pendingApplications = helpApplicationRepository
-                .findByHelpIdAndStatus(helpId, BizStatus.PENDING);
+                .findByHelpIdAndStatus(helpId, HelpApplicationStatus.PENDING);
         if (!pendingApplications.isEmpty()) {
             throw new BizException("该求助有住户正在申请，请先处理申请后再编辑");
         }
-        if (BizStatus.PENDING_REVIEW.equals(helpRequest.getStatus())) {
+        if (PostStatus.PENDING_REVIEW.equals(helpRequest.getStatus())) {
             throw new BizException("该帖子正在审核中，请等审核完成后再编辑");
         }
     }
 
+    @Transactional(readOnly = true)
     public List<HelpResponseDTO> getMyApplications(Long userId) {
         List<HelpApplication> applications = helpApplicationRepository.findByHelperId(userId);
         return applications.stream().map(app -> {
@@ -552,16 +564,17 @@ public class HelpService {
         }).collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public List<HelpResponseDTO> getPendingApprovals(Long userId) {
         List<HelpRequest> myRequests = helpRequestRepository.findByUserId(userId);
         List<HelpResponseDTO> result = new ArrayList<>();
         for (HelpRequest hr : myRequests) {
             // 仅对在线中的帖子返回待审批申请（已下架/已完成的帖子不展示审批项）
-            if (!BizStatus.ONLINE.equals(hr.getStatus())) {
+            if (!PostStatus.ONLINE.equals(hr.getStatus())) {
                 continue;
             }
             List<HelpApplication> pendingApps = helpApplicationRepository
-                    .findByHelpIdAndStatus(hr.getId(), BizStatus.PENDING);
+                    .findByHelpIdAndStatus(hr.getId(), HelpApplicationStatus.PENDING);
             for (HelpApplication app : pendingApps) {
                 User helper = userRepository.findById(app.getHelperId()).orElse(null);
                 HelpResponseDTO dto = toDTO(hr);

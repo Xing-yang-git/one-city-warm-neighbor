@@ -104,8 +104,8 @@
     <view class="section">
       <view class="input-label">借出形式 <text class="required">*</text></view>
       <view class="segment" style="margin:0;">
-        <view class="segment-item {{pickupMethod === 'self_pickup' ? 'active' : ''}}" bindtap="onPickupTap" data-value="self_pickup">需自提</view>
-        <view class="segment-item {{pickupMethod === 'both' ? 'active' : ''}}" bindtap="onPickupTap" data-value="both">自提 / 可送上门</view>
+        <view class="segment-item {{pickupMethod === PICKUP_METHOD.SELF_PICKUP ? 'active' : ''}}" bindtap="onPickupTap" data-value="{{PICKUP_METHOD.SELF_PICKUP}}">需自提</view>
+        <view class="segment-item {{pickupMethod === PICKUP_METHOD.BOTH ? 'active' : ''}}" bindtap="onPickupTap" data-value="{{PICKUP_METHOD.BOTH}}">自提 / 可送上门</view>
       </view>
     </view>
 
@@ -113,9 +113,9 @@
     <view class="section">
       <view class="input-label req">物品状况</view>
       <view class="segment" style="margin:0;">
-        <view class="segment-item {{condition === 'like-new' ? 'active' : ''}}" bindtap="onConditionTap" data-value="like-new">几乎全新</view>
-        <view class="segment-item {{condition === 'normal' ? 'active' : ''}}" bindtap="onConditionTap" data-value="normal">正常使用痕迹</view>
-        <view class="segment-item {{condition === 'worn' ? 'active' : ''}}" bindtap="onConditionTap" data-value="worn">有明显磨损</view>
+        <view class="segment-item {{condition === ITEM_CONDITION.LIKE_NEW ? 'active' : ''}}" bindtap="onConditionTap" data-value="{{ITEM_CONDITION.LIKE_NEW}}">几乎全新</view>
+        <view class="segment-item {{condition === ITEM_CONDITION.NORMAL ? 'active' : ''}}" bindtap="onConditionTap" data-value="{{ITEM_CONDITION.NORMAL}}">正常使用痕迹</view>
+        <view class="segment-item {{condition === ITEM_CONDITION.WORN ? 'active' : ''}}" bindtap="onConditionTap" data-value="{{ITEM_CONDITION.WORN}}">有明显磨损</view>
       </view>
     </view>
 

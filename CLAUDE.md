@@ -196,7 +196,7 @@ Skill 内容加载后会一直留在会话上下文中，**不需要每轮对话
 | 通用 | 常量：已定义常量时必须引用（`STATUS.PENDING`），禁止魔术字符串（`'pending'`） |
 | C端 | px ×2 → rpx；颜色必须 `var(--*)`；button 重置 `::after { border: none }`；禁止 `backdrop-filter`；代码逻辑中禁止中文字符串判断（如 `status === '已下架'`），必须使用常量引用（`POST_STATUS.DRAFT`）；常量按业务域分离（POST_STATUS / AUTH_STATUS / BORROW_STATUS 等），禁止混放在单一对象中 |
 | B端 | `<style scoped>`；`v-for` 必须 `:key`；Props/Emits 有类型；禁止无理由 `any`；函数参数必须显式类型；interface/type 和导出函数必须有 JSDoc 注释；API DTO interface/type 各字段必须有行内注释；API 封装在 `api/` 模块，请求/响应有类型 |
-| 后端 | Controller 不写 try-catch；不直接返回 Entity；构造器注入；SQL 参数绑定；URL 名词复数；DTO 类每个字段必须有 Javadoc 注释；已定义状态常量时必须引用（如 `BizStatus.PENDING`） |
+| 后端 | Controller 不写 try-catch；不直接返回 Entity；构造器注入；SQL 参数绑定；URL 名词复数；DTO 类每个字段必须有 Javadoc 注释；已定义状态常量时必须引用（如 `BorrowStatus.PENDING`；常量按业务域拆分，同一值可在多个域各有一个常量） |
 
 > 完整规范（包括 SHOULD/MAY 级规则、命名示例、代码模板）见 [.claude/skills/code-standards/SKILL.md](.claude/skills/code-standards/SKILL.md)。
 

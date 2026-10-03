@@ -1,7 +1,7 @@
 package com.platform.ai.moderation;
 
 import com.platform.common.ContentType;
-import com.platform.common.BizStatus;
+import com.platform.common.PostStatus;
 import com.platform.common.ModerationStatus;
 import com.platform.common.NotificationType;
 import com.platform.model.entity.HelpRequest;
@@ -54,12 +54,12 @@ class ModerationServiceTest {
 
     private IdleItem idleItem() {
         return IdleItem.builder()
-                .id(1L).userId(10L).tenantId(1L).title("电钻").description("全新博世").status(BizStatus.PENDING_REVIEW).build();
+                .id(1L).userId(10L).tenantId(1L).title("电钻").description("全新博世").status(PostStatus.PENDING_REVIEW).build();
     }
 
     private HelpRequest helpRequest() {
         return HelpRequest.builder()
-                .id(11L).userId(20L).tenantId(1L).title("帮忙搬家具").description("周末搬家").status(BizStatus.PENDING_REVIEW).build();
+                .id(11L).userId(20L).tenantId(1L).title("帮忙搬家具").description("周末搬家").status(PostStatus.PENDING_REVIEW).build();
     }
 
     @Test
@@ -68,12 +68,12 @@ class ModerationServiceTest {
         when(moderationClient.moderateText(anyString(), anyString()))
                 .thenReturn(new ModerationResult(ModerationStatus.GREEN, ""));
         IdleItem item = idleItem();
-        when(idleItemRepository.applyModerationResult(1L, BizStatus.ONLINE, ModerationStatus.GREEN, null)).thenReturn(1);
+        when(idleItemRepository.applyModerationResult(1L, PostStatus.ONLINE, ModerationStatus.GREEN, null)).thenReturn(1);
         when(idleItemRepository.findById(1L)).thenReturn(Optional.of(item));
 
         moderationService.moderateIdleItem(item);
 
-        verify(idleItemRepository).applyModerationResult(1L, BizStatus.ONLINE, ModerationStatus.GREEN, null);
+        verify(idleItemRepository).applyModerationResult(1L, PostStatus.ONLINE, ModerationStatus.GREEN, null);
         verify(notificationService).create(eq(10L), eq(NotificationType.CONTENT_APPROVED), eq("内容审核通过"), anyString(), eq(1L));
     }
 
@@ -83,12 +83,12 @@ class ModerationServiceTest {
         when(moderationClient.moderateText(anyString(), anyString()))
                 .thenReturn(new ModerationResult(ModerationStatus.RED, "疑似违禁品"));
         IdleItem item = idleItem();
-        when(idleItemRepository.applyModerationResult(1L, BizStatus.OFFLINE, ModerationStatus.RED, "疑似违禁品")).thenReturn(1);
+        when(idleItemRepository.applyModerationResult(1L, PostStatus.OFFLINE, ModerationStatus.RED, "疑似违禁品")).thenReturn(1);
         when(idleItemRepository.findById(1L)).thenReturn(Optional.of(item));
 
         moderationService.moderateIdleItem(item);
 
-        verify(idleItemRepository).applyModerationResult(1L, BizStatus.OFFLINE, ModerationStatus.RED, "疑似违禁品");
+        verify(idleItemRepository).applyModerationResult(1L, PostStatus.OFFLINE, ModerationStatus.RED, "疑似违禁品");
         verify(notificationService).create(eq(10L), eq(NotificationType.CONTENT_REJECTED), eq("内容审核未通过"), anyString(), eq(1L));
     }
 
@@ -98,11 +98,11 @@ class ModerationServiceTest {
         when(moderationClient.moderateText(anyString(), anyString()))
                 .thenReturn(new ModerationResult(ModerationStatus.YELLOW, "疑似广告导流"));
         IdleItem item = idleItem();
-        when(idleItemRepository.applyModerationResult(1L, BizStatus.PENDING_REVIEW, ModerationStatus.YELLOW, "疑似广告导流")).thenReturn(1);
+        when(idleItemRepository.applyModerationResult(1L, PostStatus.PENDING_REVIEW, ModerationStatus.YELLOW, "疑似广告导流")).thenReturn(1);
 
         moderationService.moderateIdleItem(item);
 
-        verify(idleItemRepository).applyModerationResult(1L, BizStatus.PENDING_REVIEW, ModerationStatus.YELLOW, "疑似广告导流");
+        verify(idleItemRepository).applyModerationResult(1L, PostStatus.PENDING_REVIEW, ModerationStatus.YELLOW, "疑似广告导流");
         verify(notificationService, never()).create(anyLong(), any(), any(), anyString(), anyLong());
     }
 
@@ -115,12 +115,12 @@ class ModerationServiceTest {
                 .thenReturn(new ModerationResult(ModerationStatus.RED, "图片含违禁品"));
         when(moderationClient.moderateText(anyString(), anyString()))
                 .thenReturn(new ModerationResult(ModerationStatus.GREEN, ""));
-        when(idleItemRepository.applyModerationResult(1L, BizStatus.OFFLINE, ModerationStatus.RED, "图片含违禁品")).thenReturn(1);
+        when(idleItemRepository.applyModerationResult(1L, PostStatus.OFFLINE, ModerationStatus.RED, "图片含违禁品")).thenReturn(1);
         when(idleItemRepository.findById(1L)).thenReturn(Optional.of(item));
 
         moderationService.moderateIdleItem(item);
 
-        verify(idleItemRepository).applyModerationResult(1L, BizStatus.OFFLINE, ModerationStatus.RED, "图片含违禁品");
+        verify(idleItemRepository).applyModerationResult(1L, PostStatus.OFFLINE, ModerationStatus.RED, "图片含违禁品");
     }
 
     @Test
@@ -129,12 +129,12 @@ class ModerationServiceTest {
         when(moderationClient.moderateText(anyString(), anyString()))
                 .thenThrow(new RuntimeException("API down"));
         IdleItem item = idleItem();
-        when(idleItemRepository.applyModerationResult(1L, BizStatus.ONLINE, ModerationStatus.GREEN, null)).thenReturn(1);
+        when(idleItemRepository.applyModerationResult(1L, PostStatus.ONLINE, ModerationStatus.GREEN, null)).thenReturn(1);
         when(idleItemRepository.findById(1L)).thenReturn(Optional.of(item));
 
         moderationService.moderateIdleItem(item);
 
-        verify(idleItemRepository).applyModerationResult(1L, BizStatus.ONLINE, ModerationStatus.GREEN, null);
+        verify(idleItemRepository).applyModerationResult(1L, PostStatus.ONLINE, ModerationStatus.GREEN, null);
     }
 
     @Test
@@ -146,13 +146,13 @@ class ModerationServiceTest {
                 .thenThrow(new RuntimeException("API down"));
         IdleItem item = idleItem();
         item.setImages("[\"/uploads/1.jpg\"]");
-        when(idleItemRepository.applyModerationResult(1L, BizStatus.ONLINE, ModerationStatus.GREEN, null)).thenReturn(1);
+        when(idleItemRepository.applyModerationResult(1L, PostStatus.ONLINE, ModerationStatus.GREEN, null)).thenReturn(1);
         when(idleItemRepository.findById(1L)).thenReturn(Optional.of(item));
 
         moderationService.moderateIdleItem(item);
 
         // 图片 green + 文本失败（重试也失败）→ 汇总 green
-        verify(idleItemRepository).applyModerationResult(1L, BizStatus.ONLINE, ModerationStatus.GREEN, null);
+        verify(idleItemRepository).applyModerationResult(1L, PostStatus.ONLINE, ModerationStatus.GREEN, null);
     }
 
     @Test
@@ -161,12 +161,12 @@ class ModerationServiceTest {
         when(moderationClient.moderateText(anyString(), anyString()))
                 .thenReturn(new ModerationResult(ModerationStatus.GREEN, ""));
         HelpRequest hr = helpRequest();
-        when(helpRequestRepository.applyModerationResult(11L, BizStatus.ONLINE, ModerationStatus.GREEN, null)).thenReturn(1);
+        when(helpRequestRepository.applyModerationResult(11L, PostStatus.ONLINE, ModerationStatus.GREEN, null)).thenReturn(1);
         when(helpRequestRepository.findById(11L)).thenReturn(Optional.of(hr));
 
         moderationService.moderateHelpRequest(hr);
 
-        verify(helpRequestRepository).applyModerationResult(11L, BizStatus.ONLINE, ModerationStatus.GREEN, null);
+        verify(helpRequestRepository).applyModerationResult(11L, PostStatus.ONLINE, ModerationStatus.GREEN, null);
         verify(notificationService).create(eq(20L), eq(NotificationType.CONTENT_APPROVED), eq("内容审核通过"), anyString(), eq(11L));
     }
 
@@ -176,12 +176,12 @@ class ModerationServiceTest {
         when(moderationClient.moderateText(anyString(), anyString()))
                 .thenReturn(new ModerationResult(ModerationStatus.RED, "违规内容"));
         HelpRequest hr = helpRequest();
-        when(helpRequestRepository.applyModerationResult(11L, BizStatus.OFFLINE, ModerationStatus.RED, "违规内容")).thenReturn(1);
+        when(helpRequestRepository.applyModerationResult(11L, PostStatus.OFFLINE, ModerationStatus.RED, "违规内容")).thenReturn(1);
         when(helpRequestRepository.findById(11L)).thenReturn(Optional.of(hr));
 
         moderationService.moderateHelpRequest(hr);
 
-        verify(helpRequestRepository).applyModerationResult(11L, BizStatus.OFFLINE, ModerationStatus.RED, "违规内容");
+        verify(helpRequestRepository).applyModerationResult(11L, PostStatus.OFFLINE, ModerationStatus.RED, "违规内容");
         verify(notificationService).create(eq(20L), eq(NotificationType.CONTENT_REJECTED), eq("内容审核未通过"), anyString(), eq(11L));
     }
 
@@ -194,11 +194,11 @@ class ModerationServiceTest {
                 .thenThrow(new RuntimeException("图片读取失败"));
         when(moderationClient.moderateText(anyString(), anyString()))
                 .thenReturn(new ModerationResult(ModerationStatus.YELLOW, "疑似商业信息"));
-        when(helpRequestRepository.applyModerationResult(11L, BizStatus.PENDING_REVIEW, ModerationStatus.YELLOW, "疑似商业信息")).thenReturn(1);
+        when(helpRequestRepository.applyModerationResult(11L, PostStatus.PENDING_REVIEW, ModerationStatus.YELLOW, "疑似商业信息")).thenReturn(1);
 
         moderationService.moderateHelpRequest(hr);
 
-        verify(helpRequestRepository).applyModerationResult(11L, BizStatus.PENDING_REVIEW, ModerationStatus.YELLOW, "疑似商业信息");
+        verify(helpRequestRepository).applyModerationResult(11L, PostStatus.PENDING_REVIEW, ModerationStatus.YELLOW, "疑似商业信息");
         verify(notificationService, never()).create(anyLong(), any(), any(), anyString(), anyLong());
     }
 
@@ -208,7 +208,7 @@ class ModerationServiceTest {
         when(moderationClient.moderateText(anyString(), anyString()))
                 .thenReturn(new ModerationResult(ModerationStatus.GREEN, ""));
         // 内容在审核期间已被下架/被申请占用 → 条件更新命中 0 行
-        when(idleItemRepository.applyModerationResult(1L, BizStatus.ONLINE, ModerationStatus.GREEN, null)).thenReturn(0);
+        when(idleItemRepository.applyModerationResult(1L, PostStatus.ONLINE, ModerationStatus.GREEN, null)).thenReturn(0);
 
         moderationService.moderateIdleItem(idleItem());
 
@@ -227,11 +227,11 @@ class ModerationServiceTest {
         when(moderationClient.moderateText(anyString(), anyString()))
                 .thenReturn(new ModerationResult(ModerationStatus.GREEN, ""));
         String expectedReason = "图片一有水印；图片二疑似商业库存";
-        when(idleItemRepository.applyModerationResult(1L, BizStatus.PENDING_REVIEW, ModerationStatus.YELLOW, expectedReason)).thenReturn(1);
+        when(idleItemRepository.applyModerationResult(1L, PostStatus.PENDING_REVIEW, ModerationStatus.YELLOW, expectedReason)).thenReturn(1);
 
         moderationService.moderateIdleItem(item);
 
-        verify(idleItemRepository).applyModerationResult(1L, BizStatus.PENDING_REVIEW, ModerationStatus.YELLOW, expectedReason);
+        verify(idleItemRepository).applyModerationResult(1L, PostStatus.PENDING_REVIEW, ModerationStatus.YELLOW, expectedReason);
     }
 
     // ==================== 重投（拒绝补偿链路） ====================
@@ -278,7 +278,7 @@ class ModerationServiceTest {
     void should_skip_when_alreadyProcessed() {
         // 已驳回：status 变为 offline，moderationStatus 变为 red
         HelpRequest processed = helpRequest();
-        processed.setStatus(BizStatus.OFFLINE);
+        processed.setStatus(PostStatus.OFFLINE);
         processed.setModerationStatus(ModerationStatus.RED);
         when(helpRequestRepository.findById(11L)).thenReturn(Optional.of(processed));
 

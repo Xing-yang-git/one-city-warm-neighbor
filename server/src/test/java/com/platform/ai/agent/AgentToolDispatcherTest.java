@@ -7,7 +7,8 @@ import com.platform.ai.search.KnowledgeHit;
 import com.platform.ai.search.KnowledgeRetrievalService;
 import com.platform.common.ActivityRole;
 import com.platform.common.AppTimeZone;
-import com.platform.common.BizStatus;
+import com.platform.common.BorrowStatus;
+import com.platform.common.PostStatus;
 import com.platform.common.PostType;
 import com.platform.model.dto.ApprovalCountDTO;
 import com.platform.model.dto.BorrowResponseDTO;
@@ -466,7 +467,7 @@ class AgentToolDispatcherTest {
     @DisplayName("my_posts - 返回我的发布摘要 JSON")
     void should_myPosts_returnPostsJson() throws Exception {
         IdleItemDTO dto = IdleItemDTO.builder()
-                .id(3L).title("电饭煲").status(BizStatus.ONLINE).build();
+                .id(3L).title("电饭煲").status(PostStatus.ONLINE).build();
         when(idleService.getMyPosts(USER_ID, PostType.LEND)).thenReturn(List.of(dto));
 
         String result = dispatcher.myPosts(USER_ID, REQ_1, new MyPostsParams(null));
@@ -474,20 +475,20 @@ class AgentToolDispatcherTest {
         var list = objectMapper.readTree(result);
         assertThat(list).hasSize(1);
         assertThat(list.get(0).get("id").asLong()).isEqualTo(3L);
-        assertThat(list.get(0).get("status").asText()).isEqualTo(BizStatus.ONLINE);
+        assertThat(list.get(0).get("status").asText()).isEqualTo(PostStatus.ONLINE);
     }
 
     @Test
     @DisplayName("my_borrows_due - 仅返回进行中（active/approved）的借用")
     void should_myBorrowsDue_filterActiveOnly() throws Exception {
         BorrowResponseDTO active = BorrowResponseDTO.builder()
-                .idleId(1L).idleTitle("电钻").durationDays(3).status(BizStatus.ACTIVE).build();
+                .idleId(1L).idleTitle("电钻").durationDays(3).status(BorrowStatus.ACTIVE).build();
         BorrowResponseDTO approved = BorrowResponseDTO.builder()
-                .idleId(2L).idleTitle("梯子").durationDays(null).status(BizStatus.APPROVED).build();
+                .idleId(2L).idleTitle("梯子").durationDays(null).status(BorrowStatus.APPROVED).build();
         BorrowResponseDTO returned = BorrowResponseDTO.builder()
-                .idleId(3L).idleTitle("锤子").durationDays(1).status(BizStatus.RETURNED).build();
+                .idleId(3L).idleTitle("锤子").durationDays(1).status(BorrowStatus.RETURNED).build();
         BorrowResponseDTO pending = BorrowResponseDTO.builder()
-                .idleId(4L).idleTitle("扳手").durationDays(1).status(BizStatus.PENDING).build();
+                .idleId(4L).idleTitle("扳手").durationDays(1).status(BorrowStatus.PENDING).build();
         when(borrowService.getMyApplications(USER_ID))
                 .thenReturn(List.of(active, approved, returned, pending));
 

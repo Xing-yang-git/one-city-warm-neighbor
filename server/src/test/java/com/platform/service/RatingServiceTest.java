@@ -1,7 +1,8 @@
 package com.platform.service;
 
 import com.platform.common.AppTimeZone;
-import com.platform.common.BizStatus;
+import com.platform.common.BorrowStatus;
+import com.platform.common.HelpApplicationStatus;
 import com.platform.common.RatingType;
 import com.platform.model.dto.RatingRequest;
 import com.platform.model.dto.UserRatingsDTO;
@@ -75,7 +76,7 @@ class RatingServiceTest {
                 .id(borrowId)
                 .idleId(idleId)
                 .borrowerId(fromUserId)
-                .status(BizStatus.RETURNED)
+                .status(BorrowStatus.RETURNED)
                 .build();
 
         IdleItem idleItem = IdleItem.builder()
@@ -124,7 +125,7 @@ class RatingServiceTest {
         BorrowRequest borrowRequest = BorrowRequest.builder()
                 .id(borrowId)
                 .borrowerId(fromUserId)
-                .status(BizStatus.APPROVED)
+                .status(BorrowStatus.APPROVED)
                 .build();
 
         when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.of(borrowRequest));
@@ -147,7 +148,7 @@ class RatingServiceTest {
         BorrowRequest borrowRequest = BorrowRequest.builder()
                 .id(borrowId)
                 .borrowerId(otherUserId)
-                .status(BizStatus.RETURNED)
+                .status(BorrowStatus.RETURNED)
                 .build();
 
         when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.of(borrowRequest));
@@ -170,7 +171,7 @@ class RatingServiceTest {
                 .id(borrowId)
                 .idleId(idleId)
                 .borrowerId(fromUserId)
-                .status(BizStatus.RETURNED)
+                .status(BorrowStatus.RETURNED)
                 .build();
 
         when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.of(borrowRequest));
@@ -198,7 +199,7 @@ class RatingServiceTest {
                 .id(borrowId)
                 .idleId(idleId)
                 .borrowerId(fromUserId)
-                .status(BizStatus.RETURNED)
+                .status(BorrowStatus.RETURNED)
                 .build();
 
         when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.of(borrowRequest));
@@ -224,7 +225,7 @@ class RatingServiceTest {
                 .id(borrowId)
                 .idleId(idleId)
                 .borrowerId(fromUserId)
-                .status(BizStatus.RETURNED)
+                .status(BorrowStatus.RETURNED)
                 .build();
 
         IdleItem idleItem = IdleItem.builder()
@@ -259,7 +260,7 @@ class RatingServiceTest {
                 .id(helpApplicationId)
                 .helpId(helpId)
                 .helperId(fromUserId)
-                .status(BizStatus.COMPLETED)
+                .status(HelpApplicationStatus.COMPLETED)
                 .build();
 
         HelpRequest helpRequest = HelpRequest.builder()
@@ -308,7 +309,7 @@ class RatingServiceTest {
         HelpApplication application = HelpApplication.builder()
                 .id(helpApplicationId)
                 .helperId(fromUserId)
-                .status(BizStatus.APPROVED)
+                .status(HelpApplicationStatus.APPROVED)
                 .build();
 
         when(helpApplicationRepository.findById(helpApplicationId)).thenReturn(Optional.of(application));
@@ -331,7 +332,7 @@ class RatingServiceTest {
         HelpApplication application = HelpApplication.builder()
                 .id(helpApplicationId)
                 .helperId(otherUserId)
-                .status(BizStatus.COMPLETED)
+                .status(HelpApplicationStatus.COMPLETED)
                 .build();
 
         when(helpApplicationRepository.findById(helpApplicationId)).thenReturn(Optional.of(application));

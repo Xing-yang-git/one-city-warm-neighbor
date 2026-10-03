@@ -1,6 +1,6 @@
 package com.platform.ai.moderation;
 
-import com.platform.common.BizStatus;
+import com.platform.common.PostStatus;
 import com.platform.common.ModerationStatus;
 import com.platform.model.entity.HelpRequest;
 import com.platform.model.entity.IdleItem;
@@ -36,7 +36,7 @@ public class ContentModerationScheduler {
         log.info("定时扫描未完成审核的内容...");
 
         // 扫描闲置物品
-        List<IdleItem> pendingIdleItems = idleItemRepository.findByStatus(BizStatus.PENDING_REVIEW);
+        List<IdleItem> pendingIdleItems = idleItemRepository.findByStatus(PostStatus.PENDING_REVIEW);
         if (!pendingIdleItems.isEmpty()) {
             log.info("发现 {} 条闲置物品审核状态为 pending，重新提交审核", pendingIdleItems.size());
             for (IdleItem item : pendingIdleItems) {
@@ -47,7 +47,7 @@ public class ContentModerationScheduler {
         }
 
         // 扫描求助信息
-        List<HelpRequest> pendingHelpRequests = helpRequestRepository.findByStatus(BizStatus.PENDING_REVIEW);
+        List<HelpRequest> pendingHelpRequests = helpRequestRepository.findByStatus(PostStatus.PENDING_REVIEW);
         if (!pendingHelpRequests.isEmpty()) {
             log.info("发现 {} 条求助信息审核状态为 pending，重新提交审核", pendingHelpRequests.size());
             for (HelpRequest hr : pendingHelpRequests) {

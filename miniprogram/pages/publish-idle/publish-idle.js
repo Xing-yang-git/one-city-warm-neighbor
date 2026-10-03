@@ -1,6 +1,6 @@
 const api = require('../../utils/api');
 const auth = require('../../utils/auth');
-const { POST_TYPE, STORAGE_KEY, DURATION_UNIT } = require('../../utils/constants');
+const { POST_TYPE, STORAGE_KEY, DURATION_UNIT, ITEM_CONDITION, PICKUP_METHOD } = require('../../utils/constants');
 
 /**
  * 发布页 — 闲置物品 / 互助求助发布。
@@ -10,6 +10,10 @@ const { POST_TYPE, STORAGE_KEY, DURATION_UNIT } = require('../../utils/constants
  */
 Page({
   data: {
+    // 业务常量（供 WXML 模板引用）
+    ITEM_CONDITION: ITEM_CONDITION,
+    PICKUP_METHOD: PICKUP_METHOD,
+
     postType: POST_TYPE.LEND,   // 'LEND' | 'WANTED' | 'HELP'
     title: '',
     category: '',
@@ -22,8 +26,8 @@ Page({
     durationOptions: ['1 天', '2 天', '3 天', '4 天', '5 天', '6 天', '7 天'],
     durationIndex: 6,
     // LEND fields
-    pickupMethod: 'self_pickup',
-    condition: 'normal',
+    pickupMethod: PICKUP_METHOD.SELF_PICKUP,
+    condition: ITEM_CONDITION.NORMAL,
     // HELP fields
     urgency: 'normal',
     enableTimeRange: false,   // 时间范围为选填，默认关闭，不提交时间

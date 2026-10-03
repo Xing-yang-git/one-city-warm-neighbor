@@ -5,7 +5,8 @@ import com.platform.ai.matching.MatchingScheduler;
 import com.platform.ai.moderation.ModerationService;
 import com.platform.ai.search.SemanticSearchService;
 import com.platform.common.BizException;
-import com.platform.common.BizStatus;
+import com.platform.common.BorrowStatus;
+import com.platform.common.PostStatus;
 import com.platform.common.DurationUnit;
 import com.platform.model.dto.ApproveRequest;
 import com.platform.model.dto.BorrowRequestDTO;
@@ -138,7 +139,7 @@ class ConcurrencyIntegrationTest {
         // 断言：悲观锁把「查状态 → 建申请 → 改状态」串行化，只有第一个线程能通过状态校验
         assertThat(countSuccess(results)).isEqualTo(1);
         assertThat(borrowRequestRepository.findByIdleId(itemId)).hasSize(1);
-        assertThat(loadItem(itemId).getStatus()).isEqualTo(BizStatus.PENDING);
+        assertThat(loadItem(itemId).getStatus()).isEqualTo(PostStatus.PENDING);
     }
 
     @Test
@@ -192,17 +193,17 @@ class ConcurrencyIntegrationTest {
         assertThat(applied).isNotEqualTo(edited);
 
         List<BorrowRequest> pendingApplications = borrowRequestRepository
-                .findByIdleIdInAndStatus(List.of(itemId), BizStatus.PENDING);
+                .findByIdleIdInAndStatus(List.of(itemId), BorrowStatus.PENDING);
         IdleItem finalItem = loadItem(itemId);
 
         if (applied) {
             // 申请先成功 → 编辑必须被「有住户正在申请」的门禁挡下，物品状态保持待审批
             assertThat(pendingApplications).hasSize(1);
-            assertThat(finalItem.getStatus()).isEqualTo(BizStatus.PENDING);
+            assertThat(finalItem.getStatus()).isEqualTo(PostStatus.PENDING);
         } else {
             // 编辑先成功 → 申请被拒，物品进入待审核，不留任何待审批申请
             assertThat(pendingApplications).isEmpty();
-            assertThat(finalItem.getStatus()).isEqualTo(BizStatus.PENDING_REVIEW);
+            assertThat(finalItem.getStatus()).isEqualTo(PostStatus.PENDING_REVIEW);
         }
     }
 

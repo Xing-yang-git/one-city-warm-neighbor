@@ -6,7 +6,10 @@ import com.platform.ai.moderation.ModerationService;
 import com.platform.ai.search.SemanticSearchService;
 import com.platform.common.AppTimeZone;
 import com.platform.common.BizException;
-import com.platform.common.BizStatus;
+import com.platform.common.BorrowStatus;
+import com.platform.common.ItemCondition;
+import com.platform.common.PickupMethod;
+import com.platform.common.PostStatus;
 import com.platform.common.ModerationStatus;
 import com.platform.common.NotificationType;
 import com.platform.common.PostType;
@@ -45,8 +48,10 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-@Transactional
 public class IdleService {
+
+    /** 搜索模式：关键词 LIKE 匹配（5 参 search 重载的默认模式） */
+    private static final String SEARCH_MODE_KEYWORD = "keyword";
 
     private final IdleItemRepository idleItemRepository;
     private final UserRepository userRepository;
@@ -84,6 +89,7 @@ public class IdleService {
         this.notificationService = notificationService;
     }
 
+    @Transactional
     public IdleItemDTO publish(Long userId, IdleItemRequest req) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BizException("用户不存在"));
@@ -95,15 +101,15 @@ public class IdleService {
         item.setDescription(req.getDescription());
         item.setPostType(req.getPostType());
         item.setCategory(req.getCategory());
-        item.setCondition(req.getCondition() != null ? req.getCondition() : BizStatus.NORMAL);
+        item.setCondition(req.getCondition() != null ? req.getCondition() : ItemCondition.NORMAL);
         item.setImages(req.getImages());
         item.setPrice(req.getPrice() != null ? req.getPrice() : BigDecimal.ZERO);
         item.setMaxDuration(req.getMaxDuration() != null ? req.getMaxDuration() : 7);
         item.setDurationUnit(req.getDurationUnit() != null ? req.getDurationUnit() : "day");
-        item.setPickupMethod(req.getPickupMethod() != null ? req.getPickupMethod() : "self_pickup");
+        item.setPickupMethod(req.getPickupMethod() != null ? req.getPickupMethod() : PickupMethod.SELF_PICKUP);
         item.setIsProxy(req.getIsProxy() != null && req.getIsProxy());
         // 发布后先挂起，等待 AI 异步审核
-        item.setStatus(BizStatus.PENDING_REVIEW);
+        item.setStatus(PostStatus.PENDING_REVIEW);
         item.setModerationStatus(ModerationStatus.PENDING);
         item.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
         item = idleItemRepository.save(item);
@@ -132,13 +138,14 @@ public class IdleService {
         return toDTO(item);
     }
 
+    @Transactional(readOnly = true)
     public PageDTO<IdleItemDTO> getHomeList(String postType, Long userId, int page, int size) {
         User user = userRepository.findById(userId).orElse(null);
         Long tenantId = user != null ? user.getTenantId() : null;
         PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<IdleItem> itemPage = tenantId != null
-                ? idleItemRepository.findByStatusAndPostTypeAndTenantId(BizStatus.ONLINE, postType, tenantId, pageRequest)
-                : idleItemRepository.findByStatusAndPostType(BizStatus.ONLINE, postType, pageRequest);
+                ? idleItemRepository.findByStatusAndPostTypeAndTenantId(PostStatus.ONLINE, postType, tenantId, pageRequest)
+                : idleItemRepository.findByStatusAndPostType(PostStatus.ONLINE, postType, pageRequest);
 
         List<IdleItemDTO> dtos = itemPage.getContent().stream()
                 .map(this::toDTO)
@@ -153,14 +160,36 @@ public class IdleService {
                 .build();
     }
 
+    @Transactional(readOnly = true)
     public IdleItemDTO getDetail(Long itemId) {
-        return getDetail(itemId, null);
+        return loadDetail(itemId, null);
     }
 
     /**
      * 获取物品详情，可选带上当前用户的借用申请状态。
+     *
+     * @param itemId        物品 ID
+     * @param currentUserId 当前用户 ID（可为 null，表示不附带该用户的借用申请状态）
+     * @return 物品详情
+     * @throws BizException 物品不存在时抛出
      */
+    @Transactional(readOnly = true)
     public IdleItemDTO getDetail(Long itemId, Long currentUserId) {
+        return loadDetail(itemId, currentUserId);
+    }
+
+    /**
+     * 物品详情查询主体 — 供两个 public 重载共用。
+     *
+     * <p>抽成私有方法，是为了让两个重载都成为**独立的事务入口**：若让 1 参重载直接调 2 参重载，
+     * 这种类内自调用不经过 Spring 代理，外层入口的只读事务标注不会生效。</p>
+     *
+     * @param itemId        物品 ID
+     * @param currentUserId 当前用户 ID（可为 null）
+     * @return 物品详情
+     * @throws BizException 物品不存在时抛出
+     */
+    private IdleItemDTO loadDetail(Long itemId, Long currentUserId) {
         IdleItem item = idleItemRepository.findById(itemId)
                 .orElseThrow(() -> new BizException("物品不存在"));
         IdleItemDTO dto = enrichWithUserStats(toDTO(item));
@@ -180,8 +209,9 @@ public class IdleService {
         return dto;
     }
 
+    @Transactional(readOnly = true)
     public PageDTO<IdleItemDTO> search(Long userId, String keyword, String postType, int page, int size) {
-        return search(userId, keyword, postType, page, size, "keyword");
+        return searchInternal(userId, keyword, postType, page, size, SEARCH_MODE_KEYWORD);
     }
 
     /**
@@ -195,7 +225,26 @@ public class IdleService {
      * @param mode     搜索模式：keyword(LIKE 关键词, 默认) / semantic(语义向量) / 其他或空(混合搜索)
      * @return 搜索结果分页
      */
+    @Transactional(readOnly = true)
     public PageDTO<IdleItemDTO> search(Long userId, String keyword, String postType, int page, int size, String mode) {
+        return searchInternal(userId, keyword, postType, page, size, mode);
+    }
+
+    /**
+     * 搜索查询主体 — 供两个 public 重载共用。
+     *
+     * <p>抽成私有方法，是为了让两个重载都成为**独立的事务入口**：若让 5 参重载直接调 6 参重载，
+     * 这种类内自调用不经过 Spring 代理，外层入口的只读事务标注不会生效。</p>
+     *
+     * @param userId   当前用户 ID（用于租户隔离）
+     * @param keyword  搜索关键词
+     * @param postType 发布类型筛选
+     * @param page     页码（从 0 开始）
+     * @param size     每页条数
+     * @param mode     搜索模式
+     * @return 搜索结果分页
+     */
+    private PageDTO<IdleItemDTO> searchInternal(Long userId, String keyword, String postType, int page, int size, String mode) {
         // 与 getHomeList 保持一致的租户隔离——不同小区的数据不得互相搜到
         User user = userId != null ? userRepository.findById(userId).orElse(null) : null;
         Long tenantId = user != null ? user.getTenantId() : null;
@@ -217,12 +266,12 @@ public class IdleService {
                     ? results.subList(start, end)
                     : List.of();
             itemPage = new PageImpl<>(pageResults, pageRequest, totalSize);
-        } else if (mode == null || mode.isEmpty() || "keyword".equals(mode)) {
+        } else if (mode == null || mode.isEmpty() || SEARCH_MODE_KEYWORD.equals(mode)) {
             // 混合搜索 或 默认关键词搜索
-            if ("keyword".equals(mode)) {
+            if (SEARCH_MODE_KEYWORD.equals(mode)) {
                 // 纯关键词 LIKE 搜索（保持原有行为）
                 itemPage = idleItemRepository.searchByTenant(
-                        BizStatus.ONLINE, postType, tenantId, keyword, keyword, pageRequest);
+                        PostStatus.ONLINE, postType, tenantId, keyword, keyword, pageRequest);
             } else {
                 // 混合搜索：语义 + 关键词去重合并
                 itemPage = semanticSearchService.hybridSearch(
@@ -247,6 +296,7 @@ public class IdleService {
                 .build();
     }
 
+    @Transactional(readOnly = true)
     public List<IdleItemDTO> getMyPosts(Long userId, String postType) {
         List<IdleItem> items = idleItemRepository
                 .findByUserIdAndPostType(userId, postType, Pageable.unpaged())
@@ -266,6 +316,7 @@ public class IdleService {
      * @return 下架后的物品
      * @throws BizException 物品不存在或非本人操作时抛出
      */
+    @Transactional
     public IdleItemDTO delist(Long userId, Long itemId) {
         IdleItem item = idleItemRepository.findByIdWithLock(itemId)
                 .orElseThrow(() -> new BizException("物品不存在"));
@@ -274,14 +325,14 @@ public class IdleService {
             throw new BizException("无权操作该物品");
         }
 
-        item.setStatus(BizStatus.DRAFT);
+        item.setStatus(PostStatus.DRAFT);
         item.setDelistReason("用户自行下架");
         item = idleItemRepository.save(item);
 
         List<BorrowRequest> pendingBorrows = borrowRequestRepository
-                .findByIdleIdInAndStatus(List.of(itemId), BizStatus.PENDING);
+                .findByIdleIdInAndStatus(List.of(itemId), BorrowStatus.PENDING);
         for (BorrowRequest pending : pendingBorrows) {
-            pending.setStatus(BizStatus.REJECTED);
+            pending.setStatus(BorrowStatus.REJECTED);
             borrowRequestRepository.save(pending);
             notificationService.create(pending.getBorrowerId(), NotificationType.AUDIT_RESULT,
                     "借入申请已拒绝",
@@ -295,6 +346,7 @@ public class IdleService {
         return toDTO(item);
     }
 
+    @Transactional
     public IdleItemDTO deleteItem(Long userId, Long itemId) {
         IdleItem item = idleItemRepository.findById(itemId)
                 .orElseThrow(() -> new BizException("物品不存在"));
@@ -303,7 +355,7 @@ public class IdleService {
             throw new BizException("无权操作该物品");
         }
 
-        item.setStatus(BizStatus.OFFLINE);
+        item.setStatus(PostStatus.OFFLINE);
         item.setDelistReason("用户删除");
         item = idleItemRepository.save(item);
         return toDTO(item);
@@ -324,6 +376,7 @@ public class IdleService {
      * @return 编辑后的物品
      * @throws BizException 物品不存在、非本人操作、有待处理申请或正在审核时抛出
      */
+    @Transactional
     public IdleItemDTO update(Long userId, Long itemId, IdleItemRequest req) {
         IdleItem item = idleItemRepository.findByIdWithLock(itemId)
                 .orElseThrow(() -> new BizException("物品不存在"));
@@ -348,15 +401,15 @@ public class IdleService {
         item.setPickupMethod(req.getPickupMethod() != null ? req.getPickupMethod() : item.getPickupMethod());
 
         // 编辑后重新审核：原状态为 online/completed/offline 时，退回 pending_review
-        boolean needsModeration = BizStatus.ONLINE.equals(originalStatus)
-                || BizStatus.COMPLETED.equals(originalStatus)
-                || BizStatus.OFFLINE.equals(originalStatus)
-                || BizStatus.DRAFT.equals(originalStatus);
+        boolean needsModeration = PostStatus.ONLINE.equals(originalStatus)
+                || PostStatus.COMPLETED.equals(originalStatus)
+                || PostStatus.OFFLINE.equals(originalStatus)
+                || PostStatus.DRAFT.equals(originalStatus);
         if (needsModeration) {
-            item.setStatus(BizStatus.PENDING_REVIEW);
+            item.setStatus(PostStatus.PENDING_REVIEW);
             item.setModerationStatus(ModerationStatus.PENDING);
             // 从 completed/offline 重新发布时刷新时间
-            if (BizStatus.COMPLETED.equals(originalStatus) || BizStatus.OFFLINE.equals(originalStatus)) {
+            if (PostStatus.COMPLETED.equals(originalStatus) || PostStatus.OFFLINE.equals(originalStatus)) {
                 item.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
             }
         }
@@ -397,11 +450,11 @@ public class IdleService {
      */
     private void assertEditable(Long itemId, IdleItem item) {
         List<BorrowRequest> pendingApplications = borrowRequestRepository
-                .findByIdleIdInAndStatus(List.of(itemId), BizStatus.PENDING);
+                .findByIdleIdInAndStatus(List.of(itemId), BorrowStatus.PENDING);
         if (!pendingApplications.isEmpty()) {
             throw new BizException("该物品有住户正在申请，请先处理申请后再编辑");
         }
-        if (BizStatus.PENDING_REVIEW.equals(item.getStatus())) {
+        if (PostStatus.PENDING_REVIEW.equals(item.getStatus())) {
             throw new BizException("该帖子正在审核中，请等审核完成后再编辑");
         }
     }

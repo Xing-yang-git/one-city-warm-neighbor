@@ -1,6 +1,6 @@
 package com.platform.service;
 
-import com.platform.common.BizStatus;
+import com.platform.common.KnowledgeStatus;
 import com.platform.common.KnowledgeCategory;
 import com.platform.model.entity.KnowledgeItem;
 import com.platform.repository.KnowledgeItemRepository;
@@ -75,8 +75,8 @@ public class KnowledgeService {
             throw new IllegalArgumentException("未知分类: " + item.getCategory());
         }
         if (item.getStatus() != null
-                && !BizStatus.ONLINE.equals(item.getStatus())
-                && !BizStatus.OFFLINE.equals(item.getStatus())) {
+                && !KnowledgeStatus.ONLINE.equals(item.getStatus())
+                && !KnowledgeStatus.OFFLINE.equals(item.getStatus())) {
             throw new IllegalArgumentException("未知状态: " + item.getStatus());
         }
     }

@@ -474,7 +474,7 @@ COMMENT ON COLUMN knowledge_items.content IS '条目正文 / 切片内容（检�
 COMMENT ON COLUMN knowledge_items.source IS '来源文档名（引用出处展示），文档切片继承源文档 source';
 COMMENT ON COLUMN knowledge_items.tags IS '逗号分隔标签，关键词检索兜底；文档切片继承源文档 tags';
 COMMENT ON COLUMN knowledge_items.embedding IS '1024 维语义向量字面量（智谱 embedding-3 dimensions=1024），查询时 CAST 转 vector 做余弦距离；缺失时检索降级关键词，可 reindex 补齐';
-COMMENT ON COLUMN knowledge_items.status IS '状态：online(启用)/offline(停用)，引用 BizStatus；软下架不物理删';
+COMMENT ON COLUMN knowledge_items.status IS '状态：online(启用)/offline(停用)，引用 KnowledgeStatus；软下架不物理删';
 COMMENT ON COLUMN knowledge_items.doc_id IS '来源文档 ID（NULL=手写条目）→ knowledge_documents.id，删除文档时外键 CASCADE 级联清理全部切片';
 COMMENT ON COLUMN knowledge_items.chunk_index IS '切片在源文档中的序号（0 基），用于分块排序与展示；手写条目为 NULL';
 COMMENT ON COLUMN knowledge_items.page_no IS '切片来源页码（PDF 或分页文档，扫描件经 OCR 后记录原页）；非分页文档为 NULL';

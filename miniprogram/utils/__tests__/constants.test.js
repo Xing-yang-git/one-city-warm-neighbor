@@ -74,7 +74,6 @@ describe('constants', () => {
       expect(constants.BORROW_STATUS.APPROVED).toBe('approved');
       expect(constants.BORROW_STATUS.REJECTED).toBe('rejected');
       expect(constants.BORROW_STATUS.RETURNED).toBe('returned');
-      expect(constants.BORROW_STATUS.CANCELLED).toBe('cancelled');
       expect(constants.BORROW_STATUS.COMPLETED).toBe('completed');
     });
 
@@ -99,6 +98,16 @@ describe('constants', () => {
       Object.values(constants.HELP_APPLICATION_STATUS).forEach(value => {
         expect(value).toBe(value.toLowerCase());
       });
+    });
+  });
+
+  // ==================== ITEM_CONDITION ====================
+
+  describe('ITEM_CONDITION', () => {
+    it('应包含全部物品成色', () => {
+      expect(constants.ITEM_CONDITION.LIKE_NEW).toBe('like-new');
+      expect(constants.ITEM_CONDITION.NORMAL).toBe('normal');
+      expect(constants.ITEM_CONDITION.WORN).toBe('worn');
     });
   });
 

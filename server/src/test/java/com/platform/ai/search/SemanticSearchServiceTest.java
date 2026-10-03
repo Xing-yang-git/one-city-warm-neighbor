@@ -1,7 +1,7 @@
 package com.platform.ai.search;
 
 import com.platform.ai.embedding.EmbeddingService;
-import com.platform.common.BizStatus;
+import com.platform.common.PostStatus;
 import com.platform.common.PostType;
 import com.platform.config.AiConfig;
 import com.platform.model.entity.IdleItem;
@@ -87,7 +87,7 @@ class SemanticSearchServiceTest {
         // 语义结果 2 条
         when(query.getResultList()).thenReturn(List.of(item(1L, "博世冲击钻"), item(2L, "电动螺丝刀")));
         // 关键词结果与语义重叠 1 条 + 新增 1 条
-        when(idleItemRepository.searchByTenant(eq(BizStatus.ONLINE), eq(PostType.LEND), eq(10L),
+        when(idleItemRepository.searchByTenant(eq(PostStatus.ONLINE), eq(PostType.LEND), eq(10L),
                 anyString(), anyString(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new PageImpl<>(List.of(item(2L, "电动螺丝刀"), item(3L, "手电钻"))));
 
@@ -105,7 +105,7 @@ class SemanticSearchServiceTest {
         when(embeddingService.generateEmbedding("梯子", "")).thenReturn("[0.1]");
         when(entityManager.createNativeQuery(anyString(), eq(IdleItem.class))).thenReturn(query);
         when(query.getResultList()).thenReturn(List.of());
-        when(idleItemRepository.searchByTenant(eq(BizStatus.ONLINE), eq(PostType.LEND), eq(10L),
+        when(idleItemRepository.searchByTenant(eq(PostStatus.ONLINE), eq(PostType.LEND), eq(10L),
                 anyString(), anyString(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new PageImpl<>(List.of(item(1L, "铝合金梯子"), item(2L, "折叠梯"))));
 
@@ -121,7 +121,7 @@ class SemanticSearchServiceTest {
         when(embeddingService.generateEmbedding("伞", "")).thenReturn("[0.1]");
         when(entityManager.createNativeQuery(anyString(), eq(IdleItem.class))).thenReturn(query);
         when(query.getResultList()).thenReturn(List.of(item(1L, "黑伞"), item(2L, "折叠伞")));
-        when(idleItemRepository.searchByTenant(eq(BizStatus.ONLINE), eq(PostType.LEND), eq(10L),
+        when(idleItemRepository.searchByTenant(eq(PostStatus.ONLINE), eq(PostType.LEND), eq(10L),
                 anyString(), anyString(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new PageImpl<>(List.of(item(3L, "雨伞"))));
 

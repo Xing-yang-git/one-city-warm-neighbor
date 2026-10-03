@@ -3,38 +3,81 @@
  * 这些字符串是前后端 API 契约的一部分，值不可修改；新增状态时需前后端同步。
  */
 
-/** 业务状态（住户认证 authStatus、借用申请 status、物品状态、帮助状态等字段的取值），与后端 BizStatus 保持一致 */
-export const STATUS = {
-  /** 待审核 / 待审批 */
-  PENDING: 'pending',
-  /** 已通过 / 审核通过 */
-  APPROVED: 'approved',
-  /** 已驳回 / 审核驳回 */
-  REJECTED: 'rejected',
-  /** 已归还（借用流转终态） */
-  RETURNED: 'returned',
-  /** 已完成（帮助流转终态） */
-  COMPLETED: 'completed',
-  /** 已预订（闲置物品已被锁定 / 帮助已有人接单） */
-  RESERVED: 'reserved',
+/**
+ * 帖子（内容）状态（idle_items.status / help_requests.status 字段取值），与后端 PostStatus 保持一致。
+ * 注意与 AUTH_STATUS / BORROW_STATUS / HELP_APPLICATION_STATUS 区分：这些域都含 pending/approved/rejected
+ * 等同值但语义完全不同，不可互相引用。
+ */
+export const POST_STATUS = {
   /** 上架展示中 */
   ONLINE: 'online',
   /** 已下架 */
   OFFLINE: 'offline',
-  /** 已封禁（用户 authStatus） */
-  BANNED: 'banned',
-  /** 进行中（历史借用记录 status） */
+  /** 草稿（用户自行下架后的中间态） */
+  DRAFT: 'draft',
+  /** 待 AI 审核 */
+  PENDING_REVIEW: 'pending_review',
+  /** 待审批（内容已被申请） */
+  PENDING: 'pending',
+  /** 进行中 */
   ACTIVE: 'active',
-  /** 注册中（用户已微信登录但尚未完成手机号绑定/实名） */
+  /** 已完成 */
+  COMPLETED: 'completed',
+} as const;
+
+/** 用户认证状态（users.auth_status 字段取值），与后端 AuthStatus 保持一致 */
+export const AUTH_STATUS = {
+  /** 注册中（已微信登录但尚未完成手机号绑定/实名） */
   REGISTERING: 'registering',
-  /** 已删除（软删除标记） */
-  DELETED: 'deleted',
-  /** 正常（物品成色 condition 默认值） */
+  /** 待审核 */
+  PENDING: 'pending',
+  /** 审核通过 */
+  APPROVED: 'approved',
+  /** 审核驳回 */
+  REJECTED: 'rejected',
+  /** 已封禁 */
+  BANNED: 'banned',
+} as const;
+
+/** 借用申请状态（borrow_requests.status 字段取值），与后端 BorrowStatus 保持一致 */
+export const BORROW_STATUS = {
+  /** 待审批 */
+  PENDING: 'pending',
+  /** 已同意 */
+  APPROVED: 'approved',
+  /** 已拒绝 */
+  REJECTED: 'rejected',
+  /** 已归还 */
+  RETURNED: 'returned',
+  /** 已完成 */
+  COMPLETED: 'completed',
+  /** 进行中（历史遗留值，全仓无写入方；读取处需与 approved 兼容） */
+  ACTIVE: 'active',
+} as const;
+
+/** 帮助申请状态（help_applications.status 字段取值），与后端 HelpApplicationStatus 保持一致 */
+export const HELP_APPLICATION_STATUS = {
+  /** 待审批 */
+  PENDING: 'pending',
+  /** 已同意 */
+  APPROVED: 'approved',
+  /** 已拒绝 */
+  REJECTED: 'rejected',
+  /** 已完成 */
+  COMPLETED: 'completed',
+} as const;
+
+/**
+ * 物品成色（idle_items.condition 字段取值），与后端 ItemCondition 保持一致。
+ * 注意与 DAMAGE_TYPE 区分：两者都含 normal，但前者是「发布时物品多新」，后者是「归还时损坏程度」。
+ */
+export const ITEM_CONDITION = {
+  /** 几乎全新 */
+  LIKE_NEW: 'like-new',
+  /** 正常使用痕迹 */
   NORMAL: 'normal',
-  /** 已取消（仅小程序端使用） */
-  CANCELLED: 'cancelled',
-  /** 借用中（仅小程序端兼容别名，映射到 active） */
-  BORROWING: 'active',
+  /** 有明显磨损 */
+  WORN: 'worn',
 } as const;
 
 /** 闲置发布类型（idle_items.postType 字段取值），与后端 PostType 保持一致 */
@@ -158,10 +201,10 @@ export const NOTIFICATION_TYPE = {
 
 /** 取货方式（idle_items.pickup_method 字段取值），与后端 PickupMethod 保持一致 */
 export const PICKUP_METHOD = {
-  /** 自取 */
+  /** 需自提 */
   SELF_PICKUP: 'self_pickup',
-  /** 快递 */
-  EXPRESS: 'express',
+  /** 自提或送上门 */
+  BOTH: 'both',
 } as const;
 
 /**
@@ -174,9 +217,6 @@ export const RATING_TYPE = {
   /** 互助评价（针对技能求助行为） */
   HELP: 'help',
 } as const;
-
-/** STATUS 值联合类型，供 TypeScript 类型收窄使用 */
-export type StatusValue = (typeof STATUS)[keyof typeof STATUS];
 
 /** POST_TYPE 值联合类型，供 TypeScript 类型收窄使用 */
 export type PostTypeValue = (typeof POST_TYPE)[keyof typeof POST_TYPE];

@@ -7,7 +7,7 @@ import com.platform.ai.search.KnowledgeHit;
 import com.platform.ai.search.KnowledgeRetrievalService;
 import com.platform.common.ActivityRole;
 import com.platform.common.AppTimeZone;
-import com.platform.common.BizStatus;
+import com.platform.common.BorrowStatus;
 import com.platform.common.PostType;
 import com.platform.model.dto.ApprovalCountDTO;
 import com.platform.model.dto.BorrowResponseDTO;
@@ -478,7 +478,7 @@ public class AgentToolDispatcher {
             List<BorrowResponseDTO> active = borrowService.getMyApplications(userId).stream()
                     // 运行时经 approveReject 批准后的借用状态是 approved（种子数据用 active 掩盖了该差异），
                     // 与 AdminService 的 ACTIVE || APPROVED 双状态兼容保持一致
-                    .filter(b -> BizStatus.ACTIVE.equals(b.getStatus()) || BizStatus.APPROVED.equals(b.getStatus()))
+                    .filter(b -> BorrowStatus.ACTIVE.equals(b.getStatus()) || BorrowStatus.APPROVED.equals(b.getStatus()))
                     .collect(Collectors.toList());
             List<Map<String, Object>> items = active.stream()
                     .map(b -> Map.<String, Object>of(

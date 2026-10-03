@@ -1,6 +1,6 @@
 package com.platform.security;
 
-import com.platform.common.BizStatus;
+import com.platform.common.AuthStatus;
 import com.platform.common.UserType;
 import com.platform.repository.UserRepository;
 import org.slf4j.Logger;
@@ -57,7 +57,7 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
                 return false;
             }
             // 未审核用户不允许建立聊天 WS 连接
-            if (!BizStatus.APPROVED.equals(probe.getAuthStatus())) {
+            if (!AuthStatus.APPROVED.equals(probe.getAuthStatus())) {
                 log.info("WS handshake rejected: unapproved user {} — authStatus={}", userId, probe.getAuthStatus());
                 return false;
             }

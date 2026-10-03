@@ -224,7 +224,7 @@ CREATE TABLE IF NOT EXISTS borrow_requests (
     duration_type   VARCHAR(10) NOT NULL,                                      -- 借入时长类型：hour(小时)/day(天)
     duration_days   INTEGER     NOT NULL,                                      -- 借入时长值（数字）
     note            VARCHAR(200),                                               -- 申请备注，最多200字
-    status          VARCHAR(20) NOT NULL DEFAULT 'pending',                    -- 状态：pending(待确认)/active(进行中)/returned(已归还)/rejected(已拒绝)
+    status          VARCHAR(20) NOT NULL DEFAULT 'pending',                    -- 状态：pending(待确认)/approved(已同意)/active(进行中)/returned(已归还)/completed(已完成)/rejected(已拒绝)
     handoff_photos  TEXT,                                                       -- 交接照片URL（JSON数组格式）
     approved_at     TIMESTAMP,                                                  -- 审批通过时间（物主同意借出时设置）
     returned_at     TIMESTAMP,                                                  -- 归还完成时间（任意一方确认归还时设置）
@@ -244,7 +244,7 @@ COMMENT ON COLUMN borrow_requests.borrower_id   IS '借入者用户ID，外键�
 COMMENT ON COLUMN borrow_requests.duration_type IS '借入时长类型：hour(小时)/day(天)';
 COMMENT ON COLUMN borrow_requests.duration_days IS '借入时长值（数字），如借3天=3';
 COMMENT ON COLUMN borrow_requests.note          IS '申请备注，申请时填写的说明，最多200字';
-COMMENT ON COLUMN borrow_requests.status        IS '状态：pending(待确认)/approved(已同意)/active(进行中)/returned(已归还)/rejected(已拒绝)';
+COMMENT ON COLUMN borrow_requests.status        IS '状态：pending(待确认)/approved(已同意)/active(进行中)/returned(已归还)/completed(已完成)/rejected(已拒绝)';
 COMMENT ON COLUMN borrow_requests.handoff_photos IS '交接照片URL（JSON数组格式）';
 COMMENT ON COLUMN borrow_requests.approved_at  IS '审批通过时间（物主同意借出时设置）';
 COMMENT ON COLUMN borrow_requests.returned_at  IS '归还完成时间（任意一方确认归还时设置）';

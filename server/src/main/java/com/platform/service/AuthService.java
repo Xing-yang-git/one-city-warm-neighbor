@@ -5,7 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.platform.common.AppTimeZone;
 import com.platform.common.BizException;
-import com.platform.common.BizStatus;
+import com.platform.common.AuthStatus;
 import com.platform.common.UserFormatter;
 import com.platform.common.UserType;
 import com.platform.model.dto.AuthResponseDTO;
@@ -94,19 +94,19 @@ public class AuthService {
             user.setOpenid(openid);
             user.setName(req.getName() != null ? req.getName() : "微信用户");
             user.setUserType("业主");
-            user.setAuthStatus(BizStatus.REGISTERING);
+            user.setAuthStatus(AuthStatus.REGISTERING);
             user.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
             user = userRepository.save(user);
             needRegister = true;
-        } else if (BizStatus.PENDING.equals(user.getAuthStatus()) && user.getRoom() == null) {
+        } else if (AuthStatus.PENDING.equals(user.getAuthStatus()) && user.getRoom() == null) {
             // 历史数据修复：用户被创建为 pending 状态但从未完成注册
-            user.setAuthStatus(BizStatus.REGISTERING);
+            user.setAuthStatus(AuthStatus.REGISTERING);
             user = userRepository.save(user);
             needRegister = true;
         } else if (user.getPhone() != null && !user.getPhone().isEmpty()) {
             // 用户已用手机号完成注册——不再跳转注册页
             // 除非其明确处于 'registering' 状态
-            if (!BizStatus.REGISTERING.equals(user.getAuthStatus())) {
+            if (!AuthStatus.REGISTERING.equals(user.getAuthStatus())) {
                 needRegister = false;
             }
         }
@@ -155,7 +155,7 @@ public class AuthService {
             throw new BizException("密码错误");
         }
 
-        if (BizStatus.BANNED.equals(user.getAuthStatus())) {
+        if (AuthStatus.BANNED.equals(user.getAuthStatus())) {
             String reason = user.getBannedReason() != null ? user.getBannedReason() : "如有疑问请联系物业";
             throw new BizException("账号已被封禁：" + reason);
         }
@@ -252,7 +252,7 @@ public class AuthService {
         if (req.getUserType() != null) {
             user.setUserType(mapUserType(req.getUserType()));
         }
-        user.setAuthStatus(BizStatus.PENDING);
+        user.setAuthStatus(AuthStatus.PENDING);
         user.setRejectReason(null);
 
         if (req.getDocImages() != null && !req.getDocImages().isEmpty()) {
@@ -340,11 +340,11 @@ public class AuthService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BizException("用户不存在"));
 
-        if (!BizStatus.BANNED.equals(user.getAuthStatus())) {
+        if (!AuthStatus.BANNED.equals(user.getAuthStatus())) {
             throw new BizException("当前状态不支持申诉");
         }
 
-        user.setAuthStatus(BizStatus.PENDING);
+        user.setAuthStatus(AuthStatus.PENDING);
         user.setRejectReason(null);
         userRepository.save(user);
 

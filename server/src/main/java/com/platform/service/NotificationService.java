@@ -2,7 +2,8 @@ package com.platform.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.platform.common.AppTimeZone;
-import com.platform.common.BizStatus;
+import com.platform.common.BorrowStatus;
+import com.platform.common.HelpApplicationStatus;
 import com.platform.common.NotificationType;
 import com.platform.model.dto.NotificationDTO;
 import com.platform.model.dto.WebSocketMessage;
@@ -25,7 +26,6 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
-@Transactional
 public class NotificationService {
 
     private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
@@ -49,6 +49,7 @@ public class NotificationService {
         this.chatWebSocketHandler = chatWebSocketHandler;
     }
 
+    @Transactional(readOnly = true)
     public List<NotificationDTO> getNotifications(Long userId) {
         List<Notification> notifications = notificationRepository
                 .findByUserIdOrderByCreatedAtDesc(userId);
@@ -62,20 +63,24 @@ public class NotificationService {
         return notificationRepository.countByUserIdAndIsReadFalse(userId);
     }
 
+    @Transactional
     public void markAllRead(Long userId) {
         notificationRepository.markAllRead(userId);
     }
 
     /** 删除当前用户全部通知（服务通知清空） */
+    @Transactional
     public void deleteAll(Long userId) {
         notificationRepository.deleteAllByUserId(userId);
     }
 
     /** 删除指定用户、指定类型、指定关联ID的旧通知（重复申请时清理上一轮通知，避免旧通知仍显示待回应） */
+    @Transactional
     public void deleteByUserIdAndTypeAndRelatedId(Long userId, String type, Long relatedId) {
         notificationRepository.deleteByUserIdAndTypeAndRelatedId(userId, type, relatedId);
     }
 
+    @Transactional
     public NotificationDTO create(Long userId, String type, String title, String content, Long relatedId) {
         Notification notification = new Notification();
         notification.setUserId(userId);
@@ -132,14 +137,14 @@ public class NotificationService {
         if (NotificationType.RETURN_CONFIRM.equals(type)) {
             Optional<BorrowRequest> brOpt = borrowRequestRepository.findById(relatedId);
             if (brOpt.isEmpty()) return false;
-            if (!BizStatus.RETURNED.equals(brOpt.get().getStatus())) return false;
+            if (!BorrowStatus.RETURNED.equals(brOpt.get().getStatus())) return false;
             return ratingRepository.findFirstByBorrowIdAndFromUserId(relatedId, userId).isEmpty();
         }
 
         if (NotificationType.HELP_RESULT.equals(type)) {
             Optional<HelpApplication> appOpt = helpApplicationRepository.findById(relatedId);
             if (appOpt.isEmpty()) return false;
-            if (!BizStatus.COMPLETED.equals(appOpt.get().getStatus())) return false;
+            if (!HelpApplicationStatus.COMPLETED.equals(appOpt.get().getStatus())) return false;
             return ratingRepository.findFirstByHelpApplicationIdAndFromUserId(relatedId, userId).isEmpty();
         }
 
@@ -157,25 +162,25 @@ public class NotificationService {
         // 审批类：借入申请 / 借出意向是否仍处于待审批
         if (NotificationType.BORROW_REQUEST.equals(type)) {
             Optional<BorrowRequest> brOpt = borrowRequestRepository.findById(relatedId);
-            return brOpt.isPresent() && BizStatus.PENDING.equals(brOpt.get().getStatus());
+            return brOpt.isPresent() && BorrowStatus.PENDING.equals(brOpt.get().getStatus());
         }
 
         // 审批类：帮助申请是否仍处于待审批
         if (NotificationType.HELP_APPLICATION.equals(type)) {
             Optional<HelpApplication> appOpt = helpApplicationRepository.findById(relatedId);
-            return appOpt.isPresent() && BizStatus.PENDING.equals(appOpt.get().getStatus());
+            return appOpt.isPresent() && HelpApplicationStatus.PENDING.equals(appOpt.get().getStatus());
         }
 
         // 借入/借出申请（申请人视角，relatedId 为闲置物品 ID）：检查是否有待审批的申请
         if (NotificationType.BORROW_APPLICATION.equals(type)) {
             return borrowRequestRepository
-                    .existsByBorrowerIdAndIdleIdAndStatus(userId, relatedId, BizStatus.PENDING);
+                    .existsByBorrowerIdAndIdleIdAndStatus(userId, relatedId, BorrowStatus.PENDING);
         }
 
         // 帮助申请（帮助者视角，relatedId 为求助 ID）：检查是否有待审批的申请
         if (NotificationType.HELP_APPLICATION_SUBMITTED.equals(type)) {
             return helpApplicationRepository
-                    .existsByHelperIdAndHelpIdAndStatus(userId, relatedId, BizStatus.PENDING);
+                    .existsByHelperIdAndHelpIdAndStatus(userId, relatedId, HelpApplicationStatus.PENDING);
         }
 
         // 供需匹配通知：始终可操作（点击即跳转需求详情页，无需状态校验）

@@ -2,7 +2,7 @@ package com.platform.ai.matching;
 
 import com.platform.ai.embedding.EmbeddingService;
 import com.platform.common.AppTimeZone;
-import com.platform.common.BizStatus;
+import com.platform.common.PostStatus;
 import com.platform.config.AiConfig;
 import com.platform.common.NotificationType;
 import com.platform.common.PostType;
@@ -92,7 +92,7 @@ public class MatchingService {
                 wantedItem.getTenantId(),
                 PostType.LEND,
                 wantedItem.getUserId(),
-                List.of(BizStatus.COMPLETED, BizStatus.OFFLINE),
+                List.of(PostStatus.COMPLETED, PostStatus.OFFLINE),
                 LocalDateTime.now(AppTimeZone.APP_ZONE).minusMonths(2),
                 aiConfig.getSimilarityThreshold(),
                 6);

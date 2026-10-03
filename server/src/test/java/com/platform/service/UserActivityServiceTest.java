@@ -2,7 +2,10 @@ package com.platform.service;
 
 import com.platform.common.ActivityRole;
 import com.platform.common.AppTimeZone;
-import com.platform.common.BizStatus;
+import com.platform.common.AuthStatus;
+import com.platform.common.BorrowStatus;
+import com.platform.common.HelpApplicationStatus;
+import com.platform.common.PostStatus;
 import com.platform.common.ContentType;
 import com.platform.common.DurationUnit;
 import com.platform.common.PostType;
@@ -82,14 +85,14 @@ class UserActivityServiceTest {
                 .id(userId)
                 .name("测试用户")
                 .userType(UserType.OWNER)
-                .authStatus(BizStatus.APPROVED)
+                .authStatus(AuthStatus.APPROVED)
                 .build();
 
         otherUser = User.builder()
                 .id(ownerId)
                 .name("其他用户")
                 .userType(UserType.OWNER)
-                .authStatus(BizStatus.APPROVED)
+                .authStatus(AuthStatus.APPROVED)
                 .build();
     }
 
@@ -158,9 +161,9 @@ class UserActivityServiceTest {
         // 准备
         IdleItem idleItem = IdleItem.builder()
                 .id(1L).userId(userId).title("测试闲置").postType(PostType.LEND)
-                .status(BizStatus.ONLINE).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
+                .status(PostStatus.ONLINE).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
         HelpRequest helpReq = HelpRequest.builder()
-                .id(2L).userId(userId).title("测试求助").status(BizStatus.ONLINE)
+                .id(2L).userId(userId).title("测试求助").status(PostStatus.ONLINE)
                 .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
 
         when(idleItemRepository.findByUserId(userId)).thenReturn(List.of(idleItem));
@@ -180,10 +183,10 @@ class UserActivityServiceTest {
         // 准备
         IdleItem onlineItem = IdleItem.builder()
                 .id(1L).userId(userId).title("在线物品").postType(PostType.LEND)
-                .status(BizStatus.ONLINE).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
+                .status(PostStatus.ONLINE).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
         IdleItem offlineItem = IdleItem.builder()
                 .id(2L).userId(userId).title("已下架物品").postType(PostType.LEND)
-                .status(BizStatus.OFFLINE).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
+                .status(PostStatus.OFFLINE).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
 
         when(idleItemRepository.findByUserId(userId)).thenReturn(List.of(onlineItem, offlineItem));
         when(helpRequestRepository.findByUserId(userId)).thenReturn(Collections.emptyList());
@@ -225,7 +228,7 @@ class UserActivityServiceTest {
                 .id(100L).idleId(lendIdleId).borrowerId(borrowerId)
                 .durationType(DurationUnit.DAY).durationDays(3)
                 .startDate(LocalDate.now(AppTimeZone.APP_ZONE))
-                .status(BizStatus.PENDING).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
+                .status(BorrowStatus.PENDING).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
         br.setIdleItem(wantedItem); // 设置关联以避免懒加载
 
@@ -263,7 +266,7 @@ class UserActivityServiceTest {
         BorrowRequest br = BorrowRequest.builder()
                 .id(200L).idleId(wantedIdleId).borrowerId(borrowerId)
                 .durationType(DurationUnit.WEEK).durationDays(7)
-                .status(BizStatus.PENDING).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
+                .status(BorrowStatus.PENDING).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
         br.setIdleItem(lendItem);
 
@@ -292,11 +295,11 @@ class UserActivityServiceTest {
     void should_returnApprovals_when_helpType() {
         // 准备
         HelpRequest hr = HelpRequest.builder()
-                .id(1L).userId(userId).title("帮我搬东西").status(BizStatus.ONLINE)
+                .id(1L).userId(userId).title("帮我搬东西").status(PostStatus.ONLINE)
                 .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
         HelpApplication app = HelpApplication.builder()
                 .id(10L).helpId(1L).helperId(helperId).note("我可以帮忙")
-                .status(BizStatus.PENDING).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
+                .status(HelpApplicationStatus.PENDING).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
 
         when(helpRequestRepository.findByUserId(userId)).thenReturn(List.of(hr));
         when(helpApplicationRepository.findByHelpIdAndStatus(1L, "pending")).thenReturn(List.of(app));
@@ -346,7 +349,7 @@ class UserActivityServiceTest {
                 .id(100L).idleId(idleId).borrowerId(userId)
                 .durationType(DurationUnit.DAY).durationDays(7)
                 .startDate(LocalDate.now(AppTimeZone.APP_ZONE))
-                .status(BizStatus.APPROVED).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
+                .status(BorrowStatus.APPROVED).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
         br.setIdleItem(lendItem);
 
@@ -378,7 +381,7 @@ class UserActivityServiceTest {
                 .id(200L).idleId(wantedId).borrowerId(borrowerId)
                 .durationType(DurationUnit.DAY).durationDays(14)
                 .startDate(LocalDate.now(AppTimeZone.APP_ZONE))
-                .status(BizStatus.APPROVED).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
+                .status(BorrowStatus.APPROVED).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
         br.setIdleItem(wantedItem);
 
@@ -404,7 +407,7 @@ class UserActivityServiceTest {
                 .id(300L).idleId(wantedId).borrowerId(userId)
                 .durationType(DurationUnit.WEEK).durationDays(7)
                 .startDate(LocalDate.now(AppTimeZone.APP_ZONE))
-                .status(BizStatus.APPROVED).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
+                .status(BorrowStatus.APPROVED).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
         br.setIdleItem(wantedItem);
 
@@ -429,11 +432,11 @@ class UserActivityServiceTest {
     void should_returnInProgress_when_helpReqRole() {
         // 准备
         HelpRequest hr = HelpRequest.builder()
-                .id(1L).userId(userId).title("帮翻译").status(BizStatus.ONLINE)
+                .id(1L).userId(userId).title("帮翻译").status(PostStatus.ONLINE)
                 .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
         HelpApplication app = HelpApplication.builder()
                 .id(10L).helpId(1L).helperId(helperId).note("我懂英文")
-                .status(BizStatus.APPROVED).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
+                .status(HelpApplicationStatus.APPROVED).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
 
         when(helpRequestRepository.findByUserId(userId)).thenReturn(List.of(hr));
         when(helpApplicationRepository.findByHelpIdAndStatus(1L, "approved")).thenReturn(List.of(app));
@@ -457,11 +460,11 @@ class UserActivityServiceTest {
     void should_returnInProgress_when_helpProRole() {
         // 准备
         HelpRequest hr = HelpRequest.builder()
-                .id(2L).userId(requesterId).title("修水管").status(BizStatus.ONLINE)
+                .id(2L).userId(requesterId).title("修水管").status(PostStatus.ONLINE)
                 .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
         HelpApplication app = HelpApplication.builder()
                 .id(20L).helpId(2L).helperId(userId).note("我会修")
-                .status(BizStatus.APPROVED).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
+                .status(HelpApplicationStatus.APPROVED).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
 
         when(helpApplicationRepository.findByHelperId(userId)).thenReturn(List.of(app));
         when(helpRequestRepository.findById(2L)).thenReturn(Optional.of(hr));
@@ -517,7 +520,7 @@ class UserActivityServiceTest {
         BorrowRequest br = BorrowRequest.builder()
                 .id(100L).idleId(idleId).borrowerId(userId)
                 .durationType(DurationUnit.DAY).durationDays(3)
-                .status(BizStatus.RETURNED)
+                .status(BorrowStatus.RETURNED)
                 .returnedAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .updatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
@@ -546,11 +549,11 @@ class UserActivityServiceTest {
     void should_returnCompleted_when_helpReqRole() {
         // 准备
         HelpRequest hr = HelpRequest.builder()
-                .id(1L).userId(userId).title("帮买菜").status(BizStatus.ONLINE)
+                .id(1L).userId(userId).title("帮买菜").status(PostStatus.ONLINE)
                 .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE)).build();
         HelpApplication app = HelpApplication.builder()
                 .id(10L).helpId(1L).helperId(helperId).note("买好了")
-                .status(BizStatus.COMPLETED).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
+                .status(HelpApplicationStatus.COMPLETED).createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .completedAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
 

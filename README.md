@@ -105,7 +105,7 @@ community-platform/
 │       │   ├── service/       # 15 Service（含 WeChatService、KnowledgeDocumentService、KnowledgeImportService、SensitiveWordService）
 │       │   ├── controller/    # 12 Controller
 │       │   ├── websocket/     # ChatWebSocketHandler, DashboardWebSocketHandler
-│       │   └── common/        # Result + Exception + 23 常量类（AgentEventType, BizStatus, PostType, DamageType, KnowledgeCategory 等）
+│       │   └── common/        # Result + Exception + 28 常量类（PostStatus, AuthStatus, BorrowStatus, HelpApplicationStatus, KnowledgeStatus, ItemCondition, PostType, DamageType, KnowledgeCategory 等）
 │       ├── main/resources/
 │       │   ├── application.yml
 │       │   ├── prompts/       # 提示词目录（agent/system.md + agent/tools.md + agent/replies.md + agent/injection.md、block/replies.md、memory/*.md，由 PromptRepository 读取）

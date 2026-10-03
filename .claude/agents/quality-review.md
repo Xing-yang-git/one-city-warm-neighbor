@@ -347,7 +347,7 @@ After every review (standard or single-dimension), you MUST generate a pass file
 - [ ] No business logic in entities (keep in services)
 - [ ] `@Scheduled` tasks: exception handling, idempotency
 - [ ] WebSocket: proper connection lifecycle, auth on handshake
-- [ ] 魔法字符串：业务状态/发布类型字面量必须引用 `com.platform.common.BizStatus` / `PostType` 常量，业务代码出现裸的 `"pending"`/`"LEND"` 等报 Medium（测试代码与注释里的字面量豁免——测试保留字面量可守护常量值不被误改）
+- [ ] 魔法字符串：业务状态/发布类型字面量必须引用 `com.platform.common` 下**对应业务域**的常量类（PostStatus / AuthStatus / BorrowStatus / HelpApplicationStatus / KnowledgeStatus / ItemCondition / PostType），禁止跨域引用，业务代码出现裸的 `"pending"`/`"LEND"` 等报 Medium（测试代码与注释里的字面量豁免——测试保留字面量可守护常量值不被误改）
 - [ ] 表字段常量：Entity 的 @Column / @JoinColumn / @UniqueConstraint 是否引用常量类而非硬编码字符串？（裸字符串如 `@Column(name = "user_id")` 报 Medium）
 - [ ] 固定值常量：所有有固定取值范围的字段（如 durationUnit、pickupMethod、messageType）是否定义了常量/枚举类且 Entity 默认值和 Service 比较中已引用？
 - [ ] API 路径：Controller 的 @RequestMapping 是否有集中常量管理？分页默认值是否使用统一的常量？

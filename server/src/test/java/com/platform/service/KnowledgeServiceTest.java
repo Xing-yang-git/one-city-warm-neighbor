@@ -1,6 +1,6 @@
 package com.platform.service;
 
-import com.platform.common.BizStatus;
+import com.platform.common.KnowledgeStatus;
 import com.platform.common.KnowledgeCategory;
 import com.platform.model.entity.KnowledgeItem;
 import com.platform.repository.KnowledgeItemRepository;
@@ -57,7 +57,7 @@ class KnowledgeServiceTest {
         when(zhipuEmbedding.embed(anyString())).thenReturn(vector1024());
         when(knowledgeItemRepository.save(any(KnowledgeItem.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        KnowledgeItem created = service.create(item(null, KnowledgeCategory.RULES, BizStatus.ONLINE));
+        KnowledgeItem created = service.create(item(null, KnowledgeCategory.RULES, KnowledgeStatus.ONLINE));
 
         assertThat(created.getEmbedding()).isNotNull().startsWith("[");
         assertThat(created.getEmbedding()).endsWith("]");
@@ -67,7 +67,7 @@ class KnowledgeServiceTest {
     @Test
     @DisplayName("创建 - 未知分类抛异常且不落库")
     void should_throw_when_invalidCategory() {
-        assertThatThrownBy(() -> service.create(item(null, "bogus", BizStatus.ONLINE)))
+        assertThatThrownBy(() -> service.create(item(null, "bogus", KnowledgeStatus.ONLINE)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("未知分类");
         verify(knowledgeItemRepository, never()).save(any(KnowledgeItem.class));
@@ -88,7 +88,7 @@ class KnowledgeServiceTest {
         when(zhipuEmbedding.embed(anyString())).thenThrow(new RuntimeException("API down"));
         when(knowledgeItemRepository.save(any(KnowledgeItem.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        KnowledgeItem created = service.create(item(null, KnowledgeCategory.RULES, BizStatus.ONLINE));
+        KnowledgeItem created = service.create(item(null, KnowledgeCategory.RULES, KnowledgeStatus.ONLINE));
 
         assertThat(created.getEmbedding()).isNull();
         verify(knowledgeItemRepository).save(created);
@@ -99,7 +99,7 @@ class KnowledgeServiceTest {
     void should_create_skipEmbedding_when_textEmpty() {
         when(knowledgeItemRepository.save(any(KnowledgeItem.class))).thenAnswer(inv -> inv.getArgument(0));
         KnowledgeItem blank = KnowledgeItem.builder()
-                .tenantId(1L).category(KnowledgeCategory.RULES).title(null).content(" ").status(BizStatus.ONLINE).build();
+                .tenantId(1L).category(KnowledgeCategory.RULES).title(null).content(" ").status(KnowledgeStatus.ONLINE).build();
 
         KnowledgeItem created = service.create(blank);
 

@@ -1,7 +1,8 @@
 package com.platform.service;
 
 import com.platform.common.AppTimeZone;
-import com.platform.common.BizStatus;
+import com.platform.common.BorrowStatus;
+import com.platform.common.PostStatus;
 import com.platform.common.DurationUnit;
 import com.platform.model.dto.ApproveRequest;
 import com.platform.model.dto.BorrowRequestDTO;
@@ -70,7 +71,7 @@ class BorrowServiceTest {
                 .id(idleId)
                 .userId(ownerId)
                 .title("测试物品")
-                .status(BizStatus.ONLINE)
+                .status(PostStatus.ONLINE)
                 .images("[\"http://img1.jpg\"]")
                 .build();
 
@@ -81,7 +82,7 @@ class BorrowServiceTest {
                 .durationType(DurationUnit.DAY)
                 .durationDays(7)
                 .startDate(LocalDate.now(AppTimeZone.APP_ZONE))
-                .status(BizStatus.PENDING)
+                .status(BorrowStatus.PENDING)
                 .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
 
@@ -156,7 +157,7 @@ class BorrowServiceTest {
         // 断言
         assertThat(result).isNotNull();
         assertThat(result.getBorrowerId()).isEqualTo(borrowerId);
-        assertThat(result.getStatus()).isEqualTo(BizStatus.PENDING);
+        assertThat(result.getStatus()).isEqualTo(BorrowStatus.PENDING);
         verify(notificationService, times(2)).create(any(), any(), any(), any(), any());
         verify(borrowRequestRepository).save(any(BorrowRequest.class));
     }
@@ -179,7 +180,7 @@ class BorrowServiceTest {
     @DisplayName("申请借入 - 物品已下架时提示已下架而非被抢先申请")
     void should_throwException_when_idleOffline() {
         // 准备
-        idleItem.setStatus(BizStatus.OFFLINE);
+        idleItem.setStatus(PostStatus.OFFLINE);
         BorrowRequestDTO req = new BorrowRequestDTO();
         req.setIdleId(idleId);
         when(idleItemRepository.findByIdWithLock(idleId)).thenReturn(Optional.of(idleItem));
@@ -194,7 +195,7 @@ class BorrowServiceTest {
     @DisplayName("申请借入 - 物品正在审核中时提示审核中而非被抢先申请")
     void should_throwException_when_idlePendingReview() {
         // 准备
-        idleItem.setStatus(BizStatus.PENDING_REVIEW);
+        idleItem.setStatus(PostStatus.PENDING_REVIEW);
         BorrowRequestDTO req = new BorrowRequestDTO();
         req.setIdleId(idleId);
         when(idleItemRepository.findByIdWithLock(idleId)).thenReturn(Optional.of(idleItem));
@@ -213,7 +214,7 @@ class BorrowServiceTest {
         req.setIdleId(idleId);
         when(idleItemRepository.findByIdWithLock(idleId)).thenReturn(Optional.of(idleItem));
         when(borrowRequestRepository.existsByBorrowerIdAndIdleIdAndStatus(
-                borrowerId, idleId, BizStatus.PENDING)).thenReturn(true);
+                borrowerId, idleId, BorrowStatus.PENDING)).thenReturn(true);
 
         // 执行 & 断言
         assertThatThrownBy(() -> borrowService.apply(borrowerId, req))
@@ -293,9 +294,9 @@ class BorrowServiceTest {
         BorrowResponseDTO result = borrowService.approveReject(ownerId, borrowId, req);
 
         // 断言
-        assertThat(result.getStatus()).isEqualTo(BizStatus.APPROVED);
-        assertThat(idleItem.getStatus()).isEqualTo(BizStatus.ACTIVE);
-        verify(borrowRequestRepository).decideIfPending(eq(borrowId), eq(BizStatus.APPROVED), any());
+        assertThat(result.getStatus()).isEqualTo(BorrowStatus.APPROVED);
+        assertThat(idleItem.getStatus()).isEqualTo(PostStatus.ACTIVE);
+        verify(borrowRequestRepository).decideIfPending(eq(borrowId), eq(BorrowStatus.APPROVED), any());
         verify(notificationService, atLeastOnce()).create(any(), any(), any(), any(), any());
     }
 
@@ -312,7 +313,7 @@ class BorrowServiceTest {
         stubDecideIfPendingHit();
         when(borrowRequestRepository.findById(borrowId)).thenReturn(Optional.of(borrowRequest));
         // 拒绝分支：该物品是否还有其他待审批申请（无 → 恢复为 online）
-        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(idleId), BizStatus.PENDING))
+        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(idleId), BorrowStatus.PENDING))
                 .thenReturn(Collections.emptyList());
         when(idleItemRepository.findById(idleId)).thenReturn(Optional.of(idleItem));
         when(notificationService.create(any(), any(), any(), any(), any())).thenReturn(new NotificationDTO());
@@ -323,9 +324,9 @@ class BorrowServiceTest {
         BorrowResponseDTO result = borrowService.approveReject(ownerId, borrowId, req);
 
         // 断言
-        assertThat(result.getStatus()).isEqualTo(BizStatus.REJECTED);
-        assertThat(idleItem.getStatus()).isEqualTo(BizStatus.ONLINE);
-        verify(borrowRequestRepository).decideIfPending(eq(borrowId), eq(BizStatus.REJECTED), any());
+        assertThat(result.getStatus()).isEqualTo(BorrowStatus.REJECTED);
+        assertThat(idleItem.getStatus()).isEqualTo(PostStatus.ONLINE);
+        verify(borrowRequestRepository).decideIfPending(eq(borrowId), eq(BorrowStatus.REJECTED), any());
         verify(notificationService, atLeastOnce()).create(any(), any(), any(), any(), any());
     }
 
@@ -439,7 +440,7 @@ class BorrowServiceTest {
                 .id(borrowId)
                 .idleId(idleId)
                 .borrowerId(borrowerId)
-                .status(BizStatus.APPROVED)
+                .status(BorrowStatus.APPROVED)
                 .build();
 
         ReturnRequest req = new ReturnRequest();
@@ -461,7 +462,7 @@ class BorrowServiceTest {
         // 断言
         assertThat(result.getStatus()).isEqualTo("returned");
         assertThat(result.getReturnStatus()).isEqualTo("good");
-        assertThat(idleItem.getStatus()).isEqualTo(BizStatus.COMPLETED);
+        assertThat(idleItem.getStatus()).isEqualTo(PostStatus.COMPLETED);
     }
 
     @Test

@@ -2,7 +2,8 @@ package com.platform.service;
 
 import com.platform.common.AppTimeZone;
 import com.platform.common.BizException;
-import com.platform.common.BizStatus;
+import com.platform.common.BorrowStatus;
+import com.platform.common.HelpApplicationStatus;
 import com.platform.common.RatingType;
 import com.platform.model.dto.RatingDTO;
 import com.platform.model.dto.RatingRequest;
@@ -29,7 +30,6 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
-@Transactional
 public class RatingService {
 
     private final RatingRepository ratingRepository;
@@ -56,6 +56,7 @@ public class RatingService {
     /**
      * 提交评价（借用评价 / 帮助评价），由评价发起方调用。
      */
+    @Transactional
     public Map<String, Object> submitRating(Long fromUserId, RatingRequest req) {
         normalizeRatingRequest(req);
 
@@ -91,7 +92,7 @@ public class RatingService {
         BorrowRequest borrowRequest = borrowRequestRepository.findById(req.getBorrowId())
                 .orElseThrow(() -> new BizException("借入记录不存在"));
 
-        if (!BizStatus.RETURNED.equals(borrowRequest.getStatus())) {
+        if (!BorrowStatus.RETURNED.equals(borrowRequest.getStatus())) {
             throw new BizException("只能对已归还的借入记录进行评价");
         }
 
@@ -133,7 +134,7 @@ public class RatingService {
         HelpApplication application = helpApplicationRepository.findById(req.getHelpApplicationId())
                 .orElseThrow(() -> new BizException("帮助申请不存在"));
 
-        if (!BizStatus.COMPLETED.equals(application.getStatus())) {
+        if (!HelpApplicationStatus.COMPLETED.equals(application.getStatus())) {
             throw new BizException("只能对已完成的帮助进行评价");
         }
 
@@ -178,6 +179,7 @@ public class RatingService {
         return result;
     }
 
+    @Transactional(readOnly = true)
     public UserRatingsDTO getUserRatings(Long userId) {
         List<Rating> ratings = ratingRepository.findByToUserId(userId);
         List<RatingDTO> ratingDTOs = ratings.stream().map(this::toDTO).collect(Collectors.toList());

@@ -1,6 +1,6 @@
 package com.platform.ai.moderation;
 
-import com.platform.common.BizStatus;
+import com.platform.common.PostStatus;
 import com.platform.common.ModerationStatus;
 import com.platform.repository.HelpRequestRepository;
 import com.platform.repository.IdleItemRepository;
@@ -81,12 +81,12 @@ class ModerationResultWriteIntegrationTest {
     void should_writeIdleResult_when_stillPendingReview() {
         // 执行：模拟审核线程池线程上的调用（无外层事务）
         int updated = idleItemRepository.applyModerationResult(
-                IDLE_ID, BizStatus.ONLINE, ModerationStatus.GREEN, null);
+                IDLE_ID, PostStatus.ONLINE, ModerationStatus.GREEN, null);
 
         // 断言
         assertThat(updated).isEqualTo(1);
         Map<String, Object> row = loadIdleRow(IDLE_ID);
-        assertThat(row.get("status")).isEqualTo(BizStatus.ONLINE);
+        assertThat(row.get("status")).isEqualTo(PostStatus.ONLINE);
         assertThat(row.get("moderation_status")).isEqualTo(ModerationStatus.GREEN);
         assertThat(row.get("delist_reason")).isNull();
     }
@@ -95,15 +95,15 @@ class ModerationResultWriteIntegrationTest {
     @DisplayName("闲置物品 - 内容状态已变更（被申请占用）时丢弃结果，不覆盖当前状态")
     void should_discardIdleResult_when_statusChanged() {
         // 准备：审核期间有人申请，物品已变为待审批
-        jdbcTemplate.update("UPDATE idle_items SET status = ? WHERE id = ?", BizStatus.PENDING, IDLE_ID);
+        jdbcTemplate.update("UPDATE idle_items SET status = ? WHERE id = ?", PostStatus.PENDING, IDLE_ID);
 
         // 执行
         int updated = idleItemRepository.applyModerationResult(
-                IDLE_ID, BizStatus.ONLINE, ModerationStatus.GREEN, null);
+                IDLE_ID, PostStatus.ONLINE, ModerationStatus.GREEN, null);
 
         // 断言：命中 0 行，状态保持待审批不被错误上线
         assertThat(updated).isZero();
-        assertThat(loadIdleRow(IDLE_ID).get("status")).isEqualTo(BizStatus.PENDING);
+        assertThat(loadIdleRow(IDLE_ID).get("status")).isEqualTo(PostStatus.PENDING);
     }
 
     @Test
@@ -111,12 +111,12 @@ class ModerationResultWriteIntegrationTest {
     void should_writeHelpResult_when_stillPendingReview() {
         // 执行
         int updated = helpRequestRepository.applyModerationResult(
-                HELP_ID, BizStatus.OFFLINE, ModerationStatus.RED, "违规内容");
+                HELP_ID, PostStatus.OFFLINE, ModerationStatus.RED, "违规内容");
 
         // 断言
         assertThat(updated).isEqualTo(1);
         Map<String, Object> row = loadHelpRow(HELP_ID);
-        assertThat(row.get("status")).isEqualTo(BizStatus.OFFLINE);
+        assertThat(row.get("status")).isEqualTo(PostStatus.OFFLINE);
         assertThat(row.get("moderation_status")).isEqualTo(ModerationStatus.RED);
         assertThat(row.get("delist_reason")).isEqualTo("违规内容");
     }
@@ -128,13 +128,13 @@ class ModerationResultWriteIntegrationTest {
         jdbcTemplate.update("INSERT INTO idle_items (id, user_id, tenant_id, post_type, title, category, "
                         + "\"condition\", price, duration_unit, pickup_method, status, moderation_status, is_proxy) "
                         + "VALUES (?, ?, ?, 'LEND', '审核写库测试物品', '其他', 'normal', 0, 'day', 'self_pickup', ?, ?, false)",
-                IDLE_ID, USER_ID, TENANT_ID, BizStatus.PENDING_REVIEW, ModerationStatus.PENDING);
+                IDLE_ID, USER_ID, TENANT_ID, PostStatus.PENDING_REVIEW, ModerationStatus.PENDING);
     }
 
     private void insertHelpRequest() {
         jdbcTemplate.update("INSERT INTO help_requests (id, user_id, tenant_id, title, category, status, moderation_status) "
                         + "VALUES (?, ?, ?, '审核写库测试求助', '其他', ?, ?)",
-                HELP_ID, USER_ID, TENANT_ID, BizStatus.PENDING_REVIEW, ModerationStatus.PENDING);
+                HELP_ID, USER_ID, TENANT_ID, PostStatus.PENDING_REVIEW, ModerationStatus.PENDING);
     }
 
     /**

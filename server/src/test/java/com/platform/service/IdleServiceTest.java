@@ -17,7 +17,8 @@ import com.platform.repository.IdleItemRepository;
 import com.platform.repository.RatingRepository;
 import com.platform.repository.RoomRepository;
 import com.platform.repository.UserRepository;
-import com.platform.common.BizStatus;
+import com.platform.common.BorrowStatus;
+import com.platform.common.PostStatus;
 import com.platform.common.NotificationType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -101,7 +102,7 @@ class IdleServiceTest {
                 .maxDuration(7)
                 .durationUnit("day")
                 .pickupMethod("self_pickup")
-                .status(BizStatus.ONLINE)
+                .status(PostStatus.ONLINE)
                 .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
     }
@@ -138,7 +139,7 @@ class IdleServiceTest {
         assertThat(result).isNotNull();
         assertThat(result.getTitle()).isEqualTo("闲置手机");
         assertThat(result.getPostType()).isEqualTo("LEND");
-        assertThat(result.getStatus()).isEqualTo(BizStatus.PENDING_REVIEW);
+        assertThat(result.getStatus()).isEqualTo(PostStatus.PENDING_REVIEW);
         assertThat(result.getPrice()).isEqualByComparingTo(new BigDecimal("50"));
         verify(idleItemRepository).save(any(IdleItem.class));
     }
@@ -312,7 +313,7 @@ class IdleServiceTest {
         // 准备
         when(idleItemRepository.findByIdWithLock(itemId)).thenReturn(Optional.of(idleItem));
         when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
-        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BizStatus.PENDING))
+        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BorrowStatus.PENDING))
                 .thenReturn(Collections.emptyList());
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
@@ -320,8 +321,8 @@ class IdleServiceTest {
         IdleItemDTO result = idleService.delist(userId, itemId);
 
         // 断言
-        assertThat(result.getStatus()).isEqualTo(BizStatus.DRAFT);
-        assertThat(idleItem.getStatus()).isEqualTo(BizStatus.DRAFT);
+        assertThat(result.getStatus()).isEqualTo(PostStatus.DRAFT);
+        assertThat(idleItem.getStatus()).isEqualTo(PostStatus.DRAFT);
         assertThat(idleItem.getDelistReason()).isEqualTo("用户自行下架");
     }
 
@@ -330,10 +331,10 @@ class IdleServiceTest {
     void should_rejectPendingApplications_when_delist() {
         // 准备：该物品下有一条待审批借入申请
         BorrowRequest pending = BorrowRequest.builder()
-                .id(500L).idleId(itemId).borrowerId(7L).status(BizStatus.PENDING).build();
+                .id(500L).idleId(itemId).borrowerId(7L).status(BorrowStatus.PENDING).build();
         when(idleItemRepository.findByIdWithLock(itemId)).thenReturn(Optional.of(idleItem));
         when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
-        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BizStatus.PENDING))
+        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BorrowStatus.PENDING))
                 .thenReturn(List.of(pending));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
@@ -341,7 +342,7 @@ class IdleServiceTest {
         idleService.delist(userId, itemId);
 
         // 断言：申请被置为已拒绝，且向申请人推送了失效通知
-        assertThat(pending.getStatus()).isEqualTo(BizStatus.REJECTED);
+        assertThat(pending.getStatus()).isEqualTo(BorrowStatus.REJECTED);
         verify(borrowRequestRepository).save(pending);
         verify(notificationService).create(eq(7L), eq(NotificationType.AUDIT_RESULT), anyString(), anyString(), eq(500L));
     }
@@ -373,8 +374,8 @@ class IdleServiceTest {
         IdleItemDTO result = idleService.deleteItem(userId, itemId);
 
         // 断言
-        assertThat(result.getStatus()).isEqualTo(BizStatus.OFFLINE);
-        assertThat(idleItem.getStatus()).isEqualTo(BizStatus.OFFLINE);
+        assertThat(result.getStatus()).isEqualTo(PostStatus.OFFLINE);
+        assertThat(idleItem.getStatus()).isEqualTo(PostStatus.OFFLINE);
         assertThat(idleItem.getDelistReason()).isEqualTo("用户删除");
     }
 
@@ -402,7 +403,7 @@ class IdleServiceTest {
         req.setDescription("更新描述");
 
         when(idleItemRepository.findByIdWithLock(itemId)).thenReturn(Optional.of(idleItem));
-        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BizStatus.PENDING))
+        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BorrowStatus.PENDING))
                 .thenReturn(Collections.emptyList());
         when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
@@ -423,7 +424,7 @@ class IdleServiceTest {
         req.setTitle("只更新标题");
 
         when(idleItemRepository.findByIdWithLock(itemId)).thenReturn(Optional.of(idleItem));
-        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BizStatus.PENDING))
+        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BorrowStatus.PENDING))
                 .thenReturn(Collections.emptyList());
         when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
@@ -440,12 +441,12 @@ class IdleServiceTest {
     @DisplayName("更新物品 - completed状态编辑后退回 pending_review 重新审核")
     void should_autoRelist_when_statusIsCompleted() {
         // 准备
-        idleItem.setStatus(BizStatus.COMPLETED);
+        idleItem.setStatus(PostStatus.COMPLETED);
         IdleItemRequest req = new IdleItemRequest();
         req.setTitle("重新上线");
 
         when(idleItemRepository.findByIdWithLock(itemId)).thenReturn(Optional.of(idleItem));
-        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BizStatus.PENDING))
+        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BorrowStatus.PENDING))
                 .thenReturn(Collections.emptyList());
         when(idleItemRepository.save(any(IdleItem.class))).thenReturn(idleItem);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
@@ -454,7 +455,7 @@ class IdleServiceTest {
         IdleItemDTO result = idleService.update(userId, itemId, req);
 
         // 断言：重新发布走 AI 审核流程，先挂起而非直接上线
-        assertThat(result.getStatus()).isEqualTo(BizStatus.PENDING_REVIEW);
+        assertThat(result.getStatus()).isEqualTo(PostStatus.PENDING_REVIEW);
     }
 
     @Test
@@ -462,9 +463,9 @@ class IdleServiceTest {
     void should_throwException_when_editingWithPendingApplication() {
         // 准备：该物品下存在待审批借入申请
         BorrowRequest pending = BorrowRequest.builder()
-                .id(500L).idleId(itemId).borrowerId(7L).status(BizStatus.PENDING).build();
+                .id(500L).idleId(itemId).borrowerId(7L).status(BorrowStatus.PENDING).build();
         when(idleItemRepository.findByIdWithLock(itemId)).thenReturn(Optional.of(idleItem));
-        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BizStatus.PENDING))
+        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BorrowStatus.PENDING))
                 .thenReturn(List.of(pending));
 
         // 执行 & 断言
@@ -477,9 +478,9 @@ class IdleServiceTest {
     @DisplayName("编辑门禁 - 内容仍在审核中时拒绝编辑（避免旧结论用到新内容）")
     void should_throwException_when_editingWhilePendingReview() {
         // 准备
-        idleItem.setStatus(BizStatus.PENDING_REVIEW);
+        idleItem.setStatus(PostStatus.PENDING_REVIEW);
         when(idleItemRepository.findByIdWithLock(itemId)).thenReturn(Optional.of(idleItem));
-        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BizStatus.PENDING))
+        when(borrowRequestRepository.findByIdleIdInAndStatus(List.of(itemId), BorrowStatus.PENDING))
                 .thenReturn(Collections.emptyList());
 
         // 执行 & 断言

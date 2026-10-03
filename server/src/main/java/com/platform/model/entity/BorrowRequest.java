@@ -1,7 +1,7 @@
 package com.platform.model.entity;
 
 import com.platform.common.AppTimeZone;
-import com.platform.common.BizStatus;
+import com.platform.common.BorrowStatus;
 import com.platform.model.entity.column.BorrowRequestsColumn;
 import jakarta.persistence.*;
 import lombok.*;
@@ -52,10 +52,10 @@ public class BorrowRequest {
     @Column(name = BorrowRequestsColumn.COL_START_DATE)
     private LocalDate startDate;
 
-    /** 借用状态：pending(待审批) / approved(已同意) / rejected(已拒绝) / returned(已归还)，引用 {@link BizStatus} */
+    /** 借用状态：pending(待审批) / approved(已同意) / rejected(已拒绝) / returned(已归还) / completed(已完成)，引用 {@link BorrowStatus} */
     @Column(name = BorrowRequestsColumn.COL_STATUS, nullable = false, length = 20)
     @Builder.Default
-    private String status = BizStatus.PENDING;
+    private String status = BorrowStatus.PENDING;
 
     /** 交接照片 URL 列表（JSON 数组字符串） */
     @Column(name = BorrowRequestsColumn.COL_HANDOFF_PHOTOS, columnDefinition = "TEXT")

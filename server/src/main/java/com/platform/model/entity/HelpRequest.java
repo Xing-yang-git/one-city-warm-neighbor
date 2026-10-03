@@ -1,7 +1,7 @@
 package com.platform.model.entity;
 
 import com.platform.common.AppTimeZone;
-import com.platform.common.BizStatus;
+import com.platform.common.PostStatus;
 import com.platform.model.entity.column.HelpRequestsColumn;
 import jakarta.persistence.*;
 import lombok.*;
@@ -69,10 +69,10 @@ public class HelpRequest {
     @Column(name = HelpRequestsColumn.COL_IMAGES, columnDefinition = "TEXT")
     private String images;
 
-    /** 状态：online(展示中) / draft(草稿，用户下架) / offline(已下架) / pending_review(待AI审核) / reserved(已有人接单) / completed(已完成)，引用 {@link BizStatus} */
+    /** 状态：online(展示中) / draft(草稿) / offline(已下架) / pending_review(待AI审核) / pending(已被申请) / active(进行中) / completed(已完成)，引用 {@link PostStatus} */
     @Column(name = HelpRequestsColumn.COL_STATUS, nullable = false, length = 20)
     @Builder.Default
-    private String status = BizStatus.ONLINE;
+    private String status = PostStatus.ONLINE;
 
     /** 统一下架原因：AI审核原因、管理员驳回/下架原因、用户自行下架原因，新原因直接覆盖旧值 */
     @Column(name = HelpRequestsColumn.COL_DELIST_REASON, length = 200)

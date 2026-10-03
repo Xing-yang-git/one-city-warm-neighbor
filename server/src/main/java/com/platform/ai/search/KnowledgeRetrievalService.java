@@ -1,6 +1,6 @@
 package com.platform.ai.search;
 
-import com.platform.common.BizStatus;
+import com.platform.common.KnowledgeStatus;
 import com.platform.repository.KnowledgeItemRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
@@ -145,7 +145,7 @@ public class KnowledgeRetrievalService {
                 "ORDER BY distance ASC LIMIT :limit";
         Query query = entityManager.createNativeQuery(sql);
         query.setParameter("tenantId", tenantId);
-        query.setParameter("status", BizStatus.ONLINE);
+        query.setParameter("status", KnowledgeStatus.ONLINE);
         query.setParameter("emb", emb);
         query.setParameter("threshold", threshold);
         query.setParameter("limit", limit);
@@ -178,7 +178,7 @@ public class KnowledgeRetrievalService {
             return List.of();
         }
         return knowledgeItemRepository
-                .findWithFilter(tenantId, null, BizStatus.ONLINE, keyword, PageRequest.of(0, limit))
+                .findWithFilter(tenantId, null, KnowledgeStatus.ONLINE, keyword, PageRequest.of(0, limit))
                 .getContent()
                 .stream()
                 .map(k -> new KnowledgeHit(k.getId(), k.getTitle(), k.getContent(),
