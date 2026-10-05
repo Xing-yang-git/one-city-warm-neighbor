@@ -4,6 +4,7 @@ import com.platform.common.AppTimeZone;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -39,6 +40,12 @@ public class RateLimitService {
 
     private static final DateTimeFormatter MINUTE_FMT = DateTimeFormatter.ofPattern("yyyyMMddHHmm");
     private static final DateTimeFormatter DAY_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
+
+    /** 分钟滑动窗口长度（毫秒）——同时也是降级窗口的陈旧判定阈值 */
+    private static final long MINUTE_WINDOW_MS = 60_000L;
+
+    /** 降级记录清扫周期（毫秒） */
+    private static final long EVICT_INTERVAL_MS = 30_000L;
 
     public RateLimitService(StringRedisTemplate redisTemplate,
                             @Value("${ai.agent.rate-limit-per-minute:10}") int perMinute,
@@ -115,8 +122,8 @@ public class RateLimitService {
         Deque<Long> window = minuteWindows.computeIfAbsent(userId, k -> new ArrayDeque<>());
         // 对该用户的队列加锁，多线程并发操作同一个用户队列防止并发错乱
         synchronized (window) {
-            // 清理队列：把队列头部早于【当前时间-60000ms（1分钟）】的过期时间戳全部弹出
-            while (!window.isEmpty() && window.peekFirst() < now - 60_000L) {
+            // 清理队列：把队列头部早于【当前时间 - MINUTE_WINDOW_MS（1 分钟）】的过期时间戳全部弹出
+            while (!window.isEmpty() && window.peekFirst() < now - MINUTE_WINDOW_MS) {
                 window.pollFirst();
             }
             // 当前窗口内请求数达到阈值，分钟限流触发
@@ -150,6 +157,64 @@ public class RateLimitService {
             // 计数+1
             perUserDay.put(today, count + 1);
             return true;
+        }
+    }
+
+    /**
+     * 清扫降级内存中的陈旧记录（每 30 秒一轮）。
+     *
+     * <p>降级记录按 userId 常驻且只增不减：Redis 恢复后不会回收，长时间降级会让内存随
+     * 「曾触发过降级的用户数」单调增长。此处按各自可判定的陈旧条件移除：</p>
+     * <ul>
+     *   <li><b>分钟窗口</b>：最后一次请求已滑出 60 秒窗口 —— 该窗口不再参与任何计数；</li>
+     *   <li><b>天计数</b>：内层不含今天的日期 —— 今天尚未产生计数。</li>
+     * </ul>
+     *
+     * <p>内存上界因此收敛为「今天活跃过的用户数」。<b>今天已计数的必须保留</b>——
+     * 若按空闲时间无差别清理，用户等过阈值再回来即可重置当日配额，日限流形同虚设。</p>
+     *
+     * <p><b>残余竞态</b>：判定与移除之间仍有极窄窗口——写入线程可能已从 map 取到实例、
+     * 尚未写入，此刻被摘除后其计数落在已脱离 map 的对象上。后果是偶发放宽一次限流（少计一次），
+     * 不是数据丢失；窗口在微秒级，且仅 Redis 不可用时才走到这条路径。用两参
+     * {@code remove(key, value)} 也消除不了：天计数的内层 map 是原地修改的，值引用始终不变。</p>
+     */
+    @Scheduled(fixedDelay = EVICT_INTERVAL_MS, initialDelay = EVICT_INTERVAL_MS)
+    public void evictStaleEntries() {
+        long now = System.currentTimeMillis();
+        String today = LocalDateTime.now(AppTimeZone.APP_ZONE).format(DAY_FMT);
+
+        int evictedWindows = 0;
+        for (Map.Entry<String, Deque<Long>> entry : minuteWindows.entrySet()) {
+            Deque<Long> window = entry.getValue();
+            // 锁内判定 + 锁内移除：与写入路径互斥，避免判定完窗口又被写入
+            synchronized (window) {
+                if (!window.isEmpty() && window.peekLast() >= now - MINUTE_WINDOW_MS) {
+                    // 窗口内仍有未过期的时间戳，仍在参与计数
+                    continue;
+                }
+                if (minuteWindows.remove(entry.getKey(), window)) {
+                    evictedWindows++;
+                }
+            }
+        }
+
+        int evictedDays = 0;
+        for (Map.Entry<String, Map<String, Integer>> entry : dayCounts.entrySet()) {
+            Map<String, Integer> perUserDay = entry.getValue();
+            synchronized (perUserDay) {
+                if (perUserDay.containsKey(today)) {
+                    // 今天已有计数，必须保留，否则日配额被重置
+                    continue;
+                }
+                if (dayCounts.remove(entry.getKey(), perUserDay)) {
+                    evictedDays++;
+                }
+            }
+        }
+
+        if (evictedWindows > 0 || evictedDays > 0) {
+            log.info("Agent 限流降级记录清扫: 移除分钟窗口 {} 个、天计数 {} 个；存量分钟 {} / 天 {}",
+                    evictedWindows, evictedDays, minuteWindows.size(), dayCounts.size());
         }
     }
 
