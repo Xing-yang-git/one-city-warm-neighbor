@@ -76,6 +76,10 @@ public class AgentService {
     @Value("${ai.agent.archive-turn-count:10}")
     private int archiveTurnCount;
 
+    /** 归档后保留轮数（热会话留作继续对话的上下文；1 轮 = 2 条消息，须小于 archive-turn-count） */
+    @Value("${ai.agent.archive-keep-turns:3}")
+    private int archiveKeepTurns;
+
     /** DeepSeek 流式连接失败自动重试次数（外部 AI keep-alive 连接空闲被服务端关闭，复用陈旧连接会 Connection reset） */
     private static final int STREAM_CONNECT_RETRY = 1;
 
@@ -665,7 +669,7 @@ public class AgentService {
     }
 
     /**
-     * 触发归档（热会话消息数达到归档轮次 ×2，即滑动窗口归档最旧 N 条到 PG，保留剩余窗口）。
+     * 触发归档（热会话消息数达到归档轮次 ×2 时，把较早的消息归档到 PG，热会话保留最近 archiveKeepTurns 轮）。
      *
      * @param userId 住户用户 ID
      */
@@ -673,7 +677,10 @@ public class AgentService {
         AgentSession session = sessionService.getSession(userId);
         int messageThreshold = archiveTurnCount * 2;
         if (session != null && session.getMessages().size() >= messageThreshold) {
-            archiveService.archiveWindow(userId, messageThreshold);
+            // 保留最近 archiveKeepTurns 轮作继续对话的上下文，其余归档；
+            // Math.max 兜底「保留量不小于整段会话」的退化配置，保证至少归档一条
+            int keepCount = archiveKeepTurns * 2;
+            archiveService.archiveWindow(userId, Math.max(session.getMessages().size() - keepCount, 1));
         }
     }
 

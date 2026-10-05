@@ -34,6 +34,7 @@ import reactor.core.publisher.Flux;
 
 import java.net.SocketException;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -109,10 +110,28 @@ class AgentServiceTest {
         // 掩码专项用例在各自测试内用更具体的 stub 覆盖 replace 返回值
         lenient().when(sensitiveWordService.replace(anyString())).thenAnswer(inv -> inv.getArgument(0));
         ReflectionTestUtils.setField(agentService, "archiveTurnCount", 10);
+        ReflectionTestUtils.setField(agentService, "archiveKeepTurns", 3);
     }
 
     private User userWithTenant() {
         return User.builder().id(USER_ID).tenantId(TENANT_ID).build();
+    }
+
+    /**
+     * 构造含指定轮数的热会话（1 轮 = 用户提问 + 助手回复，共 2 条消息）。
+     *
+     * @param turns 轮数
+     * @return 含 turns×2 条消息的会话
+     */
+    private AgentSession sessionOfTurns(int turns) {
+        List<AgentSession.AgentMessageItem> messages = new ArrayList<>();
+        for (int i = 1; i <= turns; i++) {
+            messages.add(new AgentSession.AgentMessageItem(AgentMessageRole.USER, "提问" + i, null, null));
+            messages.add(new AgentSession.AgentMessageItem(AgentMessageRole.ASSISTANT, "回复" + i, null, null));
+        }
+        AgentSession session = new AgentSession();
+        session.setMessages(messages);
+        return session;
     }
 
     private List<KnowledgeHit> hits() {
@@ -228,21 +247,47 @@ class AgentServiceTest {
     }
 
     @Test
-    @DisplayName("对话 - 达到归档阈值时触发归档")
+    @DisplayName("对话 - 达到归档阈值时触发归档，热会话保留最近 3 轮")
     void should_archive_when_thresholdReached() {
-        ReflectionTestUtils.setField(agentService, "archiveTurnCount", 1);
         stubCommon("物业几点下班");
         when(deepseekChatModel.call(any(Prompt.class))).thenReturn(response("回复内容"));
         when(intentRouter.parse(any())).thenReturn(null);
-        AgentSession session = new AgentSession();
-        session.setMessages(List.of(
-                new AgentSession.AgentMessageItem(AgentMessageRole.USER, "m1", null, null),
-                new AgentSession.AgentMessageItem(AgentMessageRole.ASSISTANT, "m2", null, null)));
-        when(sessionService.getSession(USER_ID)).thenReturn(session);
+        when(sessionService.getSession(USER_ID)).thenReturn(sessionOfTurns(10));
 
         agentService.chat(USER_ID, "物业几点下班");
 
-        verify(archiveService).archiveWindow(USER_ID, 2);
+        // 10 轮 = 20 条达到阈值，归档 20 - 6 = 14 条，保留最近 3 轮作继续对话的上下文
+        verify(archiveService).archiveWindow(USER_ID, 14);
+    }
+
+    @Test
+    @DisplayName("对话 - 归档保留轮数取自配置")
+    void should_keepConfiguredTurns_when_thresholdReached() {
+        ReflectionTestUtils.setField(agentService, "archiveKeepTurns", 1);
+        stubCommon("物业几点下班");
+        when(deepseekChatModel.call(any(Prompt.class))).thenReturn(response("回复内容"));
+        when(intentRouter.parse(any())).thenReturn(null);
+        when(sessionService.getSession(USER_ID)).thenReturn(sessionOfTurns(10));
+
+        agentService.chat(USER_ID, "物业几点下班");
+
+        // 保留 1 轮 = 2 条，归档 20 - 2 = 18 条
+        verify(archiveService).archiveWindow(USER_ID, 18);
+    }
+
+    @Test
+    @DisplayName("对话 - 保留轮数不小于阈值时，归档条数取地板值 1")
+    void should_archiveFloor_when_keepTurnsReachesThreshold() {
+        ReflectionTestUtils.setField(agentService, "archiveKeepTurns", 10);
+        stubCommon("物业几点下班");
+        when(deepseekChatModel.call(any(Prompt.class))).thenReturn(response("回复内容"));
+        when(intentRouter.parse(any())).thenReturn(null);
+        when(sessionService.getSession(USER_ID)).thenReturn(sessionOfTurns(10));
+
+        agentService.chat(USER_ID, "物业几点下班");
+
+        // 保留量（10 轮 = 20 条）等于会话本身，归档条数落到地板值 1，不发生负数或 0 入参
+        verify(archiveService).archiveWindow(USER_ID, 1);
     }
 
     @Test

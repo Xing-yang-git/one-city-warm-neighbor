@@ -143,6 +143,7 @@ ai:
     max-tool-calls: 5
     archive-idle-minutes: 15 # 空闲归档阈值
     archive-turn-count: 10 # 归档轮次阈值（达到 10 轮问答即归档；内部 ×2 换算为 20 条消息，与 max-turns×2 截断封顶一致）
+    archive-keep-turns: 3 # 归档后保留轮数（热会话留作继续对话的上下文）。须小于 archive-turn-count：配大了会话会一直顶在截断上限，先丢弃未归档的消息、每轮只能归档 1 条
     # 长期记忆检索：新窗口开始检索用户压缩段 top-N 并注入 {历史记忆}
     memory-recall-top: 3 # 记忆召回条数（检索该用户压缩段 top-N）
     # 记忆匹配距离阈值（余弦距离，≤ 此值才注入）。与知识库不同：记忆摘要是 LLM 压缩产物，
