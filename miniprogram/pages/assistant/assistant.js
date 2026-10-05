@@ -568,8 +568,11 @@ Page({
       return false;
     }
     if (type === AGENT_EVENT_TYPE.ERROR) {
+      // 错误文案直接展示后端返回的白名单内容；错误态由下方「回复失败，点此重试」入口与 failed 样式呈现
+      // 已有正文时（流中途失败）补换行，避免与半截正文连成一句
+      const errText = evt.data || '请稍后重试';
       this._finishQueueOnEnd(msgId, (m) => ({
-        ...this._withContent(m, m.content + '（出错了：' + (evt.data || '请稍后重试') + '）'),
+        ...this._withContent(m, m.content + (m.content ? '\n' : '') + errText),
         streaming: false, failed: true,
       }));
       return true;

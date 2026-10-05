@@ -14,6 +14,7 @@ import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -94,8 +95,8 @@ public class AgentController {
     }
 
     /**
-     * 流式对话 — SSE 事件流。限流超限、以及同一用户已有请求在飞（对话门拒绝）时，均返回 SSE error 事件，
-     * HTTP 状态仍为 200。
+     * 流式对话 — SSE 事件流。限流超限、同一用户已有请求在飞（对话门拒绝）、线程池已满被拒三种情况，
+     * 均返回 SSE error 事件，HTTP 状态仍为 200。
      *
      * @param req  用户消息
      * @param auth 当前认证用户
@@ -153,9 +154,8 @@ public class AgentController {
             log.debug("Agent SSE 流结束: userId={}", userId);
         });
 
-        // 提交任务 → 线程池挑选线程执行。
-        // 用命名 Runnable + 外层 try 而非直接传 lambda：若线程池将来改用抛出型拒绝策略
-        // （本项目审核池已有先例），必须在此归还对话门，否则该用户会被永久拒绝到进程重启
+        // 提交任务 → 线程池挑选线程执行。线程池满时 execute 按 AbortPolicy 抛出，
+        // 须由下方 catch 归还对话门，否则该用户会被永久拒绝到进程重启
         Runnable chatTask = () -> {
             try {
                 // 发送 SSE 事件
@@ -292,12 +292,14 @@ public class AgentController {
         };
         try {
             agentExecutor.execute(chatTask);
-        } catch (RuntimeException e) {
-            // 任务未能提交（如线程池关闭后拒绝）：emitter 不会被任何回调收尾，必须在此归还对话门，
-            // 否则该用户后续所有 /chat 都会被门拒绝到进程重启
+        } catch (TaskRejectedException e) {
+            // 线程池已满（8 线程 + 50 队列）或已关闭，chatTask 从未执行：emitter 不会被任何回调收尾，
+            // 必须在此归还对话门，否则该用户后续所有 /chat 都会被门拒绝到进程重启。
+            // 与限流、对话门两个拒绝分支同构：回一个 SSE error 事件，由前端展示文案
+            log.warn("Agent 线程池拒绝任务，已回繁忙提示: userId={}", userId);
             turnGuard.release(userId, token);
-            emitter.completeWithError(e);
-            throw e;
+            safeSend(emitter, AgentEventType.ERROR, "系统繁忙，请稍后重试");
+            emitter.complete();
         }
 
         return emitter;

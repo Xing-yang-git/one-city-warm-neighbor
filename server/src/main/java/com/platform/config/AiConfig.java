@@ -251,10 +251,20 @@ public class AiConfig {
     }
 
     /**
-     * Agent 对话 SSE 异步推送线程池（Spring 托管，有界队列 + CallerRuns 拒绝策略）。
+     * Agent 对话 SSE 异步推送线程池（Spring 托管，有界队列 + AbortPolicy 拒绝策略）。
      *
-     * <p>相比裸 Executors.newFixedThreadPool：有界队列避免无限排队占内存，
-     * CallerRuns 拒绝策略在满时由调用线程兜底执行，线程池随容器生命周期管理。</p>
+     * <p>核心 4 / 上限 8 / 有界队列 50：阻塞式 LLM 调用单次可能占线程数秒~数十秒（有超时兜底），
+     * 有界队列避免无限排队占内存；Spring 托管使线程池随容器生命周期启停。</p>
+     *
+     * <p>拒绝策略为 AbortPolicy：池满或线程池已关闭时 execute 抛出，由
+     * {@link com.platform.ai.agent.AgentController#chat} 捕获
+     * {@link org.springframework.core.task.TaskRejectedException}，回一个 SSE error 事件，
+     * 用户立即看到繁忙提示。</p>
+     *
+     * <p>任务只能由池内线程执行，绝不落到调用线程上：本池的调用线程是 Tomcat 请求线程，
+     * 而任务开头的会话准备（历史检索、记忆检索、Prompt 组装）是阻塞的。一旦落到调用线程，
+     * 被占用的就不只是 AI 对话的线程，而是整个应用的请求线程池——「AI 接口变慢」会被放大成
+     * 「所有接口一起变慢」。</p>
      *
      * @return Agent SSE 推送线程池
      */
@@ -262,12 +272,12 @@ public class AiConfig {
     public ThreadPoolTaskExecutor agentExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         // 阻塞式 LLM 调用单次可能占线程数秒~数十秒（有超时兜底），核心/上限调到 4/8，
-        // 避免 2 个慢请求就排满队列、后续请求被 CallerRuns 卡住 Tomcat 线程
+        // 避免 2 个慢请求就排满队列
         executor.setCorePoolSize(4);// 核心线程数 4，保证并发 SSE 推送
         executor.setMaxPoolSize(8);// 最大线程数 8，避免大批量请求打满线程池
         executor.setQueueCapacity(50);// 有界队列 50，避免无限排队占内存
         executor.setThreadNamePrefix("agent-sse-");// 线程名前缀，便于排查
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());// CallerRuns 拒绝策略，满时由调用线程兜底执行
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());// 池满时抛出：经 Spring 包装为 TaskRejectedException，由 Controller 捕获后回繁忙提示
         executor.initialize();// 初始化线程池
         return executor;
     }
