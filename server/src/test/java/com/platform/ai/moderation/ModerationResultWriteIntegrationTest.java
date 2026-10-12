@@ -60,9 +60,9 @@ class ModerationResultWriteIntegrationTest {
     void prepareTestData() {
         jdbcTemplate.update("INSERT INTO tenants (id, name) VALUES (?, ?) ON CONFLICT (id) DO NOTHING",
                 TENANT_ID, "审核写库测试小区");
-        // user_type 受 CHECK 约束限制，取值须为 '业主'/'租客'/'物业'/...（见 db/alter.sql）
+        // user_type 受 CHECK 约束限制，取值须为 'owner'/'tenant'/'admin'...（见 db/alter.sql）
         jdbcTemplate.update("INSERT INTO users (id, tenant_id, username, user_type, name, auth_status) "
-                        + "VALUES (?, ?, ?, '业主', ?, 'approved') ON CONFLICT (id) DO NOTHING",
+                        + "VALUES (?, ?, ?, 'owner', ?, 'approved') ON CONFLICT (id) DO NOTHING",
                 USER_ID, TENANT_ID, "moderation_write_test_" + USER_ID, "审核写库测试用户");
         insertIdleItem();
         insertHelpRequest();

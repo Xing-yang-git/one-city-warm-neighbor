@@ -9,7 +9,7 @@ DECLARE
     user_count int;
     r_id UUID;
 BEGIN
-    SELECT count(*) INTO user_count FROM users WHERE user_type = '业主' AND room_id IS NOT NULL;
+    SELECT count(*) INTO user_count FROM users WHERE user_type = 'owner' AND room_id IS NOT NULL;
     IF user_count < 4 THEN
         -- 添加已分配房间的用户（取 1栋1单元的前 4 个房间）
         FOR r_id IN SELECT id FROM rooms WHERE unit_id IN (
@@ -19,7 +19,7 @@ BEGIN
         ) LIMIT 4
         LOOP
             INSERT INTO users (id, room_id, username, password_hash, user_type, name, phone, auth_status)
-            VALUES (gen_random_uuid(), r_id, NULL, NULL, '业主',
+            VALUES (gen_random_uuid(), r_id, NULL, NULL, 'owner',
                     CASE (random()*3)::int
                         WHEN 0 THEN '赵邻居'
                         WHEN 1 THEN '孙阿姨'
@@ -47,7 +47,7 @@ BEGIN
         SELECT id INTO u2 FROM users WHERE id = '40000000-0000-0000-0000-000000000012';
         SELECT id INTO u3 FROM users WHERE id = '40000000-0000-0000-0000-000000000013';
         -- 再取一位已分配房间的其他住户
-        SELECT id INTO u4 FROM users WHERE user_type = '业主' AND room_id IS NOT NULL
+        SELECT id INTO u4 FROM users WHERE user_type = 'owner' AND room_id IS NOT NULL
             AND id NOT IN ('40000000-0000-0000-0000-000000000011',
                            '40000000-0000-0000-0000-000000000012',
                            '40000000-0000-0000-0000-000000000013')

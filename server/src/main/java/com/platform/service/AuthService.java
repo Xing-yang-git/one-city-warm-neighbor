@@ -93,7 +93,7 @@ public class AuthService {
             user = new User();
             user.setOpenid(openid);
             user.setName(req.getName() != null ? req.getName() : "微信用户");
-            user.setUserType("业主");
+            user.setUserType(UserType.OWNER);
             user.setAuthStatus(AuthStatus.REGISTERING);
             user.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
             user = userRepository.save(user);
@@ -169,15 +169,21 @@ public class AuthService {
 
     @Transactional
     /**
-     * 用户注册：校验唯一性 → 创建/更新用户 → 签发 token。
+     * 用户注册：校验身份白名单 → 校验唯一性 → 创建/更新用户 → 签发 token。
+     *
+     * @param req    注册信息
      * @param userId 已有用户 ID（wxLogin 预创建），为 null 时新建用户
+     * @return 注册结果（含新签发的 token）
      */
     public AuthResponseDTO register(RegisterRequest req, Long userId) {
+        // 身份白名单前置校验：非法身份在 resolveRoom 创建楼栋/单元/房间等写操作之前即被拒绝
+        String residentType = mapUserType(req.getUserType());
+
         Room room = resolveRoom(req.getTenantId(), req.getBuildingNo(), req.getUnitNo(), req.getRoom());
-        validateUniqueness(req, userId, room);
+        validateUniqueness(req, userId, room, residentType);
 
         User user = getOrCreateUser(userId, req);
-        fillUserProfile(user, req, room);
+        fillUserProfile(user, req, room, residentType);
         user = userRepository.save(user);
 
         // 注册时不调用 issueUserToken：它会使其他设备的旧 token 失效并关闭全部 WS 连接（code 4001），
@@ -193,8 +199,13 @@ public class AuthService {
 
     /**
      * 校验手机号与房间/身份的注册唯一性。
+     *
+     * @param req          注册请求
+     * @param userId       当前用户 ID，可为 null（未经过 wxLogin 的公开注册）
+     * @param room         已解析的房间
+     * @param residentType 已通过白名单校验的身份存储值，null 表示尚未选择身份
      */
-    private void validateUniqueness(RegisterRequest req, Long userId, Room room) {
+    private void validateUniqueness(RegisterRequest req, Long userId, Room room, String residentType) {
         if (req.getPhone() == null || req.getPhone().isEmpty() || req.getTenantId() == null) {
             return;
         }
@@ -205,14 +216,14 @@ public class AuthService {
                     throw new BizException("该手机号已在本小区注册");
                 });
         // 同一房间同一身份只能注册一个住户
-        String mappedUserType = mapUserType(req.getUserType());
-        if (mappedUserType == null || mappedUserType.isEmpty()) {
+        if (residentType == null || residentType.isEmpty()) {
             throw new BizException("请选择住户身份");
         }
-        userRepository.findByRoomIdAndUserType(room.getId(), mappedUserType)
+        userRepository.findByRoomIdAndUserType(room.getId(), residentType)
                 .ifPresent(existing -> {
                     if (userId != null && existing.getId().equals(userId)) return;
-                    throw new BizException("该房间已有" + mappedUserType + "注册");
+                    // 面向用户的提示用中文标签，避免出现"该房间已有owner注册"
+                    throw new BizException("该房间已有" + UserFormatter.getUserTypeLabel(residentType) + "注册");
                 });
     }
 
@@ -240,8 +251,13 @@ public class AuthService {
 
     /**
      * 填充用户基本资料字段：姓名、手机、密码、身份、证件图片、房间。
+     *
+     * @param user         目标用户
+     * @param req          注册请求
+     * @param room         已解析的房间
+     * @param residentType 已通过白名单校验的身份存储值，null 表示尚未选择身份（保留原值）
      */
-    private void fillUserProfile(User user, RegisterRequest req, Room room) {
+    private void fillUserProfile(User user, RegisterRequest req, Room room, String residentType) {
         user.setName(req.getName());
         user.setPhone(req.getPhone());
         user.setTenantId(req.getTenantId());
@@ -249,8 +265,8 @@ public class AuthService {
         if (req.getPassword() != null && !req.getPassword().isEmpty()) {
             validateAndSetPassword(user, req.getPassword());
         }
-        if (req.getUserType() != null) {
-            user.setUserType(mapUserType(req.getUserType()));
+        if (residentType != null) {
+            user.setUserType(residentType);
         }
         user.setAuthStatus(AuthStatus.PENDING);
         user.setRejectReason(null);
@@ -281,16 +297,22 @@ public class AuthService {
     }
 
     /**
-     * 将前端用户类型编码映射为数据库 CHECK 约束值。
-     * 数据库约束：user_type IN ('业主','租客','物业','admin','senior_admin','super_admin')
+     * 将前端住户身份编码严格映射为数据库存储值：仅接受业主与租客。
+     *
+     * <p>白名单而非透传是必需的——注册接口公开且允许无凭证调用，
+     * 若把未知值原样写入 user_type，提交 admin/super_admin 即可签发管理员身份的 token
+     * （数据库 CHECK 约束恰好允许这些值），进而访问管理端接口。</p>
+     *
+     * @param raw 前端提交的身份编码（owner / tenant），null 表示尚未选择身份
+     * @return 住户身份存储值（{@link UserType#OWNER} / {@link UserType#TENANT}）；未选择身份时返回 null
+     * @throws BizException 编码不在白名单内
      */
     private String mapUserType(String raw) {
         if (raw == null) return null;
         return switch (raw) {
-            case UserType.OWNER  -> "业主";
-            case UserType.TENANT -> "租客";
-            case "物业"   -> "物业";
-            default       -> raw;  // admin / super_admin / 已是中文的值直接透传
+            case UserType.OWNER  -> UserType.OWNER;
+            case UserType.TENANT -> UserType.TENANT;
+            default -> throw new BizException("非法的用户类型");
         };
     }
 

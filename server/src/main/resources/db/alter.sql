@@ -4,9 +4,15 @@
 -- 执行方式：psql -U postgres -d community_platform -f alter.sql
 -- =============================================================================
 
--- 0. users — 首先修复 CHECK 约束（先于其他所有变更）
+-- 0. users — user_type 值域统一为英文（先于其他所有变更）
+-- 顺序固定：DROP 约束 → 迁移存量中文值 → 归一化默认值 → 重建约束。
+-- 幂等：可重复执行；已是英文值时 UPDATE 不命中任何行。
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_user_type_check;
-ALTER TABLE users ADD CONSTRAINT users_user_type_check CHECK (user_type IN ('业主','租客','物业','admin','senior_admin','super_admin'));
+UPDATE users SET user_type = 'owner'  WHERE user_type = '业主';
+UPDATE users SET user_type = 'tenant' WHERE user_type = '租客';
+ALTER TABLE users ALTER COLUMN user_type SET DEFAULT 'owner';
+ALTER TABLE users ADD CONSTRAINT users_user_type_check
+    CHECK (user_type IN ('owner','tenant','admin','senior_admin','super_admin'));
 
 -- 6. verifications — 补充缺失列
 ALTER TABLE verifications ADD COLUMN IF NOT EXISTS reject_reason TEXT;
@@ -116,13 +122,13 @@ ALTER TABLE ratings DROP COLUMN IF EXISTS comment;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS doc_images TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS reject_reason TEXT;
 
--- 扩展 user_type CHECK 约束以接受 业主/租客/物业
+-- 扩展 user_type CHECK 约束以接受 owner/tenant
 DO $$ BEGIN
     ALTER TABLE users DROP CONSTRAINT IF EXISTS users_user_type_check;
 EXCEPTION WHEN others THEN NULL;
 END $$;
 ALTER TABLE users ADD CONSTRAINT users_user_type_check
-    CHECK (user_type IN ('业主','租客','物业','admin','senior_admin','super_admin'));
+    CHECK (user_type IN ('owner','tenant','admin','senior_admin','super_admin'));
 
 -- =============================================================================
 -- 18. idle_items — 新增 duration_unit 列
@@ -132,11 +138,11 @@ ALTER TABLE idle_items ADD COLUMN IF NOT EXISTS duration_unit VARCHAR(10) NOT NU
 -- 19. idle_items — 将 condition 默认值从 'good' 改为 'normal'
 ALTER TABLE idle_items ALTER COLUMN condition SET DEFAULT 'normal';
 
--- 20. users — 将 user_type 默认值从 'resident' 改为 '业主'，并更新 CHECK 约束
-ALTER TABLE users ALTER COLUMN user_type SET DEFAULT '业主';
+-- 20. users — user_type 默认值统一为 'owner'，并更新 CHECK 约束
+ALTER TABLE users ALTER COLUMN user_type SET DEFAULT 'owner';
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_user_type_check;
 ALTER TABLE users ADD CONSTRAINT users_user_type_check
-    CHECK (user_type IN ('业主','租客','物业','admin','senior_admin','super_admin'));
+    CHECK (user_type IN ('owner','tenant','admin','senior_admin','super_admin'));
 
 -- 21. idle_items — 修复为 NULL 的 max_duration
 UPDATE idle_items SET max_duration = 7 WHERE max_duration IS NULL;

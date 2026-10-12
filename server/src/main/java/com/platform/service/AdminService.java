@@ -115,6 +115,8 @@ public class AdminService {
     private final UserActivityService userActivityService;
     private final PasswordEncoder passwordEncoder;
     private final ChatWebSocketHandler chatWebSocketHandler;
+    private final IdleService idleService;
+    private final HelpService helpService;
 
     public AdminService(IdleItemRepository idleItemRepository,
                         HelpRequestRepository helpRequestRepository,
@@ -131,7 +133,9 @@ public class AdminService {
                         ExportLogRepository exportLogRepository,
                         UserActivityService userActivityService,
                         PasswordEncoder passwordEncoder,
-                        ChatWebSocketHandler chatWebSocketHandler) {
+                        ChatWebSocketHandler chatWebSocketHandler,
+                        IdleService idleService,
+                        HelpService helpService) {
         this.idleItemRepository = idleItemRepository;
         this.helpRequestRepository = helpRequestRepository;
         this.borrowRequestRepository = borrowRequestRepository;
@@ -148,6 +152,8 @@ public class AdminService {
         this.userActivityService = userActivityService;
         this.passwordEncoder = passwordEncoder;
         this.chatWebSocketHandler = chatWebSocketHandler;
+        this.idleService = idleService;
+        this.helpService = helpService;
     }
 
     // ==================== 仪表盘 ====================
@@ -1088,105 +1094,76 @@ public class AdminService {
 
     // ==================== 代发布 ====================
 
+    /**
+     * 管理员代发闲置物品 — 以目标住户身份发布，并记录操作日志。
+     *
+     * <p>发布本身委托 {@link IdleService#publish}，与住户自行发布走同一条链路
+     * （内容审核、向量生成、求借匹配、默认字段补齐），避免代发内容绕过风控。</p>
+     *
+     * @param adminId 当前管理员 ID
+     * @param req     发布请求，必须指定目标住户 userId
+     * @return 发布成功的闲置物品摘要
+     * @throws BizException 未指定目标住户、或管理员无权代发
+     */
     @Transactional
     public IdleItemDTO proxyPublishIdle(Long adminId, IdleItemRequest req) {
         requireNotSuperAdmin(findAdmin(adminId));
-        // tenant_id 为 NOT NULL 列，代发数据必须归属管理员所在租户，否则 save 直接抛约束异常
         Long tenantId = getAdminTenantId(adminId);
-        IdleItem item = new IdleItem();
-        item.setUserId(req.getUserId() != null ? req.getUserId() : adminId);
-        item.setTenantId(tenantId);
-        item.setTitle(req.getTitle());
-        item.setDescription(req.getDescription());
-        item.setPostType(req.getPostType());
-        item.setCategory(req.getCategory());
-        item.setImages(req.getImages());
-        item.setPrice(req.getPrice());
-        item.setStatus(PostStatus.ONLINE);
-        item.setIsProxy(true);
-        item.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
-        item = idleItemRepository.save(item);
+        resolveProxyTarget(tenantId, req.getUserId());
+        // 代发标记由服务端强制设置，不信任客户端传值
+        req.setIsProxy(true);
 
-        OperationLog log = new OperationLog();
-        log.setAdminId(adminId);
-        log.setTenantId(tenantId);
-        log.setAction("proxy_publish_idle");
-        log.setTargetType(ContentType.IDLE);
-        log.setTargetId(item.getId());
-        log.setDetail("管理员代发闲置物品");
-        log.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
-        operationLogRepository.save(log);
-
-        return IdleItemDTO.builder()
-                .id(item.getId())
-                .userId(item.getUserId())
-                .title(item.getTitle())
-                .description(item.getDescription())
-                .postType(item.getPostType())
-                .category(item.getCategory())
-                .images(item.getImages())
-                .price(item.getPrice())
-                .status(item.getStatus())
-                .createdAt(item.getCreatedAt())
-                .build();
+        IdleItemDTO result = idleService.publish(req.getUserId(), req);
+        saveOperationLog(adminId, tenantId, "proxy_publish_idle", ContentType.IDLE,
+                result.getId(), "管理员代发闲置物品");
+        return result;
     }
 
     /**
-     * 管理员代发求助。
+     * 管理员代发求助 — 以目标住户身份发布，并记录操作日志。
+     *
+     * <p>发布本身委托 {@link HelpService#publish}，与住户自行发布走同一条链路
+     * （内容审核、默认字段补齐），避免代发内容绕过风控。</p>
+     *
+     * @param adminId 当前管理员 ID
+     * @param req     发布请求，必须指定目标住户 userId
+     * @return 发布成功的求助摘要
+     * @throws BizException 未指定目标住户、或管理员无权代发
      */
     @Transactional
     public HelpResponseDTO proxyPublishHelp(Long adminId, HelpRequestDTO req) {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
-        HelpRequest helpRequest = new HelpRequest();
-        helpRequest.setUserId(req.getUserId() != null ? req.getUserId() : adminId);
-        helpRequest.setTenantId(tenantId);
-        helpRequest.setTitle(req.getTitle());
-        helpRequest.setDescription(req.getDescription());
-        helpRequest.setCategory(req.getCategory());
-        helpRequest.setIsUrgent(req.getIsUrgent() != null && req.getIsUrgent());
+        resolveProxyTarget(tenantId, req.getUserId());
+        req.setIsProxy(true);
 
-        // 解析时间字段（格式与 HelpService.publish 一致）
-        parseHelpTimeFields(helpRequest, req);
-
-        helpRequest.setStatus(PostStatus.ONLINE);
-        helpRequest.setIsProxy(true);
-        helpRequest.setCreatedAt(LocalDateTime.now(AppTimeZone.APP_ZONE));
-        helpRequest = helpRequestRepository.save(helpRequest);
-
+        HelpResponseDTO result = helpService.publish(req.getUserId(), req);
         saveOperationLog(adminId, tenantId, "proxy_publish_help", ContentType.HELP,
-                helpRequest.getId(), "管理员代发求助");
-
-        return HelpResponseDTO.builder()
-                .id(helpRequest.getId())
-                .userId(helpRequest.getUserId())
-                .title(helpRequest.getTitle())
-                .description(helpRequest.getDescription())
-                .category(helpRequest.getCategory())
-                .isUrgent(helpRequest.getIsUrgent())
-                .status(helpRequest.getStatus())
-                .createdAt(helpRequest.getCreatedAt())
-                .build();
+                result.getId(), "管理员代发求助");
+        return result;
     }
 
     /**
-     * 解析 HelpRequestDTO 中的 timeStart / timeEnd 字符串并设置到实体上。
+     * 解析代发目标住户并校验其归属。
+     *
+     * <p>代发内容的 tenant_id 由目标住户决定（发布链路沿用住户自身租户），
+     * 因此必须在委托发布之前完成归属校验，否则管理员可以跨小区代发内容。</p>
+     *
+     * @param adminTenantId 代发管理员所属小区 ID
+     * @param targetUserId  请求中指定的目标住户 ID
+     * @throws BizException 未指定目标、目标不存在、目标非住户身份、或跨小区代发
      */
-    private void parseHelpTimeFields(HelpRequest helpRequest, HelpRequestDTO req) {
-        java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-        if (req.getTimeStart() != null && !req.getTimeStart().isEmpty()) {
-            try {
-                helpRequest.setTimeStart(LocalDateTime.parse(req.getTimeStart(), fmt));
-            } catch (Exception e) {
-                log.debug("Failed to parse timeStart: {}", e.getMessage());
-            }
+    private void resolveProxyTarget(Long adminTenantId, Long targetUserId) {
+        if (targetUserId == null) {
+            throw new BizException("请选择代发的目标住户");
         }
-        if (req.getTimeEnd() != null && !req.getTimeEnd().isEmpty()) {
-            try {
-                helpRequest.setTimeEnd(LocalDateTime.parse(req.getTimeEnd(), fmt));
-            } catch (Exception e) {
-                log.debug("Failed to parse timeEnd: {}", e.getMessage());
-            }
+        User target = userRepository.findById(targetUserId)
+                .orElseThrow(() -> new BizException("目标住户不存在"));
+        if (!UserType.OWNER.equals(target.getUserType()) && !UserType.TENANT.equals(target.getUserType())) {
+            throw new BizException("代发目标必须是住户");
+        }
+        if (!tenantMatches(adminTenantId, target.getTenantId())) {
+            throw new BizException("该住户不属于当前小区");
         }
     }
 
@@ -2869,7 +2846,7 @@ public class AdminService {
      * @param buildingNo 楼栋号筛选（数值精确匹配）
      * @param unitNo     单元号筛选（数值精确匹配）
      * @param room     房间号筛选（模糊匹配）
-     * @param userType "业主" | "租客" | null
+     * @param userType 住户身份筛选：owner(业主) / tenant(租客) / null（不限）
      * @param keyword  姓名或手机号关键词
      * @return 全部匹配住户 DTO 列表
      */
@@ -2878,13 +2855,8 @@ public class AdminService {
                                              String userType, String keyword) {
         requireNotSuperAdmin(findAdmin(adminId));
         Long tenantId = getAdminTenantId(adminId);
-        // 将前端英文编码转换为数据库中的中文值
-        String dbUserType = switch (userType != null ? userType : "") {
-            case UserType.OWNER  -> "业主";
-            case UserType.TENANT -> "租客";
-            default       -> userType;
-        };
-        List<User> users = userRepository.findResidentsAll(tenantId, buildingNo, unitNo, room, dbUserType, keyword);
+        // 前端筛选值与数据库存储值同为英文编码，直接透传
+        List<User> users = userRepository.findResidentsAll(tenantId, buildingNo, unitNo, room, userType, keyword);
 
         return users.stream()
                 .map(u -> ResidentDTO.builder()

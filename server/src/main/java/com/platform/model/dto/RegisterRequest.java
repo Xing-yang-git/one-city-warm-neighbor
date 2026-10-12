@@ -1,5 +1,6 @@
 package com.platform.model.dto;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 import java.util.List;
@@ -20,7 +21,8 @@ public class RegisterRequest {
     private String phone;
     /** 登录密码 */
     private String password;
-    /** 用户类型：业主 / 租客 */
+    /** 住户身份编码：owner(业主) / tenant(租客)。注册仅接受这两种身份 */
+    @NotBlank(message = "请选择住户身份")
     private String userType;
     /** 实名认证材料图片 URL 列表 */
     private List<String> docImages;

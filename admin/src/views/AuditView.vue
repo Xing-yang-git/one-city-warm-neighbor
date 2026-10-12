@@ -31,8 +31,8 @@
           style="width: 110px"
         >
           <el-option label="全部" value="" />
-          <el-option label="业主" value="业主" />
-          <el-option label="租客" value="租客" />
+          <el-option label="业主" :value="USER_TYPE.OWNER" />
+          <el-option label="租客" :value="USER_TYPE.TENANT" />
         </el-select>
         <el-select
           class="filter-select"
@@ -535,19 +535,6 @@ const communityStore = useCommunityStore();
 
 // --- 纯工具函数 ---
 
-/** 后端 userType → 中文显示名映射 */
-const TYPE_MAP: Record<string, string> = {
-  业主: "业主",
-  租客: "租客",
-  admin: "管理员",
-  super_admin: "超级管理员",
-};
-
-/** 将后端用户类型转为中文显示 */
-function mapType(userType: string): string {
-  return TYPE_MAP[userType] || userType || "—";
-}
-
 /** 住户类型中文标签（owner→业主 / tenant→租客），表格与弹窗展示统一使用 */
 function typeLabel(type: string): string {
   if (type === USER_TYPE.OWNER) return "业主";
@@ -627,7 +614,7 @@ async function loadData(): Promise<void> {
         id: u.id,
         name: u.name || "",
         room: u.userRoom || "",
-        type: mapType(u.userType),
+        type: u.userType,
         time: formatTime(u.createdAt),
         phone: u.phone || "",
         status: computeOvertime(u.createdAt),
@@ -706,8 +693,7 @@ function matchUnit(room: string, unit: number): boolean {
 }
 
 function matchFilter(item: AuditRow): boolean {
-  if (filterType.value && typeLabel(item.type) !== filterType.value)
-    return false;
+  if (filterType.value && item.type !== filterType.value) return false;
   if (filterBuilding.value && !item.room.startsWith(filterBuilding.value + "栋"))
     return false;
   if (filterUnit.value && !matchUnit(item.room, filterUnit.value)) return false;

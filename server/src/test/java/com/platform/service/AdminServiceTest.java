@@ -10,6 +10,7 @@ import com.platform.repository.*;
 import com.platform.websocket.ChatWebSocketHandler;
 import com.platform.common.ActivityRole;
 import com.platform.common.AuthStatus;
+import com.platform.common.BizException;
 import com.platform.common.BorrowStatus;
 import com.platform.common.HelpApplicationStatus;
 import com.platform.common.PostStatus;
@@ -67,6 +68,8 @@ class AdminServiceTest {
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private NotificationService notificationService;
     @Mock private ChatWebSocketHandler chatWebSocketHandler;
+    @Mock private IdleService idleService;
+    @Mock private HelpService helpService;
 
     @InjectMocks
     private AdminService adminService;
@@ -103,7 +106,7 @@ class AdminServiceTest {
         user = User.builder()
                 .id(userId)
                 .name("测试用户")
-                .userType("业主")
+                .userType(UserType.OWNER)
                 .tenantId(tenantId)
                 .authStatus(AuthStatus.APPROVED)
                 .createdAt(LocalDateTime.now(AppTimeZone.APP_ZONE))
@@ -556,7 +559,7 @@ class AdminServiceTest {
         User borrower = User.builder()
                 .id(3L)
                 .name("借入人")
-                .userType("业主")
+                .userType(UserType.OWNER)
                 .tenantId(tenantId)
                 .build();
 
@@ -608,7 +611,7 @@ class AdminServiceTest {
         User borrower = User.builder()
                 .id(3L)
                 .name("借入人")
-                .userType("业主")
+                .userType(UserType.OWNER)
                 .tenantId(tenantId)
                 .build();
 
@@ -684,7 +687,7 @@ class AdminServiceTest {
         User helper = User.builder()
                 .id(4L)
                 .name("帮助者")
-                .userType("业主")
+                .userType(UserType.OWNER)
                 .tenantId(tenantId)
                 .build();
 
@@ -733,7 +736,7 @@ class AdminServiceTest {
         User helper = User.builder()
                 .id(4L)
                 .name("帮助者")
-                .userType("业主")
+                .userType(UserType.OWNER)
                 .tenantId(tenantId)
                 .build();
 
@@ -880,7 +883,7 @@ class AdminServiceTest {
     // ==================== proxyPublishIdle ====================
 
     @Test
-    @DisplayName("代发闲置 - 正常代发闲置物品")
+    @DisplayName("代发闲置 - 委托住户发布链路并记录操作日志")
     void should_proxyPublishIdle_when_validInput() {
         // 准备
         IdleItemRequest req = new IdleItemRequest();
@@ -892,27 +895,25 @@ class AdminServiceTest {
         req.setPrice(java.math.BigDecimal.TEN);
 
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
-        when(idleItemRepository.save(any(IdleItem.class))).thenAnswer(inv -> {
-            IdleItem item = inv.getArgument(0);
-            item.setId(itemId);
-            return item;
-        });
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        IdleItemDTO published = IdleItemDTO.builder().id(itemId).userId(userId).title("代发物品").build();
+        when(idleService.publish(userId, req)).thenReturn(published);
         when(operationLogRepository.save(any(OperationLog.class))).thenReturn(new OperationLog());
 
         // 执行
         IdleItemDTO result = adminService.proxyPublishIdle(adminId, req);
 
-        // 断言
-        assertThat(result).isNotNull();
-        assertThat(result.getTitle()).isEqualTo("代发物品");
-        assertThat(result.getStatus()).isEqualTo("online");
+        // 断言：发布走住户同一条链路，代发标记由服务端强制设置
+        assertThat(result).isEqualTo(published);
+        assertThat(req.getIsProxy()).isTrue();
+        verify(idleService).publish(userId, req);
         verify(operationLogRepository).save(any(OperationLog.class));
     }
 
     @Test
-    @DisplayName("代发闲置 - userId为null时使用adminId")
-    void should_useAdminId_when_userIdNull() {
-        // 准备
+    @DisplayName("代发闲置 - 未指定目标住户时拒绝，避免挂到管理员名下")
+    void should_throwException_when_proxyIdleUserIdNull() {
+        // 准备：不给 userId 时若继续发布，内容会归属管理员自己
         IdleItemRequest req = new IdleItemRequest();
         req.setTitle("管理员代发");
         req.setDescription("测试");
@@ -920,24 +921,63 @@ class AdminServiceTest {
         req.setCategory("数码");
 
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
-        when(idleItemRepository.save(any(IdleItem.class))).thenAnswer(inv -> {
-            IdleItem item = inv.getArgument(0);
-            item.setId(itemId);
-            return item;
-        });
-        when(operationLogRepository.save(any(OperationLog.class))).thenReturn(new OperationLog());
 
-        // 执行
-        IdleItemDTO result = adminService.proxyPublishIdle(adminId, req);
+        // 执行 & 断言
+        assertThatThrownBy(() -> adminService.proxyPublishIdle(adminId, req))
+                .isInstanceOf(BizException.class)
+                .hasMessage("请选择代发的目标住户");
+        verify(idleService, never()).publish(any(), any());
+    }
 
-        // 断言
-        assertThat(result.getUserId()).isEqualTo(adminId);
+    @Test
+    @DisplayName("代发闲置 - 目标住户不在本小区时拒绝，防止跨小区代发")
+    void should_throwException_when_proxyIdleTargetInOtherTenant() {
+        // 准备：代发内容的 tenant_id 取自目标住户，跨小区代发会向他人小区写入数据
+        IdleItemRequest req = new IdleItemRequest();
+        req.setUserId(userId);
+        req.setTitle("跨小区代发");
+        req.setPostType(PostType.LEND);
+        req.setCategory("数码");
+
+        User outsider = User.builder().id(userId).userType(UserType.OWNER)
+                .tenantId(tenantId + 1).build();
+
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(outsider));
+
+        // 执行 & 断言
+        assertThatThrownBy(() -> adminService.proxyPublishIdle(adminId, req))
+                .isInstanceOf(BizException.class)
+                .hasMessage("该住户不属于当前小区");
+        verify(idleService, never()).publish(any(), any());
+    }
+
+    @Test
+    @DisplayName("代发闲置 - 目标不是住户身份时拒绝")
+    void should_throwException_when_proxyIdleTargetNotResident() {
+        // 准备：目标若为管理员账号，代发内容会挂到管理端账号名下
+        IdleItemRequest req = new IdleItemRequest();
+        req.setUserId(userId);
+        req.setTitle("代发给管理员");
+        req.setPostType(PostType.LEND);
+        req.setCategory("数码");
+
+        User anotherAdmin = User.builder().id(userId).userType(UserType.ADMIN).tenantId(tenantId).build();
+
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(anotherAdmin));
+
+        // 执行 & 断言
+        assertThatThrownBy(() -> adminService.proxyPublishIdle(adminId, req))
+                .isInstanceOf(BizException.class)
+                .hasMessage("代发目标必须是住户");
+        verify(idleService, never()).publish(any(), any());
     }
 
     // ==================== proxyPublishHelp ====================
 
     @Test
-    @DisplayName("代发求助 - 正常代发求助")
+    @DisplayName("代发求助 - 委托住户发布链路并记录操作日志")
     void should_proxyPublishHelp_when_validInput() {
         // 准备
         HelpRequestDTO req = new HelpRequestDTO();
@@ -948,22 +988,60 @@ class AdminServiceTest {
         req.setIsUrgent(true);
 
         when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
-        when(helpRequestRepository.save(any(HelpRequest.class))).thenAnswer(inv -> {
-            HelpRequest hr = inv.getArgument(0);
-            hr.setId(helpId);
-            return hr;
-        });
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        HelpResponseDTO published = HelpResponseDTO.builder()
+                .id(helpId).userId(userId).title("代发求助").isUrgent(true).build();
+        when(helpService.publish(userId, req)).thenReturn(published);
         when(operationLogRepository.save(any(OperationLog.class))).thenReturn(new OperationLog());
 
         // 执行
         HelpResponseDTO result = adminService.proxyPublishHelp(adminId, req);
 
-        // 断言
-        assertThat(result).isNotNull();
-        assertThat(result.getTitle()).isEqualTo("代发求助");
-        assertThat(result.getStatus()).isEqualTo("online");
-        assertThat(result.getIsUrgent()).isTrue();
+        // 断言：发布走住户同一条链路，代发标记由服务端强制设置
+        assertThat(result).isEqualTo(published);
+        assertThat(req.getIsProxy()).isTrue();
+        verify(helpService).publish(userId, req);
         verify(operationLogRepository).save(any(OperationLog.class));
+    }
+
+    @Test
+    @DisplayName("代发求助 - 未指定目标住户时拒绝，避免挂到管理员名下")
+    void should_throwException_when_proxyHelpUserIdNull() {
+        // 准备：不给 userId 时若继续发布，内容会归属管理员自己
+        HelpRequestDTO req = new HelpRequestDTO();
+        req.setTitle("管理员代发求助");
+        req.setDescription("测试");
+        req.setCategory("搬家");
+
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
+
+        // 执行 & 断言
+        assertThatThrownBy(() -> adminService.proxyPublishHelp(adminId, req))
+                .isInstanceOf(BizException.class)
+                .hasMessage("请选择代发的目标住户");
+        verify(helpService, never()).publish(any(), any());
+    }
+
+    @Test
+    @DisplayName("代发求助 - 目标住户不在本小区时拒绝，防止跨小区代发")
+    void should_throwException_when_proxyHelpTargetInOtherTenant() {
+        // 准备：与代发闲置共用同一套目标校验
+        HelpRequestDTO req = new HelpRequestDTO();
+        req.setUserId(userId);
+        req.setTitle("跨小区代发求助");
+        req.setCategory("搬家");
+
+        User outsider = User.builder().id(userId).userType(UserType.TENANT)
+                .tenantId(tenantId + 1).build();
+
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(outsider));
+
+        // 执行 & 断言
+        assertThatThrownBy(() -> adminService.proxyPublishHelp(adminId, req))
+                .isInstanceOf(BizException.class)
+                .hasMessage("该住户不属于当前小区");
+        verify(helpService, never()).publish(any(), any());
     }
 
     // ==================== getRecords ====================

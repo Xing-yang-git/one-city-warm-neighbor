@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS users (
     openid          VARCHAR(64)  UNIQUE,                                         -- 微信OpenID
     username        VARCHAR(50)  UNIQUE,                                         -- 管理员用户名
     password_hash   VARCHAR(255),                                                -- 密码哈希（BCrypt）
-    user_type       VARCHAR(20)  NOT NULL DEFAULT 'owner',                       -- 用户类型：'owner'(业主)/'tenant'(租客)/'admin'(普通管理员)/'super_admin'(超级管理员)
+    user_type       VARCHAR(20)  NOT NULL DEFAULT 'owner',                       -- 用户类型：'owner'(业主)/'tenant'(租客)/'admin'(普通管理员)/'senior_admin'(高级管理员)/'super_admin'(超级管理员)
     name            VARCHAR(50),                                                 -- 姓名/昵称
     phone           VARCHAR(11),                                                 -- 手机号，11位
     phone_verified  BOOLEAN      NOT NULL DEFAULT FALSE,                         -- 手机号是否已验证
@@ -96,7 +96,7 @@ COMMENT ON COLUMN users.tenant_id           IS '所属小区ID，外键→tenant
 COMMENT ON COLUMN users.openid              IS '微信OpenID，C端用户唯一标识';
 COMMENT ON COLUMN users.username            IS 'B端管理员用户名，管理员登录用';
 COMMENT ON COLUMN users.password_hash       IS '密码哈希，BCrypt加密';
-COMMENT ON COLUMN users.user_type           IS '用户类型：''owner''(业主)/''tenant''(租客)/''admin''(普通管理员)/''super_admin''(超级管理员)';
+COMMENT ON COLUMN users.user_type           IS '用户类型：''owner''(业主)/''tenant''(租客)/''admin''(普通管理员)/''senior_admin''(高级管理员)/''super_admin''(超级管理员)';
 COMMENT ON COLUMN users.name                IS '姓名/昵称';
 COMMENT ON COLUMN users.phone               IS '手机号，11位';
 COMMENT ON COLUMN users.phone_verified      IS '手机号是否已验证：false(未验证)/true(已验证)';

@@ -47,8 +47,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         } else {
             String userId = jwtProvider.getUserId(token);
             String userType = jwtProvider.getUserType(token);
-            String role = UserType.SUPER_ADMIN.equals(userType) ? "ROLE_SUPER_ADMIN" :
-                         UserType.SENIOR_ADMIN.equals(userType) || UserType.ADMIN.equals(userType) ? "ROLE_ADMIN" : "ROLE_USER";
+            String role;
+            if (UserType.SUPER_ADMIN.equals(userType)) {
+                role = "ROLE_SUPER_ADMIN";
+            } else if (UserType.SENIOR_ADMIN.equals(userType) || UserType.ADMIN.equals(userType)) {
+                role = "ROLE_ADMIN";
+            } else {
+                role = "ROLE_USER";
+            }
 
             if ("ROLE_USER".equals(role)) {
                 // 单会话登录：token 必须携带该用户当前 token_version。

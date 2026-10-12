@@ -4,6 +4,7 @@ import com.platform.ai.moderation.ModerationService;
 import com.platform.common.AppTimeZone;
 import com.platform.common.HelpApplicationStatus;
 import com.platform.common.PostStatus;
+import com.platform.common.UserType;
 import com.platform.model.dto.ApproveRequest;
 import com.platform.model.dto.HelpRequestDTO;
 import com.platform.model.dto.HelpResponseDTO;
@@ -80,13 +81,13 @@ class HelpServiceTest {
         user = User.builder()
                 .id(userId)
                 .name("求助者")
-                .userType("业主")
+                .userType(UserType.OWNER)
                 .build();
 
         helper = User.builder()
                 .id(helperId)
                 .name("帮助者")
-                .userType("业主")
+                .userType(UserType.OWNER)
                 .build();
 
         helpRequest = HelpRequest.builder()

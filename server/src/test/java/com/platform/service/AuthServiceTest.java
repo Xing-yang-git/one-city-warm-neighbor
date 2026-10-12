@@ -78,7 +78,7 @@ class AuthServiceTest {
                 .id(userId)
                 .openid(openid)
                 .name("测试用户")
-                .userType("业主")
+                .userType(UserType.OWNER)
                 .authStatus(AuthStatus.APPROVED)
                 .createdAt(java.time.LocalDateTime.now(AppTimeZone.APP_ZONE))
                 .build();
@@ -103,7 +103,7 @@ class AuthServiceTest {
             return u;
         });
         // 发新令牌时版本 +1，首次登录版本为 1
-        when(jwtTokenProvider.generateToken(userId.toString(), "业主", 1)).thenReturn(token);
+        when(jwtTokenProvider.generateToken(userId.toString(), UserType.OWNER, 1)).thenReturn(token);
 
         // 执行
         AuthResponseDTO result = authService.wxLogin(req);
@@ -126,7 +126,7 @@ class AuthServiceTest {
         when(weChatService.code2Session(openid)).thenReturn(openid);
         when(userRepository.findByOpenid(openid)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenReturn(user);
-        when(jwtTokenProvider.generateToken(userId.toString(), "业主", 1)).thenReturn(token);
+        when(jwtTokenProvider.generateToken(userId.toString(), UserType.OWNER, 1)).thenReturn(token);
 
         // 执行
         AuthResponseDTO result = authService.wxLogin(req);
@@ -150,7 +150,7 @@ class AuthServiceTest {
         when(weChatService.code2Session(openid)).thenReturn(openid);
         when(userRepository.findByOpenid(openid)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenReturn(user);
-        when(jwtTokenProvider.generateToken(userId.toString(), "业主", 1)).thenReturn(token);
+        when(jwtTokenProvider.generateToken(userId.toString(), UserType.OWNER, 1)).thenReturn(token);
 
         // 执行
         AuthResponseDTO result = authService.wxLogin(req);
@@ -175,7 +175,7 @@ class AuthServiceTest {
             u.setId(userId);
             return u;
         });
-        when(jwtTokenProvider.generateToken(userId.toString(), "业主", 1)).thenReturn(token);
+        when(jwtTokenProvider.generateToken(userId.toString(), UserType.OWNER, 1)).thenReturn(token);
 
         // 执行
         AuthResponseDTO result = authService.wxLogin(req);
@@ -243,7 +243,7 @@ class AuthServiceTest {
         User normalUser = User.builder()
                 .id(userId)
                 .username("user1")
-                .userType("业主")
+                .userType(UserType.OWNER)
                 .build();
 
         when(userRepository.findByUsername("user1")).thenReturn(Optional.of(normalUser));
@@ -319,7 +319,7 @@ class AuthServiceTest {
         req.setRoom("1502");
         req.setName("张三");
         req.setPhone("13800138000");
-        req.setUserType("业主");
+        req.setUserType(UserType.OWNER);
         req.setDocImages(List.of("http://img1.jpg"));
 
         Building building = Building.builder().id(100L).tenantId(tenantId).buildingNo(3).build();
@@ -331,11 +331,11 @@ class AuthServiceTest {
         when(roomRepository.findByUnitIdAndRoomNumber(unit.getId(), "1502")).thenReturn(Optional.of(room));
         // 唯一性校验：手机号未被占用，该房间无同身份住户
         when(userRepository.findByPhoneAndTenantId("13800138000", tenantId)).thenReturn(Optional.empty());
-        when(userRepository.findByRoomIdAndUserType(room.getId(), "业主")).thenReturn(Optional.empty());
+        when(userRepository.findByRoomIdAndUserType(room.getId(), UserType.OWNER)).thenReturn(Optional.empty());
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenReturn(user);
         // 注册不递增 tokenVersion（保持默认 0）
-        when(jwtTokenProvider.generateToken(userId.toString(), "业主", 0)).thenReturn("mock-token");
+        when(jwtTokenProvider.generateToken(userId.toString(), UserType.OWNER, 0)).thenReturn("mock-token");
 
         // 执行
         AuthResponseDTO result = authService.register(req, userId);
@@ -374,19 +374,19 @@ class AuthServiceTest {
         when(roomRepository.findByUnitIdAndRoomNumber(unit.getId(), "1502")).thenReturn(Optional.of(room));
         when(userRepository.findByPhoneAndTenantId("13900139000", tenantId)).thenReturn(Optional.empty());
         // 该房间尚无租客——即便已有业主，同身份查重也不会命中
-        when(userRepository.findByRoomIdAndUserType(room.getId(), "租客")).thenReturn(Optional.empty());
+        when(userRepository.findByRoomIdAndUserType(room.getId(), UserType.TENANT)).thenReturn(Optional.empty());
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenReturn(user);
         // 注册不递增 tokenVersion（保持默认 0）
-        when(jwtTokenProvider.generateToken(userId.toString(), "租客", 0)).thenReturn("mock-token");
+        when(jwtTokenProvider.generateToken(userId.toString(), UserType.TENANT, 0)).thenReturn("mock-token");
 
         // 执行
         AuthResponseDTO result = authService.register(req, userId);
 
-        // 断言：注册成功，且前端编码 tenant 已映射为数据库值"租客"参与查重
+        // 断言：注册成功，且身份 tenant 以同一编码参与数据库查重
         assertThat(result.getToken()).isEqualTo("mock-token");
-        assertThat(user.getUserType()).isEqualTo("租客");
-        verify(userRepository).findByRoomIdAndUserType(room.getId(), "租客");
+        assertThat(user.getUserType()).isEqualTo(UserType.TENANT);
+        verify(userRepository).findByRoomIdAndUserType(room.getId(), UserType.TENANT);
     }
 
     @Test
@@ -405,13 +405,13 @@ class AuthServiceTest {
         Building building = Building.builder().id(100L).tenantId(tenantId).buildingNo(3).build();
         Unit unit = Unit.builder().id(200L).buildingId(building.getId()).unitNo(2).build();
         Room room = Room.builder().id(300L).unitId(unit.getId()).roomNumber("1502").build();
-        User existingOwner = User.builder().id(99L).userType("业主").build();
+        User existingOwner = User.builder().id(99L).userType(UserType.OWNER).build();
 
         when(buildingRepository.findByTenantIdAndBuildingNo(tenantId, 3)).thenReturn(Optional.of(building));
         when(unitRepository.findByBuildingIdAndUnitNo(building.getId(), 2)).thenReturn(Optional.of(unit));
         when(roomRepository.findByUnitIdAndRoomNumber(unit.getId(), "1502")).thenReturn(Optional.of(room));
         when(userRepository.findByPhoneAndTenantId("13800138000", tenantId)).thenReturn(Optional.empty());
-        when(userRepository.findByRoomIdAndUserType(room.getId(), "业主")).thenReturn(Optional.of(existingOwner));
+        when(userRepository.findByRoomIdAndUserType(room.getId(), UserType.OWNER)).thenReturn(Optional.of(existingOwner));
 
         // 执行 & 断言：提示需体现身份
         assertThatThrownBy(() -> authService.register(req, userId))
@@ -435,13 +435,13 @@ class AuthServiceTest {
         Building building = Building.builder().id(100L).tenantId(tenantId).buildingNo(3).build();
         Unit unit = Unit.builder().id(200L).buildingId(building.getId()).unitNo(2).build();
         Room room = Room.builder().id(300L).unitId(unit.getId()).roomNumber("1502").build();
-        User existingTenant = User.builder().id(99L).userType("租客").build();
+        User existingTenant = User.builder().id(99L).userType(UserType.TENANT).build();
 
         when(buildingRepository.findByTenantIdAndBuildingNo(tenantId, 3)).thenReturn(Optional.of(building));
         when(unitRepository.findByBuildingIdAndUnitNo(building.getId(), 2)).thenReturn(Optional.of(unit));
         when(roomRepository.findByUnitIdAndRoomNumber(unit.getId(), "1502")).thenReturn(Optional.of(room));
         when(userRepository.findByPhoneAndTenantId("13800138000", tenantId)).thenReturn(Optional.empty());
-        when(userRepository.findByRoomIdAndUserType(room.getId(), "租客")).thenReturn(Optional.of(existingTenant));
+        when(userRepository.findByRoomIdAndUserType(room.getId(), UserType.TENANT)).thenReturn(Optional.of(existingTenant));
 
         // 执行 & 断言
         assertThatThrownBy(() -> authService.register(req, userId))
@@ -472,11 +472,11 @@ class AuthServiceTest {
         when(roomRepository.findByUnitIdAndRoomNumber(unit.getId(), "1502")).thenReturn(Optional.of(room));
         // 两项查重命中的用户 id 均等于当前 userId
         when(userRepository.findByPhoneAndTenantId("13800138000", tenantId)).thenReturn(Optional.of(user));
-        when(userRepository.findByRoomIdAndUserType(room.getId(), "业主")).thenReturn(Optional.of(user));
+        when(userRepository.findByRoomIdAndUserType(room.getId(), UserType.OWNER)).thenReturn(Optional.of(user));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenReturn(user);
         // 注册不递增 tokenVersion（保持默认 0）
-        when(jwtTokenProvider.generateToken(userId.toString(), "业主", 0)).thenReturn("mock-token");
+        when(jwtTokenProvider.generateToken(userId.toString(), UserType.OWNER, 0)).thenReturn("mock-token");
 
         // 执行
         AuthResponseDTO result = authService.register(req, userId);
@@ -511,6 +511,32 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.register(req, userId))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("请选择住户身份");
+    }
+
+    @Test
+    @DisplayName("用户注册 - 白名单外的身份编码一律拒绝（防注册提权）")
+    void should_throwException_when_userTypeNotInWhitelist() {
+        // 准备：注册接口公开且允许无凭证调用，若把未知值原样写入 user_type，
+        // 提交 admin/super_admin 即可签发出管理员身份的 token 并访问管理端接口
+        List<String> illegalTypes = List.of(
+                UserType.ADMIN, UserType.SENIOR_ADMIN, UserType.SUPER_ADMIN, "物业", "unknown");
+
+        // 执行 & 断言：非法身份在解析房间等写操作之前即被拒绝
+        for (String illegalType : illegalTypes) {
+            RegisterRequest req = new RegisterRequest();
+            req.setTenantId(10L);
+            req.setBuildingNo(3);
+            req.setUnitNo(2);
+            req.setRoom("1502");
+            req.setPhone("13800138000");
+            req.setUserType(illegalType);
+
+            assertThatThrownBy(() -> authService.register(req, userId))
+                    .isInstanceOf(RuntimeException.class)
+                    .hasMessage("非法的用户类型");
+        }
+        // 被拒绝的注册不得触发任何房间解析写操作
+        verifyNoInteractions(buildingRepository, unitRepository, roomRepository);
     }
 
     @Test
@@ -577,7 +603,7 @@ class AuthServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenReturn(user);
         // 注册不递增 tokenVersion（保持默认 0）
-        when(jwtTokenProvider.generateToken(userId.toString(), "业主", 0)).thenReturn("mock-token");
+        when(jwtTokenProvider.generateToken(userId.toString(), UserType.OWNER, 0)).thenReturn("mock-token");
 
         // 执行
         AuthResponseDTO result = authService.register(req, userId);

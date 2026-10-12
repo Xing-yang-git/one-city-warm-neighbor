@@ -35,14 +35,18 @@ public class SecurityConfig {
                 // AI 文案生成需认证 — 防止未登录用户消耗付费 API 额度
                 .requestMatchers(HttpMethod.POST, "/api/common/polish").authenticated()
                 .requestMatchers("/api/common/**").permitAll()
-                // AI Agent「小邻」对话需登录（仅 authenticated，不要求认证通过，让审核中新住户也能问规则）
-                .requestMatchers("/api/agent/**").authenticated()
                 .requestMatchers("/uploads/**").permitAll()
                 .requestMatchers("/ws/**").permitAll()
                 .requestMatchers("/api/ai/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_SUPER_ADMIN")
                 .requestMatchers("/error").permitAll()
                 // 管理端接口仅限物业/超管角色——防止普通住户 token 垂直越权访问管理功能
                 .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_SUPER_ADMIN")
+                // C端业务接口仅限住户角色——管理员 token 不得调用住户功能。
+                // 物业代发已改走 /api/admin/proxy/**，不再复用 C端发布端点。
+                // 审核中的住户仍是 ROLE_USER，可继续使用小邻问答（详见 JwtAuthenticationFilter 的未审核放行前缀）
+                .requestMatchers("/api/idle-items/**", "/api/help-requests/**", "/api/borrow-requests/**",
+                                 "/api/chats/**", "/api/ratings/**", "/api/notifications/**",
+                                 "/api/users/**", "/api/agent/**").hasAuthority("ROLE_USER")
                 .anyRequest().authenticated()
             )
             .exceptionHandling(ex -> ex

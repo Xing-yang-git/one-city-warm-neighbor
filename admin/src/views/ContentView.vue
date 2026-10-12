@@ -1494,8 +1494,8 @@
           @change="loadAllResidents"
         >
           <el-option label="全部" value="" />
-          <el-option label="业主" value="业主" />
-          <el-option label="租客" value="租客" />
+          <el-option label="业主" :value="USER_TYPE.OWNER" />
+          <el-option label="租客" :value="USER_TYPE.TENANT" />
         </el-select>
         <el-select
           class="filter-select"
@@ -1601,8 +1601,8 @@ import {
   getContentList,
   getContentDetail,
   offlineContent,
-  publishIdle,
-  publishHelp,
+  proxyPublishIdle,
+  proxyPublishHelp,
   searchResidents,
   getModerationList,
   getModerationCounts,
@@ -1615,7 +1615,7 @@ import {
   type ModerationCounts,
 } from "@/api/admin";
 import { upload } from "@/utils/api";
-import { POST_TYPE, CONTENT_TYPE, ITEM_CONDITION, PICKUP_METHOD } from "@/utils/constants";
+import { POST_TYPE, CONTENT_TYPE, ITEM_CONDITION, PICKUP_METHOD, USER_TYPE } from "@/utils/constants";
 import AppLayout from "@/layouts/AppLayout.vue";
 import { LIST_PAGE_MAIN_CLASS } from "@/layouts/main-classes";
 import type { AxiosResponse } from "axios";
@@ -2584,7 +2584,7 @@ async function submitPublish(): Promise<void> {
   publishSubmitting.value = true;
   try {
     if (publishMode.value === "lend" || publishMode.value === "wanted") {
-      await publishIdle({
+      await proxyPublishIdle({
         userId: selectedResidentId.value,
         isProxy: true,
         postType:
@@ -2602,7 +2602,7 @@ async function submitPublish(): Promise<void> {
         images: getImagesJson() || undefined,
       });
     } else {
-      await publishHelp({
+      await proxyPublishHelp({
         userId: selectedResidentId.value,
         isProxy: true,
         title: publishForm.title.trim(),

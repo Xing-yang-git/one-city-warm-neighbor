@@ -4,8 +4,8 @@ package com.platform.common;
  * 用户类型常量 — users.user_type 字段的唯一合法取值。
  *
  * <p>字符串值与数据库存储值、前端契约严格一致，禁止修改。
- * 与 C端 miniprogram/utils/constants.js 的 USER_TYPE 和
- * B端 admin/src/utils/constants.ts 的 USER_TYPE 保持一致。</p>
+ * 与 B端 admin/src/utils/constants.ts 的 USER_TYPE 保持一致；
+ * C端 miniprogram/utils/constants.js 未定义用户类型常量，注册页直接提交本类字面量。</p>
  *
  * <p>注意：Entity 默认值使用本类常量（如 {@link #OWNER}），
  * 不再使用中文字面量（如 "业主"）。中文展示标签由 {@link com.platform.common.UserFormatter} 负责。</p>

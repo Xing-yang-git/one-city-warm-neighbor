@@ -314,12 +314,24 @@ export interface PublishHelpBody {
   images?: string;
 }
 
-export function publishIdle(body: PublishIdleBody): Promise<AxiosResponse> {
-  return post('/api/idle-items', body);
+/**
+ * 管理员代发闲置物品。
+ * 走管理端专用端点，服务端据此强制标记代发并记录操作日志。
+ * @param body - 代发内容，必须包含目标住户 userId
+ * @returns 原始响应
+ */
+export function proxyPublishIdle(body: PublishIdleBody): Promise<AxiosResponse> {
+  return post('/api/admin/proxy/idle', body);
 }
 
-export function publishHelp(body: PublishHelpBody): Promise<AxiosResponse> {
-  return post('/api/help-requests', body);
+/**
+ * 管理员代发求助。
+ * 走管理端专用端点，服务端据此强制标记代发并记录操作日志。
+ * @param body - 代发内容，必须包含目标住户 userId
+ * @returns 原始响应
+ */
+export function proxyPublishHelp(body: PublishHelpBody): Promise<AxiosResponse> {
+  return post('/api/admin/proxy/help', body);
 }
 
 // ============================================================

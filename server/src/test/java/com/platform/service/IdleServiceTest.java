@@ -20,6 +20,7 @@ import com.platform.repository.UserRepository;
 import com.platform.common.BorrowStatus;
 import com.platform.common.PostStatus;
 import com.platform.common.NotificationType;
+import com.platform.common.UserType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -86,7 +87,7 @@ class IdleServiceTest {
         user = User.builder()
                 .id(userId)
                 .name("张三")
-                .userType("业主")
+                .userType(UserType.OWNER)
                 .build();
 
         idleItem = IdleItem.builder()

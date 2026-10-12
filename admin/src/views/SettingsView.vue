@@ -116,7 +116,7 @@
         <el-table-column label="操作" align="center" width="100">
           <template #default="{ row }">
             <el-button
-              v-if="row.userType !== 'super_admin'"
+              v-if="row.userType !== USER_TYPE.SUPER_ADMIN"
               size="small"
               link
               type="danger"
@@ -205,8 +205,8 @@
         </el-form-item>
         <el-form-item label="角色">
           <el-radio-group v-model="addAdminForm.userType">
-            <el-radio value="senior_admin">高级管理员</el-radio>
-            <el-radio value="admin">普通管理员</el-radio>
+            <el-radio :value="USER_TYPE.SENIOR_ADMIN">高级管理员</el-radio>
+            <el-radio :value="USER_TYPE.ADMIN">普通管理员</el-radio>
           </el-radio-group>
         </el-form-item>
       </el-form>
@@ -246,6 +246,7 @@ import {
   type OperationLogDTO,
 } from "@/api/admin";
 import AppLayout from "@/layouts/AppLayout.vue";
+import { USER_TYPE } from "@/utils/constants";
 import type { AxiosError } from "axios";
 import type { AdminUser } from "@/api/auth";
 
@@ -291,17 +292,19 @@ interface AdminRow {
 const authStore = useAuthStore();
 
 /** 是否为超级管理员（超级管理员可管理子账号） */
-const isSuperAdmin = computed(() => authStore.user?.userType === "super_admin");
+const isSuperAdmin = computed(
+  () => authStore.user?.userType === USER_TYPE.SUPER_ADMIN,
+);
 /** 是否为高级管理员 */
 const isSeniorAdmin = computed(
-  () => authStore.user?.userType === "senior_admin",
+  () => authStore.user?.userType === USER_TYPE.SENIOR_ADMIN,
 );
 /** 当前用户类型的中文标签 */
 const userTypeLabel = computed(() => {
   const map: Record<string, string> = {
-    super_admin: "超级管理员",
-    senior_admin: "高级管理员",
-    admin: "普通管理员",
+    [USER_TYPE.SUPER_ADMIN]: "超级管理员",
+    [USER_TYPE.SENIOR_ADMIN]: "高级管理员",
+    [USER_TYPE.ADMIN]: "普通管理员",
   };
   return (
     map[authStore.user?.userType || ""] || authStore.user?.userType || "管理员"
@@ -417,8 +420,8 @@ async function fetchAdmins(): Promise<void> {
 
 /** 角色标签 CSS 映射 */
 function roleBadge(userType: string): string {
-  if (userType === "super_admin") return "badge-info";
-  if (userType === "senior_admin") return "badge-warning";
+  if (userType === USER_TYPE.SUPER_ADMIN) return "badge-info";
+  if (userType === USER_TYPE.SENIOR_ADMIN) return "badge-warning";
   return "badge-success";
 }
 
@@ -464,7 +467,7 @@ const addAdminForm = reactive<AddAdminForm>({
   phone: "",
   password: "",
   tenantId: null,
-  userType: "admin",
+  userType: USER_TYPE.ADMIN,
 });
 const addAdminLoading = ref(false);
 
@@ -490,7 +493,7 @@ function openAddAdmin(): void {
   addAdminForm.phone = "";
   addAdminForm.password = "";
   addAdminForm.tenantId = null;
-  addAdminForm.userType = "admin";
+  addAdminForm.userType = USER_TYPE.ADMIN;
   addAdminVisible.value = true;
 }
 
